@@ -21,6 +21,7 @@ vi.mock('@/ee/lib/billing/stripe', async importOriginal => ({ ...(await importOr
 vi.mock('@/app/api/_auth/ownership', () => ({ requireAdminContext: vi.fn(), requireWorkspaceId: vi.fn() }))
 vi.mock('@/app/api/_services/getting-started.service', () => ({ markPaymentMethodAdded: vi.fn() }))
 vi.mock('@/ee/services/billing.service', () => ({
+    CHARGE_REFUSED_MESSAGE: "We couldn't charge your card. Nothing was charged, try again or change your card.",
     PLAN_CARD_SETUP_KIND: 'plan_card_setup',
     acceptPlanTerms: vi.fn(),
     changePlan: vi.fn(),
@@ -47,7 +48,7 @@ describe('a member who is not an admin', () => {
         ['createPlanCheckoutAction', () => createPlanCheckoutAction(SELECTION)],
         ['updatePlanCheckoutAction', () => updatePlanCheckoutAction('cs_1', SELECTION)],
         ['acceptPlanTermsAction', () => acceptPlanTermsAction('cs_1')],
-        ['createPlanCardSetupAction', () => createPlanCardSetupAction(null)],
+        ['createPlanCardSetupAction', () => createPlanCardSetupAction()],
         ['changePlanAction', () => changePlanAction(SELECTION)],
         ['confirmCardSetupAction', () => confirmCardSetupAction('cs_1')],
     ]
@@ -115,9 +116,9 @@ describe('the thin billing actions', () => {
         ['createPlanCheckoutAction', () => createPlanCheckoutAction(SELECTION), () => vi.mocked(billing.createPlanCheckoutSession).mockResolvedValue({ clientSecret: 'sec', sessionId: 'cs_1', trial: false }), { ok: true, clientSecret: 'sec', sessionId: 'cs_1', trial: false }],
         ['updatePlanCheckoutAction', () => updatePlanCheckoutAction('cs_1', SELECTION), () => vi.mocked(billing.updatePlanCheckoutSession).mockResolvedValue(undefined), { ok: true }],
         ['acceptPlanTermsAction', () => acceptPlanTermsAction('cs_1'), () => vi.mocked(billing.acceptPlanTerms).mockResolvedValue(undefined), { ok: true }],
-        ['createPlanCardSetupAction', () => createPlanCardSetupAction(null), () => vi.mocked(billing.createPlanCardSetupSession).mockResolvedValue({ clientSecret: 'sec', sessionId: 'cs_1' }), { ok: true, clientSecret: 'sec', sessionId: 'cs_1' }],
+        ['createPlanCardSetupAction', () => createPlanCardSetupAction(), () => vi.mocked(billing.createPlanCardSetupSession).mockResolvedValue({ clientSecret: 'sec', sessionId: 'cs_1' }), { ok: true, clientSecret: 'sec', sessionId: 'cs_1' }],
         ['previewPlanChangeAction', () => previewPlanChangeAction(SELECTION), () => vi.mocked(billing.previewPlanChange).mockResolvedValue(null), { ok: true, quote: null }],
-        ['changePlanAction', () => changePlanAction(SELECTION), () => vi.mocked(billing.changePlan).mockResolvedValue({ trialEnded: false, switchAt: null }), { ok: true, trialEnded: false, switchAt: null }],
+        ['changePlanAction', () => changePlanAction(SELECTION), () => vi.mocked(billing.changePlan).mockResolvedValue({ trialEnded: false, switchAt: null, paymentClientSecret: null }), { ok: true, trialEnded: false, switchAt: null, paymentClientSecret: null }],
         ['listInvoicesAction', () => listInvoicesAction(), () => vi.mocked(billing.listInvoices).mockResolvedValue([]), { ok: true, invoices: [] }],
         ['getSubscriptionStateAction', () => getSubscriptionStateAction(), () => vi.mocked(billing.getSubscriptionState).mockResolvedValue(null), { ok: true, state: null }],
     ]
@@ -139,6 +140,25 @@ describe('the thin billing actions', () => {
         await expect(changePlanAction(SELECTION)).resolves.toEqual({ ok: false, error: 'Failed to change your plan' })
     })
 
+    it('passes on the decline the service already worded for the customer', async () => {
+        vi.mocked(billing.changePlan).mockRejectedValue(new Error('Your card was declined.'))
+        await expect(changePlanAction(SELECTION)).resolves.toEqual({ ok: false, error: 'Your card was declined.' })
+    })
+
+    it("keeps a card error Stripe itself throws in the card's own words", async () => {
+        vi.mocked(billing.changePlan).mockRejectedValue(Object.assign(new Error('Your card has expired.'), { type: 'StripeCardError', code: 'expired_card' }))
+        await expect(changePlanAction(SELECTION)).resolves.toEqual({ ok: false, error: 'Your card has expired.' })
+    })
+
+    it("never shows the customer Stripe's developer wording", async () => {
+        const requiresAction = Object.assign(new Error('Payment for this subscription requires additional user action, but the requested payment behavior…'), {
+            type: 'StripeCardError',
+            code: 'subscription_payment_intent_requires_action',
+        })
+        vi.mocked(billing.changePlan).mockRejectedValue(requiresAction)
+        await expect(changePlanAction(SELECTION)).resolves.toEqual({ ok: false, error: "We couldn't charge your card. Nothing was charged, try again or change your card." })
+    })
+
     it('refuses a selection the schema does not know before reaching the service', async () => {
         await expect(changePlanAction({ quantities: { credit_pack: -1, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' })).resolves.toMatchObject({ ok: false })
         await expect(createPlanCheckoutAction({ quantities: { credit_pack: 0, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'weekly' as never })).resolves.toMatchObject({ ok: false })
@@ -147,7 +167,7 @@ describe('the thin billing actions', () => {
     })
 
     it('drops the agent pack a page loaded before the deploy still sends, rather than refusing the change', async () => {
-        vi.mocked(billing.changePlan).mockResolvedValue({ trialEnded: true, switchAt: null })
+        vi.mocked(billing.changePlan).mockResolvedValue({ trialEnded: true, switchAt: null, paymentClientSecret: null })
         const stale = { quantities: { agent_pack: 3, credit_pack: 0, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' } as never
         await expect(changePlanAction(stale)).resolves.toMatchObject({ ok: true })
         expect(billing.changePlan).toHaveBeenCalledWith({ quantities: { credit_pack: 0, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' })

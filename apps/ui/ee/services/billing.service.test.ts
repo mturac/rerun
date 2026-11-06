@@ -14,6 +14,7 @@ import {
     completeCardSetupSession,
     createPlanCardSetupSession,
     createPlanCheckoutSession,
+    finishPendingPlanChange,
     listInvoices,
     planChangeKind,
     previewPlanChange,
@@ -130,6 +131,8 @@ beforeEach(() => {
     m.getAppOrigin.mockResolvedValue('https://app.test')
     m.affiliateReferralMetadata.mockResolvedValue({})
     m.resolveEngineWaitlist.mockResolvedValue(false)
+    vi.mocked(stripe.subscriptions.update).mockResolvedValue({ pending_update: null } as never)
+    vi.mocked(stripe.paymentIntents.retrieve).mockResolvedValue({ status: 'requires_action' } as never)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -369,6 +372,14 @@ describe('markSubscriptionPastDue', () => {
         const retry = useDb({ row: { stripe_subscription_id: 'sub_1', subscription_status: 'past_due', first_paid_at: PAID_AT } })
         await markSubscriptionPastDue(sub(), { ...invoice, attempt_count: 2 } as Stripe.Invoice)
         expect(retry.updates()).toEqual([{ subscription_status: 'past_due' }])
+    })
+
+    it('leaves a trial alone while its bank asks for 3-D Secure on the pending change', async () => {
+        const db = useDb({ row: { stripe_subscription_id: 'sub_1', subscription_status: 'trialing', first_paid_at: null } })
+        await markSubscriptionPastDue(sub({ status: 'trialing', pending_update: { expires_at: 1 }, latest_invoice: 'in_1' }), invoice)
+        expect(db.updates()).toEqual([])
+        expect(m.sendPaymentFailedNotice).not.toHaveBeenCalled()
+        expect(m.reportTrialPaymentFailed).not.toHaveBeenCalled()
     })
 
     it('stays silent when Stripe retries the same invoice', async () => {
@@ -616,9 +627,56 @@ describe('changePlan on the same interval', () => {
     // period, which the migration script credits when it removes the item.
     it('bills an increase today and leaves a legacy agent pack for the migration to credit', async () => {
         useDb({ row: editable })
-        await expect(changePlan({ quantities: { credit_pack: 2, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' })).resolves.toEqual({ trialEnded: false, switchAt: null })
+        await expect(changePlan({ quantities: { credit_pack: 2, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' })).resolves.toEqual({ trialEnded: false, switchAt: null, paymentClientSecret: null })
 
-        expect(vi.mocked(stripe.subscriptions.update).mock.calls).toEqual([['sub_1', { items: [{ id: 'si_credit', quantity: 2 }], proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete' }]])
+        expect(vi.mocked(stripe.subscriptions.update).mock.calls).toEqual([
+            ['sub_1', { items: [{ id: 'si_credit', quantity: 2 }], proration_behavior: 'always_invoice', payment_behavior: 'pending_if_incomplete', expand: ['latest_invoice.confirmation_secret'] }],
+        ])
+    })
+
+    const MIXED = { quantities: { credit_pack: 0, linkedin_slot: 1, whatsapp_slot: 0 }, interval: 'monthly' } as const
+    const HELD = { pending_update: { expires_at: 1 }, latest_invoice: { id: 'in_pending', confirmation_secret: { client_secret: 'pi_1_secret_2', type: 'payment_intent' } } }
+
+    it('bills the increases before applying the decreases, which forget the selection they carried', async () => {
+        useDb({ row: editable })
+        await expect(changePlan(MIXED)).resolves.toEqual({ trialEnded: false, switchAt: null, paymentClientSecret: null })
+
+        expect(vi.mocked(stripe.subscriptions.update).mock.calls).toEqual([
+            ['sub_1', { items: [{ price: 'price_linkedin_slot', quantity: 1 }], proration_behavior: 'always_invoice', metadata: { plan_change_after_payment: JSON.stringify(MIXED) }, payment_behavior: 'pending_if_incomplete', expand: ['latest_invoice.confirmation_secret'] }],
+            ['sub_1', { items: [{ id: 'si_credit', deleted: true }], proration_behavior: 'none', metadata: { plan_change_after_payment: '' } }],
+        ])
+    })
+
+    it('applies the decreases alone without writing any selection', async () => {
+        useDb({ row: editable })
+        await changePlan({ quantities: { credit_pack: 0, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' })
+        expect(vi.mocked(stripe.subscriptions.update).mock.calls).toEqual([['sub_1', { items: [{ id: 'si_credit', deleted: true }], proration_behavior: 'none' }]])
+    })
+
+    it('leaves the decreases to the webhook while the bank holds the increase', async () => {
+        useDb({ row: editable })
+        vi.mocked(stripe.subscriptions.update).mockResolvedValue(HELD as never)
+
+        await expect(changePlan(MIXED)).resolves.toEqual({ trialEnded: false, switchAt: null, paymentClientSecret: 'pi_1_secret_2' })
+        expect(stripe.subscriptions.update).toHaveBeenCalledOnce()
+        expect(stripe.paymentIntents.retrieve).toHaveBeenCalledWith('pi_1')
+    })
+
+    it("refuses a declined card in the card's own words, nothing applied", async () => {
+        useDb({ row: editable })
+        vi.mocked(stripe.subscriptions.update).mockResolvedValue(HELD as never)
+        vi.mocked(stripe.paymentIntents.retrieve).mockResolvedValue({ status: 'requires_payment_method', last_payment_error: { type: 'card_error', message: 'Your card was declined.' } } as never)
+
+        await expect(changePlan(MIXED)).rejects.toThrow('Your card was declined.')
+        expect(stripe.subscriptions.update).toHaveBeenCalledOnce()
+    })
+
+    it('words any other refusal itself', async () => {
+        useDb({ row: editable })
+        vi.mocked(stripe.subscriptions.update).mockResolvedValue(HELD as never)
+        vi.mocked(stripe.paymentIntents.retrieve).mockResolvedValue({ status: 'requires_payment_method', last_payment_error: { type: 'invalid_request_error', message: 'The PaymentIntent is in an unexpected state.' } } as never)
+
+        await expect(changePlan(MIXED)).rejects.toThrow("We couldn't charge your card. Nothing was charged, try again or change your card.")
     })
 
     it('ends a trial on the spot with nothing else changed, the start-Pro-now path', async () => {
@@ -626,12 +684,13 @@ describe('changePlan on the same interval', () => {
         const trial = sub({ status: 'trialing', default_payment_method: 'pm_1', items: [{ price: 'price_base_29', quantity: 1 }] })
         vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue(trial as never)
 
-        await expect(changePlan({ quantities: { credit_pack: 0, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' })).resolves.toEqual({ trialEnded: true, switchAt: null })
+        await expect(changePlan({ quantities: { credit_pack: 0, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' })).resolves.toEqual({ trialEnded: true, switchAt: null, paymentClientSecret: null })
         expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', {
             items: [{ id: 'si_price_base_29', price: 'price_base_29', quantity: 1 }],
             trial_end: 'now',
             proration_behavior: 'none',
-            payment_behavior: 'error_if_incomplete',
+            payment_behavior: 'pending_if_incomplete',
+            expand: ['latest_invoice.confirmation_secret'],
         })
     })
 
@@ -648,7 +707,7 @@ describe('changePlan on the same interval', () => {
         useDb({ row: { ...editable, subscription_status: 'trialing' } })
         vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue({ ...current, status: 'trialing' } as never)
 
-        await expect(changePlan({ quantities: { credit_pack: 1, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' })).resolves.toEqual({ trialEnded: true, switchAt: null })
+        await expect(changePlan({ quantities: { credit_pack: 1, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' })).resolves.toEqual({ trialEnded: true, switchAt: null, paymentClientSecret: null })
         expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', {
             items: [
                 { id: 'si_price_base', price: 'price_base', quantity: 1 },
@@ -657,7 +716,22 @@ describe('changePlan on the same interval', () => {
             ],
             trial_end: 'now',
             proration_behavior: 'none',
-            payment_behavior: 'error_if_incomplete',
+            payment_behavior: 'pending_if_incomplete', expand: ['latest_invoice.confirmation_secret'],
+        })
+    })
+
+    it('hands the browser the invoice secret when the bank asks for 3-D Secure', async () => {
+        useDb({ row: { ...editable, subscription_status: 'trialing' } })
+        vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue({ ...current, status: 'trialing' } as never)
+        vi.mocked(stripe.subscriptions.update).mockResolvedValue({
+            pending_update: { expires_at: 1 },
+            latest_invoice: { id: 'in_pending', confirmation_secret: { client_secret: 'pi_1_secret_2', type: 'payment_intent' } },
+        } as never)
+
+        await expect(changePlan({ quantities: { credit_pack: 1, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' })).resolves.toEqual({
+            trialEnded: true,
+            switchAt: null,
+            paymentClientSecret: 'pi_1_secret_2',
         })
     })
 
@@ -1181,7 +1255,7 @@ describe('changePlan', () => {
         useDb({ row: { stripe_subscription_id: 'sub_1', subscription_status: 'trialing' } })
         vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue({ ...monthly, status: 'trialing' } as never)
 
-        await expect(changePlan({ quantities: { credit_pack: 0, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'yearly' })).resolves.toEqual({ trialEnded: true, switchAt: null })
+        await expect(changePlan({ quantities: { credit_pack: 0, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'yearly' })).resolves.toEqual({ trialEnded: true, switchAt: null, paymentClientSecret: null })
         expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', {
             items: [
                 { id: 'si_base', price: 'price_base_yearly', quantity: 1 },
@@ -1190,7 +1264,7 @@ describe('changePlan', () => {
             ],
             trial_end: 'now',
             proration_behavior: 'none',
-            payment_behavior: 'error_if_incomplete',
+            payment_behavior: 'pending_if_incomplete', expand: ['latest_invoice.confirmation_secret'],
         })
     })
 
@@ -1214,7 +1288,7 @@ describe('changePlan', () => {
                 { price: 'price_credit_pack_yearly', quantity: 1 },
             ],
             proration_behavior: 'always_invoice',
-            payment_behavior: 'error_if_incomplete',
+            payment_behavior: 'pending_if_incomplete', expand: ['latest_invoice.confirmation_secret'],
         })
     })
 
@@ -1250,9 +1324,13 @@ describe('changePlan', () => {
             ],
         } as never)
 
-        await expect(changePlan({ quantities: { credit_pack: 2, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' })).resolves.toEqual({ trialEnded: false, switchAt: iso(PERIOD_END) })
+        const toMonthly = { quantities: { credit_pack: 2, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' } as const
+        await expect(changePlan(toMonthly)).resolves.toEqual({ trialEnded: false, switchAt: iso(PERIOD_END), paymentClientSecret: null })
 
-        expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', { items: [{ id: 'si_credit', quantity: 2 }], proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete' })
+        expect(vi.mocked(stripe.subscriptions.update).mock.calls).toEqual([
+            ['sub_1', { items: [{ id: 'si_credit', quantity: 2 }], proration_behavior: 'always_invoice', metadata: { plan_change_after_payment: JSON.stringify(toMonthly) }, payment_behavior: 'pending_if_incomplete', expand: ['latest_invoice.confirmation_secret'] }],
+            ['sub_1', { proration_behavior: 'none', metadata: { plan_change_after_payment: '' } }],
+        ])
         expect(stripe.subscriptionSchedules.create).toHaveBeenCalledWith({ from_subscription: 'sub_1' })
         expect(stripe.subscriptionSchedules.update).toHaveBeenCalledWith('sub_sched_1', {
             end_behavior: 'release',
@@ -1280,7 +1358,89 @@ describe('changePlan', () => {
 
         await changePlan({ quantities: { credit_pack: 1, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'yearly' })
         expect(stripe.subscriptionSchedules.release).toHaveBeenCalledWith('sub_sched_1')
-        expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', { items: [{ price: 'price_credit_pack_yearly', quantity: 1 }], proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete' })
+        expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', { items: [{ price: 'price_credit_pack_yearly', quantity: 1 }], proration_behavior: 'always_invoice', payment_behavior: 'pending_if_incomplete', expand: ['latest_invoice.confirmation_secret'] })
+    })
+})
+
+describe('a plan change the bank holds', () => {
+    const HELD = { pending_update: { expires_at: 1 }, latest_invoice: { id: 'in_pending', confirmation_secret: { client_secret: 'pi_1_secret_2', type: 'payment_intent' } } }
+    const TO_MONTHLY = { quantities: { credit_pack: 2, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' } as const
+    const yearly = () => sub({ default_payment_method: 'pm_1', items: [{ price: 'price_base_yearly', quantity: 1, id: 'si_base' }, { price: 'price_credit_pack_yearly', quantity: 1, id: 'si_credit' }] })
+
+    beforeEach(() => {
+        vi.mocked(stripe.customers.retrieve).mockResolvedValue({ invoice_settings: { default_payment_method: null } } as never)
+        vi.mocked(stripe.subscriptionSchedules.create).mockResolvedValue({ id: 'sub_sched_1', phases: [{ start_date: 1_000, end_date: PERIOD_END, discounts: [], items: [{ price: 'price_base_yearly', quantity: 1 }, { price: 'price_credit_pack_yearly', quantity: 2 }] }] } as never)
+    })
+
+    it('answers the renewal date of a switch to monthly without scheduling it yet', async () => {
+        useDb({ row: { stripe_subscription_id: 'sub_1', subscription_status: 'active' } })
+        vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue(yearly() as never)
+        vi.mocked(stripe.subscriptions.update).mockResolvedValue(HELD as never)
+
+        await expect(changePlan(TO_MONTHLY)).resolves.toEqual({ trialEnded: false, switchAt: iso(PERIOD_END), paymentClientSecret: 'pi_1_secret_2' })
+        expect(stripe.subscriptions.update).toHaveBeenCalledExactlyOnceWith('sub_1', {
+            items: [{ id: 'si_credit', quantity: 2 }],
+            proration_behavior: 'always_invoice',
+            metadata: { plan_change_after_payment: JSON.stringify(TO_MONTHLY) },
+            payment_behavior: 'pending_if_incomplete',
+            expand: ['latest_invoice.confirmation_secret'],
+        })
+        expect(stripe.subscriptionSchedules.create).not.toHaveBeenCalled()
+    })
+
+    describe('finishPendingPlanChange', () => {
+        const held = (selection: object, fields: Record<string, unknown> & { items?: ItemSpec[] } = {}) => {
+            const applied = sub({ ...fields, metadata: { workspace_id: '7', plan: 'base', plan_change_after_payment: JSON.stringify(selection) } })
+            vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue(applied as never)
+            return applied
+        }
+
+        it('applies the decreases the paid increase was waiting on, then forgets the selection', async () => {
+            const applied = held({ quantities: { credit_pack: 0, linkedin_slot: 1, whatsapp_slot: 0 }, interval: 'monthly' }, {
+                items: [{ price: 'price_base', quantity: 1 }, { price: 'price_credit_pack', quantity: 1, id: 'si_credit' }, { price: 'price_linkedin_slot', quantity: 1, id: 'si_linkedin' }],
+            })
+
+            await finishPendingPlanChange(applied)
+            expect(vi.mocked(stripe.subscriptions.update).mock.calls).toEqual([
+                ['sub_1', { items: [{ id: 'si_credit', deleted: true }], proration_behavior: 'none' }],
+                ['sub_1', { metadata: { plan_change_after_payment: '' } }],
+            ])
+            expect(stripe.subscriptionSchedules.create).not.toHaveBeenCalled()
+        })
+
+        it('schedules the switch to monthly the paid increase was waiting on', async () => {
+            const applied = held(TO_MONTHLY, { items: [{ price: 'price_base_yearly', quantity: 1, id: 'si_base' }, { price: 'price_credit_pack_yearly', quantity: 2, id: 'si_credit' }] })
+
+            await finishPendingPlanChange(applied)
+            expect(stripe.subscriptionSchedules.create).toHaveBeenCalledWith({ from_subscription: 'sub_1' })
+            expect(stripe.subscriptionSchedules.update).toHaveBeenCalledWith('sub_sched_1', expect.objectContaining({ end_behavior: 'release' }))
+            expect(vi.mocked(stripe.subscriptions.update).mock.calls).toEqual([['sub_1', { metadata: { plan_change_after_payment: '' } }]])
+        })
+
+        it('schedules nothing twice when a first delivery already did', async () => {
+            const applied = held(TO_MONTHLY, { schedule: 'sub_sched_1', items: [{ price: 'price_base_yearly', quantity: 1, id: 'si_base' }, { price: 'price_credit_pack_yearly', quantity: 2, id: 'si_credit' }] })
+
+            await finishPendingPlanChange(applied)
+            expect(stripe.subscriptionSchedules.create).not.toHaveBeenCalled()
+            expect(vi.mocked(stripe.subscriptions.update).mock.calls).toEqual([['sub_1', { metadata: { plan_change_after_payment: '' } }]])
+        })
+
+        it('does nothing for a subscription that carries no selection', async () => {
+            vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue(sub() as never)
+            await finishPendingPlanChange(sub())
+            expect(stripe.subscriptions.update).not.toHaveBeenCalled()
+        })
+
+        it('ignores a selection it cannot read', async () => {
+            vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue(sub({ metadata: { plan_change_after_payment: '{"quantities":{"credit_pack":-1}}' } }) as never)
+            await finishPendingPlanChange(sub())
+            expect(stripe.subscriptions.update).not.toHaveBeenCalled()
+        })
+
+        it('never touches a template subscription', async () => {
+            await finishPendingPlanChange(sub({ metadata: { kind: 'template_purchase' } }))
+            expect(stripe.subscriptions.retrieve).not.toHaveBeenCalled()
+        })
     })
 })
 
@@ -1318,11 +1478,9 @@ describe('createPlanCardSetupSession', () => {
         vi.mocked(stripe.checkout.sessions.create).mockResolvedValue({ id: 'cs_s', client_secret: 'secret_s' } as never)
         vi.mocked(stripe.customers.retrieve).mockResolvedValue({ email: 'a@b.co' } as never)
 
-        await expect(createPlanCardSetupSession(null)).resolves.toEqual({ clientSecret: 'secret_s', sessionId: 'cs_s' })
+        await expect(createPlanCardSetupSession()).resolves.toEqual({ clientSecret: 'secret_s', sessionId: 'cs_s' })
         expect(vi.mocked(stripe.checkout.sessions.create).mock.calls[0][0]).toMatchObject({ mode: 'setup', ui_mode: 'elements', metadata: { kind: 'plan_card_setup', subscription_id: 'sub_1' } })
         expect(vi.mocked(stripe.checkout.sessions.create).mock.calls[0][0]!.payment_method_types).toEqual(['card', 'link'])
-
-        await expect(createPlanCardSetupSession({ quantities: { credit_pack: 0, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' })).rejects.toThrow('already active')
     })
 })
 
@@ -1334,7 +1492,7 @@ describe('createPlanCardSetupSession for a phone account', () => {
         vi.mocked(stripe.checkout.sessions.create).mockResolvedValue({ id: 'cs_s', client_secret: 'secret_s' } as never)
         vi.mocked(stripe.customers.retrieve).mockResolvedValue({ email: null } as never)
 
-        await createPlanCardSetupSession(null)
+        await createPlanCardSetupSession()
         expect(stripe.customers.update).toHaveBeenCalledWith('cus_1', { email: '393480000000@phone.rerun.build' })
     })
 })
@@ -1373,30 +1531,13 @@ describe('completeCardSetupSession', () => {
         expect(stripe.invoices.pay).toHaveBeenCalledWith('in_open', { payment_method: 'pm_new' })
     })
 
-    it('converts a trial onto the plan picked beside the card', async () => {
+    it('leaves a trial to the dialog, which runs the plan change once the card is saved', async () => {
         useDb({ row: { stripe_subscription_id: 'sub_1', subscription_status: 'trialing' } })
-        vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue(sub({ status: 'trialing', default_payment_method: 'pm_new', items: [{ price: 'price_base', quantity: 1, id: 'si_base' }] }) as never)
+        vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue(sub({ status: 'trialing', default_payment_method: 'pm_new' }) as never)
 
-        await completeCardSetupSession({ metadata: { subscription_id: 'sub_1', plan_target: JSON.stringify({ quantities: { credit_pack: 1, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' }) } } as never)
-        expect(stripe.subscriptions.update).toHaveBeenLastCalledWith('sub_1', {
-            items: [{ id: 'si_base', price: 'price_base', quantity: 1 }, { price: 'price_credit_pack', quantity: 1 }],
-            trial_end: 'now',
-            proration_behavior: 'none',
-            payment_behavior: 'error_if_incomplete',
-        })
-    })
-
-    it('converts a trial picked before the agent pack was retired onto the plan alone', async () => {
-        useDb({ row: { stripe_subscription_id: 'sub_1', subscription_status: 'trialing' } })
-        vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue(sub({ status: 'trialing', default_payment_method: 'pm_new', items: [{ price: 'price_base', quantity: 1, id: 'si_base' }] }) as never)
-
-        await completeCardSetupSession({ metadata: { subscription_id: 'sub_1', plan_target: JSON.stringify({ quantities: { agent_pack: 3, credit_pack: 0, linkedin_slot: 0, whatsapp_slot: 0 }, interval: 'monthly' }) } } as never)
-        expect(stripe.subscriptions.update).toHaveBeenLastCalledWith('sub_1', {
-            items: [{ id: 'si_base', price: 'price_base', quantity: 1 }],
-            trial_end: 'now',
-            proration_behavior: 'none',
-            payment_behavior: 'error_if_incomplete',
-        })
+        await completeCardSetupSession({ metadata: { subscription_id: 'sub_1' } } as never)
+        expect(stripe.invoices.pay).not.toHaveBeenCalled()
+        expect(vi.mocked(stripe.subscriptions.update).mock.calls.map(([, params]) => Object.keys(params ?? {}))).not.toContainEqual(expect.arrayContaining(['items']))
     })
 })
 

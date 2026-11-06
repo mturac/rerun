@@ -266,7 +266,6 @@ const CARD_TRIAL_SELECTION: PlanSelection = { quantities: ZERO_QUANTITIES, inter
 // Marks the session of a card trial, whose line items the dialog may not change.
 const CARD_TRIAL_METADATA_KEY = 'card_trial'
 const TERMS_ACCEPTED_METADATA_KEY = 'terms_accepted_at'
-const PLAN_TARGET_METADATA_KEY = 'plan_target'
 
 function assertValidSelection(selection: PlanSelection): void {
     assertValidQuantities(selection.quantities)
@@ -387,13 +386,11 @@ async function refuseSecondPlanSubscription(workspaceId: number, customerId: str
     }
 }
 
-// The card form of the plan dialogs: a card for a trial that started without one (paying now with a
-// `target`, at the end of the trial without), a new card for a paid plan, and the card that settles a
-// failed payment. Same setup session as above, rendered by the app's own UI.
-export async function createPlanCardSetupSession(target: PlanSelection | null): Promise<{ clientSecret: string; sessionId: string }> {
-    if (target) assertValidSelection(target)
+// The card form of the plan dialogs: a card for a trial that started without one (the dialog then
+// runs the plan change itself), a new card for a paid plan, and the card that settles a failed
+// payment. Same setup session as above, rendered by the app's own UI.
+export async function createPlanCardSetupSession(): Promise<{ clientSecret: string; sessionId: string }> {
     const { workspaceId, subscription } = await requireEditablePlanSubscription({ allowPastDue: true })
-    if (target && subscription.status !== 'trialing') throw new Error('Your subscription is already active.')
 
     const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id
     await ensureCustomerEmail(customerId)
@@ -409,7 +406,6 @@ export async function createPlanCardSetupSession(target: PlanSelection | null): 
             kind: PLAN_CARD_SETUP_KIND,
             workspace_id: String(workspaceId),
             subscription_id: subscription.id,
-            ...(target ? { [PLAN_TARGET_METADATA_KEY]: JSON.stringify(target) } : {}),
         },
         ui_mode: 'elements',
         return_url: `${await getAppOrigin()}/?billing=1`,
@@ -419,40 +415,33 @@ export async function createPlanCardSetupSession(target: PlanSelection | null): 
     return { clientSecret: checkout.client_secret, sessionId: checkout.id }
 }
 
-function planTarget(session: Stripe.Checkout.Session): PlanSelection | null {
-    const raw = session.metadata?.[PLAN_TARGET_METADATA_KEY]
+// A selection stored as a JSON string in Stripe metadata, read back defensively.
+function parsePlanSelection(raw: string | undefined): PlanSelection | null {
     if (!raw) return null
     try {
         const parsed = JSON.parse(raw) as PlanSelection
-        // Only the add-ons still sold: a session opened before the agent pack was retired still carries it.
+        // Only the add-ons still sold: a selection stored before the agent pack was retired still carries it.
         const quantities = Object.fromEntries(ADDON_KEYS.map(key => [key, parsed.quantities?.[key] ?? ZERO_QUANTITIES[key]])) as AddonQuantities
-        const target = { quantities, interval: parsed.interval }
-        assertValidSelection(target)
-        return target
+        const selection = { quantities, interval: parsed.interval }
+        assertValidSelection(selection)
+        return selection
     } catch {
         return null
     }
 }
 
 // The browser's half of a completed setup session, run with the buyer's own session: the card is
-// handed to the subscription, then a pay-now session converts the trial. Only here and never in
-// the webhook: a declined card has to come back to the person who just typed it, and a tab closed
-// before this runs leaves a card on file, which converts the trial on its last day all the same.
+// handed to the subscription. A trial paying now goes on from the dialog, which runs the plan change
+// itself once the card is saved; a tab closed before that leaves a card on file, which converts the
+// trial on its last day all the same.
 //
-// A failed payment is settled here too: the new card pays the invoice still open, and a decline on it
-// comes back to the person who typed the card.
+// A failed payment is settled here: the new card pays the invoice still open, and a decline on it
+// comes back to the person who typed the card. Only here and never in the webhook, for that reason.
 export async function completeCardSetupSession(session: Stripe.Checkout.Session): Promise<void> {
     await applyCardSetupSession(session)
 
     const { subscription } = await requireEditablePlanSubscription({ allowPastDue: true })
-    if (subscription.status === 'past_due') {
-        await payOpenInvoice(subscription, await checkoutPaymentMethodId(session, subscription))
-        return
-    }
-    if (subscription.status !== 'trialing') return
-
-    const target = planTarget(session)
-    if (target) await changePlan(target)
+    if (subscription.status === 'past_due') await payOpenInvoice(subscription, await checkoutPaymentMethodId(session, subscription))
 }
 
 async function payOpenInvoice(subscription: Stripe.Subscription, paymentMethodId: string | null): Promise<void> {
@@ -1028,7 +1017,44 @@ export function planChangeKind(status: string, current: BillingInterval, target:
     return target === 'yearly' ? 'switch_now' : 'switch_at_renewal'
 }
 
-export type PlanChangeResult = { trialEnded: boolean; switchAt: string | null }
+// `paymentClientSecret` is set when the bank asked for 3-D Secure: the change waits as a Stripe
+// pending update until the browser completes the payment with it, and lapses untouched otherwise.
+export type PlanChangeResult = { trialEnded: boolean; switchAt: string | null; paymentClientSecret: string | null }
+
+export const CHARGE_REFUSED_MESSAGE = "We couldn't charge your card. Nothing was charged, try again or change your card."
+
+// The selection a pending update finishes once the bank confirms it, carried in the update's own
+// metadata: Stripe writes it on the subscription at the very moment the paid increase lands, and
+// drops it with the update if nobody pays. `finishPendingPlanChange` reads it from the webhook.
+const PLAN_CHANGE_AFTER_PAYMENT_KEY = 'plan_change_after_payment'
+
+// Charges the saved card for a change, and holds the change until the charge succeeds. A bank that
+// asks for 3-D Secure would make `error_if_incomplete` throw and the customer could never pay; a
+// pending update instead hands the browser the invoice's client secret, and Stripe voids the invoice
+// and drops the change on its own if nobody confirms it.
+async function updateWithPayment(subscriptionId: string, params: Stripe.SubscriptionUpdateParams, afterPayment: PlanSelection | null = null): Promise<string | null> {
+    const updated = await stripe.subscriptions.update(subscriptionId, {
+        ...params,
+        ...(afterPayment ? { metadata: { [PLAN_CHANGE_AFTER_PAYMENT_KEY]: JSON.stringify(afterPayment) } } : {}),
+        payment_behavior: 'pending_if_incomplete',
+        expand: ['latest_invoice.confirmation_secret'],
+    })
+    if (!updated.pending_update) return null
+    const invoice = typeof updated.latest_invoice === 'object' ? updated.latest_invoice : null
+    const clientSecret = invoice?.confirmation_secret?.client_secret
+    if (!clientSecret) throw new Error(CHARGE_REFUSED_MESSAGE)
+    await assertPaymentAwaitsConfirmation(clientSecret)
+    return clientSecret
+}
+
+// A pending update also holds a plain decline, which leaves the browser nothing to confirm: only a
+// payment waiting on the bank goes back to it, a refusal comes back in the card's own words.
+async function assertPaymentAwaitsConfirmation(clientSecret: string): Promise<void> {
+    const intent = await stripe.paymentIntents.retrieve(clientSecret.split('_secret_')[0]!)
+    if (intent.status === 'requires_action') return
+    const refusal = intent.last_payment_error
+    throw new Error(refusal?.type === 'card_error' && refusal.message ? refusal.message : CHARGE_REFUSED_MESSAGE)
+}
 
 // An app slot can only go once no account fills it: the billing dialog greys the button out, and
 // this is the same rule for a request that does not come from it. Only a removal is judged, and only
@@ -1059,39 +1085,70 @@ export async function changePlan(selection: PlanSelection): Promise<PlanChangeRe
 
     if (kind === 'end_trial') {
         await assertTrialConvertible(subscription)
-        await stripe.subscriptions.update(subscription.id, {
+        const paymentClientSecret = await updateWithPayment(subscription.id, {
             items: replacementItems(subscription, selection),
             trial_end: 'now',
             proration_behavior: 'none',
-            payment_behavior: 'error_if_incomplete',
         })
-        return { trialEnded: true, switchAt: null }
+        return { trialEnded: true, switchAt: null, paymentClientSecret }
     }
 
     if (kind === 'switch_now') {
         await assertPaymentMethod(subscription)
-        await stripe.subscriptions.update(subscription.id, {
+        const paymentClientSecret = await updateWithPayment(subscription.id, {
             items: replacementItems(subscription, selection),
             proration_behavior: 'always_invoice',
-            payment_behavior: 'error_if_incomplete',
         })
-        return { trialEnded: false, switchAt: null }
+        return { trialEnded: false, switchAt: null, paymentClientSecret }
     }
 
-    await applyQuantityChanges(subscription, selection.quantities)
-    if (kind === 'same_interval') return { trialEnded: false, switchAt: null }
-
-    const refreshed = await stripe.subscriptions.retrieve(subscription.id)
-    return { trialEnded: false, switchAt: await scheduleIntervalSwitch(refreshed, selection) }
-}
-
-async function applyQuantityChanges(subscription: Stripe.Subscription, quantities: AddonQuantities): Promise<void> {
-    const { increases, decreases } = planItemChanges(subscription, quantities)
+    // The increases are billed first and alone: the rest of the change (the decreases, the schedule
+    // of a switch at renewal) only follows once they are paid. A later update carrying `items` would
+    // make Stripe drop a pending increase and void its invoice, so while the bank is asked the rest
+    // waits in the pending update's metadata for `finishPendingPlanChange`.
+    const { increases, decreases } = planItemChanges(subscription, selection.quantities)
+    const finishesLater = decreases.length > 0 || kind === 'switch_at_renewal'
+    let paymentClientSecret: string | null = null
     if (increases.length > 0) {
         await assertPaymentMethod(subscription)
-        await stripe.subscriptions.update(subscription.id, { items: increases, proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete' })
+        paymentClientSecret = await updateWithPayment(subscription.id, { items: increases, proration_behavior: 'always_invoice' }, finishesLater ? selection : null)
     }
-    if (decreases.length > 0) await stripe.subscriptions.update(subscription.id, { items: decreases, proration_behavior: 'none' })
+    if (paymentClientSecret) return { trialEnded: false, switchAt: kind === 'same_interval' ? null : subscriptionPeriodEndIso(subscription), paymentClientSecret }
+
+    const switchAt = await finishPlanChange(subscription, selection, { clearAfterPayment: finishesLater && increases.length > 0 })
+    return { trialEnded: false, switchAt, paymentClientSecret: null }
+}
+
+// The rest of a change once its increase is paid: the decreases, billed to nobody, then the schedule
+// of a yearly plan going monthly at its renewal. Runs at once when the card paid on the spot, from
+// the webhook once the bank confirmed otherwise, and recomputes everything from the subscription it
+// is given so a replay finds nothing left to do.
+async function finishPlanChange(subscription: Stripe.Subscription, selection: PlanSelection, { clearAfterPayment }: { clearAfterPayment: boolean }): Promise<string | null> {
+    const { decreases } = planItemChanges(subscription, selection.quantities)
+    if (decreases.length > 0 || clearAfterPayment) {
+        await stripe.subscriptions.update(subscription.id, {
+            ...(decreases.length > 0 ? { items: decreases } : {}),
+            proration_behavior: 'none',
+            ...(clearAfterPayment ? { metadata: { [PLAN_CHANGE_AFTER_PAYMENT_KEY]: '' } } : {}),
+        })
+    }
+
+    if (planChangeKind(subscription.status, intervalOfItems(subscription.items.data), selection.interval) !== 'switch_at_renewal') return null
+    if (subscription.schedule) return subscriptionPeriodEndIso(subscription)
+    const refreshed = await stripe.subscriptions.retrieve(subscription.id)
+    return scheduleIntervalSwitch(refreshed, selection)
+}
+
+// `customer.subscription.pending_update_applied`: the increase the bank held is paid and on the
+// subscription, so is the selection it was part of. The subscription is read again rather than
+// taken from the event, whose snapshot would hide a schedule or a clearing a first delivery did.
+export async function finishPendingPlanChange(subscription: Stripe.Subscription): Promise<void> {
+    if (isTemplateSubscription(subscription)) return
+    const live = await stripe.subscriptions.retrieve(subscription.id)
+    const selection = parsePlanSelection(live.metadata?.[PLAN_CHANGE_AFTER_PAYMENT_KEY])
+    if (!selection) return
+    await finishPlanChange(live, selection, { clearAfterPayment: false })
+    await stripe.subscriptions.update(live.id, { metadata: { [PLAN_CHANGE_AFTER_PAYMENT_KEY]: '' } })
 }
 
 async function assertPaymentMethod(subscription: Stripe.Subscription): Promise<void> {
@@ -1442,12 +1499,21 @@ export async function markSubscriptionCanceled(subscription: Stripe.Subscription
     await reportSubscriptionCancelled(subscription, workspaceId)
 }
 
+// The invoice of a change held by `updateWithPayment` while the bank asks for 3-D Secure: Stripe
+// sends `invoice.payment_failed` for it, yet the subscription is untouched and nothing is owed.
+function awaitsPendingUpdatePayment(subscription: Stripe.Subscription, invoice: Stripe.Invoice): boolean {
+    if (!subscription.pending_update) return false
+    const latestInvoiceId = typeof subscription.latest_invoice === 'string' ? subscription.latest_invoice : subscription.latest_invoice?.id
+    return !!invoice.id && latestInvoiceId === invoice.id
+}
+
 // Flag a workspace as past_due after a failed invoice payment. The subscription is kept, so Stripe's
 // retries or a new card bring it back at the same price, and so is the machine for one more day:
 // the teardown counts from `payment_failed_at` (PAYMENT_FAILED_GRACE_MS), and the owner is told
 // here. Both happen on the first attempt only, so a retry neither restarts the day nor writes again.
 export async function markSubscriptionPastDue(subscription: Stripe.Subscription, invoice: Stripe.Invoice): Promise<void> {
     if (isTemplateSubscription(subscription)) return
+    if (awaitsPendingUpdatePayment(subscription, invoice)) return
     const workspaceId = await findWorkspaceId(subscription)
     if (!workspaceId) return
     if (!(await ownsWorkspacePlan(workspaceId, subscription))) return

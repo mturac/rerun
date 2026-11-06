@@ -7,12 +7,12 @@ import { toast } from 'sonner'
 
 import {
     cancelPendingSwitchAction,
-    changePlanAction,
     confirmCardSetupAction,
     createPlanCardSetupAction,
     listInvoicesAction,
     resumeSubscriptionAction,
 } from '@/ee/actions/billing.actions'
+import { runPlanChange } from '@/ee/lib/billing/plan-payment'
 import type { InvoiceSummary, PlanSelection, SubscriptionState } from '@/ee/services/billing.service'
 import { Button } from '@/components/ui/button'
 import { PanelSteps } from '@/components/ui/panel-steps'
@@ -276,7 +276,7 @@ function ChangePane({
     const apply = async () => {
         setSubmitting(true)
         setError(null)
-        const result = await changePlanAction(selection)
+        const result = await runPlanChange(selection)
         setSubmitting(false)
         if (!result.ok) return setError(result.error)
         if (result.switchAt) return onDone({ title: 'Switch scheduled', body: `Your yearly plan runs to its end. Monthly billing starts on ${shortDate(result.switchAt)}.` })
@@ -373,7 +373,7 @@ function useSetupSession(): { clientSecret: string; sessionId: string } | { erro
     const [session, setSession] = useState<{ clientSecret: string; sessionId: string } | { error: string } | null>(null)
     useEffect(() => {
         let cancelled = false
-        createPlanCardSetupAction(null).then(result => {
+        createPlanCardSetupAction().then(result => {
             if (cancelled) return
             setSession(result.ok ? { clientSecret: result.clientSecret, sessionId: result.sessionId } : { error: result.error })
         })
@@ -514,7 +514,7 @@ function CreditPane({ state, onBack, onDone }: { state: SubscriptionState; onBac
     const apply = async () => {
         setSubmitting(true)
         setError(null)
-        const result = await changePlanAction(selection)
+        const result = await runPlanChange(selection)
         setSubmitting(false)
         if (!result.ok) return setError(result.error)
         onDone({

@@ -3,6 +3,7 @@ import {
     adoptCheckoutPaymentMethodAsDefault,
     applyCardSetupSession,
     applySubscriptionToWorkspace,
+    finishPendingPlanChange,
     markSubscriptionCanceled,
     markSubscriptionPastDue,
     stampFirstPlanPayment,
@@ -26,6 +27,7 @@ vi.mock('@/ee/services/billing.service', () => ({
     adoptCheckoutPaymentMethodAsDefault: vi.fn(),
     applyCardSetupSession: vi.fn(),
     applySubscriptionToWorkspace: vi.fn(),
+    finishPendingPlanChange: vi.fn(),
     markSubscriptionCanceled: vi.fn(),
     markSubscriptionPastDue: vi.fn(),
     stampFirstPlanPayment: vi.fn(),
@@ -231,6 +233,16 @@ describe('customer.subscription.*', () => {
         await deliver('customer.subscription.deleted', planSubscription)
         expect(markSubscriptionCanceled).toHaveBeenCalledWith(expect.objectContaining({ id: 'sub_plan' }))
         expect(revokeTemplateSubscription).not.toHaveBeenCalled()
+    })
+
+    it('finishes the plan change the bank held once its pending update is applied', async () => {
+        await deliver('customer.subscription.pending_update_applied', planSubscription)
+        expect(finishPendingPlanChange).toHaveBeenCalledWith(expect.objectContaining({ id: 'sub_plan' }))
+    })
+
+    it('finishes nothing for an applied pending update on a template subscription', async () => {
+        await deliver('customer.subscription.pending_update_applied', templateSubscription)
+        expect(finishPendingPlanChange).not.toHaveBeenCalled()
     })
 })
 

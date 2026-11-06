@@ -2,6 +2,7 @@ import {
     adoptCheckoutPaymentMethodAsDefault,
     applyCardSetupSession,
     applySubscriptionToWorkspace,
+    finishPendingPlanChange,
     markSubscriptionCanceled,
     markSubscriptionPastDue,
     PLAN_CARD_SETUP_KIND,
@@ -113,6 +114,12 @@ export async function POST(req: Request) {
             case 'customer.subscription.deleted':
                 if (isTemplateSubscription(event.data.object)) await revokeTemplateSubscription(event.data.object)
                 else await markSubscriptionCanceled(event.data.object)
+                break
+            // The bank confirmed a plan increase Stripe had held: the rest of that change (its
+            // decreases, its switch at renewal) was waiting for this. The `updated` event alongside
+            // refreshes the workspace as usual.
+            case 'customer.subscription.pending_update_applied':
+                if (!isTemplateSubscription(event.data.object)) await finishPendingPlanChange(event.data.object)
                 break
             // The ledger line of every template subscription cycle, first invoice included: a
             // checkout only ever fires once, renewals only show up here.

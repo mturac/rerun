@@ -8,7 +8,6 @@ import { toast } from 'sonner'
 
 import {
     acceptPlanTermsAction,
-    changePlanAction,
     confirmCardSetupAction,
     createPlanCardSetupAction,
     createPlanCheckoutAction,
@@ -16,6 +15,7 @@ import {
     resumeSubscriptionAction,
     updatePlanCheckoutAction,
 } from '@/ee/actions/billing.actions'
+import { runPlanChange } from '@/ee/lib/billing/plan-payment'
 import type { PlanSelection, SubscriptionState } from '@/ee/services/billing.service'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -424,7 +424,7 @@ function CardFormPane({ selection, priceArm, copy, trialEnds, onDone }: { select
 
     useEffect(() => {
         let cancelled = false
-        createPlanCardSetupAction(null).then(result => {
+        createPlanCardSetupAction().then(result => {
             if (cancelled) return
             setSession(result.ok ? { clientSecret: result.clientSecret, sessionId: result.sessionId } : { error: result.error })
         })
@@ -462,7 +462,7 @@ function CardForm({ sessionId, selection, priceArm, copy, trialEnds, onDone }: {
             if (!saved.ok) throw new Error(saved.error)
             if (when === 'later') return onDone('card_saved')
 
-            const changed = await changePlanAction(selection)
+            const changed = await runPlanChange(selection)
             if (!changed.ok) throw new Error(changed.error)
             onDone('paid')
         } catch (err) {
@@ -534,7 +534,7 @@ function CardOnFilePane({
         if (submitting) return
         setSubmitting(true)
         setError(null)
-        const result = await changePlanAction(selection)
+        const result = await runPlanChange(selection)
         setSubmitting(false)
         if (!result.ok) return setError(result.error)
         onDone()

@@ -4,6 +4,7 @@ import type { Database } from '@/app/api/database.types'
 import { actorFromContext } from '@/app/api/_auth/access'
 import { requireAdminContext, requireWorkspaceContext, requireWorkspaceId } from '@/app/api/_auth/ownership'
 import {
+    CHARGE_REFUSED_MESSAGE,
     acceptPlanTerms,
     cancelPendingSwitch,
     cancelSubscription,
@@ -225,13 +226,12 @@ export async function acceptPlanTermsAction(sessionId: string): Promise<{ ok: tr
     }
 }
 
-// The card form of the plan dialogs. With a selection, a trial without a card pays for that plan
-// today once the card is confirmed; without one, the card only goes on file (or settles a failed
-// payment). Completed through confirmCardSetupAction.
-export async function createPlanCardSetupAction(selection: PlanSelection | null): Promise<{ ok: true; clientSecret: string; sessionId: string } | { ok: false; error: string }> {
+// The card form of the plan dialogs: the card goes on file, or settles a failed payment. Completed
+// through confirmCardSetupAction; a trial paying today then runs the plan change from the dialog.
+export async function createPlanCardSetupAction(): Promise<{ ok: true; clientSecret: string; sessionId: string } | { ok: false; error: string }> {
     try {
         await requireBillingAdmin()
-        return { ok: true, ...(await createPlanCardSetupSession(selection ? planSelectionSchema.parse(selection) : null)) }
+        return { ok: true, ...(await createPlanCardSetupSession()) }
     } catch (err) {
         return failure(err, 'Failed to open the card form')
     }
@@ -250,8 +250,19 @@ export async function changePlanAction(selection: PlanSelection): Promise<({ ok:
         await requireBillingAdmin()
         return { ok: true, ...(await changePlan(planSelectionSchema.parse(selection))) }
     } catch (err) {
-        return failure(err, 'Failed to change your plan')
+        return { ok: false, error: planChargeErrorMessage(err) }
     }
+}
+
+// The service already words a declined charge for the customer. Stripe's own wording is for
+// developers except on a card error, so anything else Stripe throws reaches the customer as one
+// readable line and the log keeps the rest.
+function planChargeErrorMessage(err: unknown): string {
+    const stripeError = err as { type?: string; code?: string; message?: string } | null
+    if (!stripeError?.type?.startsWith('Stripe')) return err instanceof Error ? err.message : 'Failed to change your plan'
+    if (stripeError.type === 'StripeCardError' && !stripeError.code?.startsWith('subscription_') && stripeError.message) return stripeError.message
+    console.error('[billing] plan change refused by Stripe', err)
+    return CHARGE_REFUSED_MESSAGE
 }
 
 export async function cancelPendingSwitchAction(): Promise<{ ok: true } | { ok: false; error: string }> {
