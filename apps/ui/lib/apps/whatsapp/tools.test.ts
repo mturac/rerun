@@ -26,6 +26,17 @@ describe('the WhatsApp tool set', () => {
         expect(missingRequired(send, toolParams(send, { message_text: 'Hi' }))).toEqual(['phone_number'])
     })
 
+    it('posts a Status through Linkup content, unmetered, with only its own parameters', () => {
+        const post = tool('post_status')
+        expect([post.category, post.action, post.quota]).toEqual(['content', 'create', undefined])
+        expect(toolParams(post, { message: 'Open today', background_color: '#25D366', font: 0, account_id: 'someone-else' })).toEqual({
+            message: 'Open today',
+            background_color: '#25D366',
+            font: 0,
+        })
+        expect(missingRequired(post, toolParams(post, { file: 'https://example.com/promo.jpg' }))).toEqual([])
+    })
+
     it('lists the chats and reads a group by its conversation_id', () => {
         expect(tool('list_conversations').action).toBe('list_inbox')
         expect(toolParams(tool('list_conversations'), {})).toEqual({ count: 20 })

@@ -81,5 +81,22 @@ export const WHATSAPP_TOOLS: WhatsappTool[] = [
         quota: { action: 'message' },
         extraQuota: isNewConversation,
     },
+    {
+        name: 'post_status',
+        description:
+            "Post a WhatsApp Status from the user's number: a story that stays 24 hours, seen by the contacts they recently chatted with, or only by phone_numbers. Nobody gets a message. Give a text, or an image or video by public URL with the text as its caption. Answers the Status id, how many people can see it and when it expires.",
+        inputSchema: {
+            type: 'object',
+            properties: {
+                message: { type: 'string', description: 'The text of the Status, or the caption of the image or video' },
+                file: { type: 'string', description: 'Public URL of one image or video' },
+                phone_numbers: { type: 'array', items: { type: 'string' }, maxItems: 500, description: 'Who sees it, in international format. Leave out for the 500 most recent one-to-one chats' },
+                background_color: { type: 'string', description: 'Background of a text Status, as hex, e.g. #25D366' },
+                font: { type: 'integer', minimum: 0, maximum: 5, description: 'Font of a text Status, 0 to 5' },
+            },
+        },
+        category: 'content',
+        action: 'create',
+    },
     attachmentTool('attachment_download'),
 ]
