@@ -8,7 +8,7 @@ import { useCanManageAgent } from '@/hooks/useBoxAccess'
 import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { ENGINE_SELF_IMPROVEMENT_KEYS } from '@/lib/engine/constants'
 import type { EngineSelfImprovement, EngineToolFamily } from '@/lib/engine/types'
-import { BrainIcon, CalendarClockIcon, CardsIcon, CircleCheckIcon, CoinsIcon, DatabaseIcon, FolderIcon, GlobeIcon, InfoIcon, LayersIcon, Loader2Icon, LockIcon, type LucideIcon, MessageCircleQuestionIcon, MonitorIcon, QuickReplyIcon, TerminalIcon, UsersIcon, WandSparklesIcon, WebhookIcon, WrenchIcon } from '@/lib/icons'
+import { ActivityIcon, BrainIcon, CalendarClockIcon, CardsIcon, CircleCheckIcon, CoinsIcon, DatabaseIcon, FolderIcon, GlobeIcon, InfoIcon, LayersIcon, Loader2Icon, LockIcon, type LucideIcon, MessageCircleQuestionIcon, MonitorIcon, QuickReplyIcon, TerminalIcon, UsersIcon, WandSparklesIcon, WebhookIcon, WrenchIcon } from '@/lib/icons'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PanelGrid, PanelListHeader, PanelScroller } from '@/components/ui/panel-list'
 import { PANEL_CARD, PANEL_CARD_INTERACTIVE } from '@/components/ui/panel-row'
@@ -50,6 +50,7 @@ export const CAPABILITY_META: Record<string, CapabilityMeta> = {
     schedule: { icon: CalendarClockIcon, label: 'Schedule tasks', blurb: 'Plan work for later', help: 'Lets the coworker schedule tasks to run automatically at a chosen time.' },
     trigger: { icon: WebhookIcon, label: 'React to webhooks', blurb: 'Run when another app calls it', help: 'Lets the coworker expose public URLs that start a run when an external service calls them.' },
     callAgent: { icon: UsersIcon, label: 'Work with other coworkers', blurb: 'Delegate to teammates', help: 'Lets the coworker hand off work to other coworkers of the workspace.' },
+    team: { icon: ActivityIcon, label: 'See other coworkers', blurb: 'Read their routines and runs', help: "Lets the coworker check the other coworkers of the workspace: their status, scheduled tasks, triggers and recent runs, with the tools each run called when it needs to understand a failure. It cannot change anything. A run can hold data from the other coworker's connected apps." },
     askUser: { icon: MessageCircleQuestionIcon, label: 'Ask you questions', blurb: 'Pause to ask with answer options', help: 'Lets the coworker pause and ask you a question with answer options before continuing.' },
     requestApproval: { icon: CircleCheckIcon, label: 'Request approval', blurb: 'Pause for your go-ahead', help: 'Lets the coworker pause and ask you to approve or decline an action before it runs.' },
     cards: { icon: CardsIcon, label: 'Show cards in chat', blurb: 'Preview a table or a file inline', help: 'Lets the coworker drop a preview card in the conversation: the first rows of one of its tables, or a file from its workspace, that you can open in one click.' },

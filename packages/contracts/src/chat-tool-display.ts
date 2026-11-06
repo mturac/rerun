@@ -48,6 +48,11 @@ const TOOL_LABELS: Record<string, string> = {
 
     delegate_tasks: 'Delegate Tasks',
     call_agent: 'Call Coworker',
+    team_status: 'Team Status',
+    team_list_schedules: "List a Coworker's Schedules",
+    team_list_triggers: "List a Coworker's Triggers",
+    team_list_runs: "List a Coworker's Runs",
+    team_get_run: "Read a Coworker's Run",
 
     schedule_list: 'List Schedules',
     schedule_create: 'Create Schedule',
@@ -206,6 +211,9 @@ const TOOL_ACTIVITIES: Record<string, string> = {
 
     delegate_tasks: 'Delegating tasks',
     call_agent: 'Calling a coworker',
+    team_status: 'Checking the team',
+    team_list_runs: "Reading a coworker's runs",
+    team_get_run: "Reading a coworker's run",
 
     skill_read: 'Reading a skill',
     skill_read_file: 'Reading a skill',

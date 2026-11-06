@@ -3,6 +3,7 @@ import { FOREMAN_AGENT_ID, FOREMAN_HUB_TOKEN_HEADER } from '@rerun/contracts'
 
 import { dispatchForemanHubTool } from '@/app/api/_services/foreman-hub.service'
 import { dispatchHubTool } from '@/app/api/_services/services.service'
+import { dispatchTeamHubTool, isTeamHubTool } from '@/app/api/_services/team-hub.service'
 import { authenticateEngineToken } from '@/app/api/_services/workspace-engine.service'
 import { foremanHubTokenRequired, verifyForemanHubToken } from '@/lib/foreman/hub-token'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
@@ -64,7 +65,11 @@ export async function POST(req: Request): Promise<Response> {
     if (!tool) return new Response('Missing tool', { status: 400 })
 
     try {
-        const out = agent ? await dispatchHubTool(agent.id, tool, args, engine.workspaceId) : await dispatchForemanHubTool(foremanActor, tool, args)
+        const out = !agent
+            ? await dispatchForemanHubTool(foremanActor, tool, args)
+            : isTeamHubTool(tool)
+              ? await dispatchTeamHubTool(agent.id, engine.workspaceId, tool, args)
+              : await dispatchHubTool(agent.id, tool, args, engine.workspaceId)
         return Response.json(out)
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Hub tool failed'

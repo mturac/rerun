@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { dispatchAccountTool } from '@/app/api/_services/mcp-account.service'
 import { dispatchHubTool } from '@/app/api/_services/services.service'
+import { dispatchTeamHubTool } from '@/app/api/_services/team-hub.service'
 import { authenticateEngineToken } from '@/app/api/_services/workspace-engine.service'
 import { mintForemanHubToken } from '@/lib/foreman/hub-token'
 import { selectMaybeSingle } from '@/supabase/supabase-helpers'
@@ -11,6 +12,7 @@ import { POST } from './route'
 
 vi.mock('@/app/api/_services/workspace-engine.service', () => ({ authenticateEngineToken: vi.fn() }))
 vi.mock('@/app/api/_services/services.service', () => ({ dispatchHubTool: vi.fn() }))
+vi.mock('@/app/api/_services/team-hub.service', async () => ({ dispatchTeamHubTool: vi.fn(), isTeamHubTool: (name: string) => name.startsWith('team_') }))
 vi.mock('@/app/api/_services/mcp-account.service', () => ({ dispatchAccountTool: vi.fn() }))
 vi.mock('@/app/api/_auth/ownership', () => ({ workspaceFounderUserId: vi.fn().mockResolvedValue('founder') }))
 vi.mock('@/lib/foreman/onboarding-tools', () => ({ dispatchWorkspaceOnboardingTool: vi.fn() }))
@@ -87,6 +89,18 @@ describe('POST /api/hub', () => {
 
         expect(response.status).toBe(200)
         expect(dispatchHubTool).toHaveBeenCalledWith('agent-1', 'search_services', { query: 'gmail' }, WORKSPACE_ID)
+        expect(dispatchAccountTool).not.toHaveBeenCalled()
+    })
+
+    it('routes a coworker reading its team to the read-only team dispatch', async () => {
+        vi.mocked(selectMaybeSingle).mockResolvedValue({ data: { id: 'agent-1' }, error: null })
+        vi.mocked(dispatchTeamHubTool).mockResolvedValue({ agents: [] })
+
+        const response = await POST(hubRequest({ agent: 'engine-agent', body: { tool: 'team_status', args: {} } }))
+
+        expect(response.status).toBe(200)
+        expect(dispatchTeamHubTool).toHaveBeenCalledWith('agent-1', WORKSPACE_ID, 'team_status', {})
+        expect(dispatchHubTool).not.toHaveBeenCalled()
         expect(dispatchAccountTool).not.toHaveBeenCalled()
     })
 
