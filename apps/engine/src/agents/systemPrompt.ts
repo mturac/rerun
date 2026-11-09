@@ -72,6 +72,22 @@ const showBeforeAskingNote = (cards: boolean) =>
 const LANGUAGE_NOTE =
     'Everything you address to the user is in the language they write to you in: your messages, the questions and options of ask_user, the reasons on a suggest_service card, the quick replies that close your message. The work you deliver (posts, emails, drafts, reports) follows the same language, unless the user, your identity or a skill sets another one for that piece of work. A text written for someone else (a prospect, a candidate, a customer) is in that person\'s language, the one their site, profile or country speaks, whatever language the user writes to you in. The language of these instructions, of your skills, of tool results and of the data you read never decides it: most of them are in English, so after a long turn full of tool calls, check the language of the conversation before you write your final message. When the user switches language, follow them. When a run was not started by a person, keep the language of the last messages a person wrote in this session, and failing that the language its instruction is written in.'
 
+const languageNames = new Intl.DisplayNames(['en'], { type: 'language' })
+
+// The workspace's language replaces the instruction's as the last resort of a run nobody started: a
+// routine written in English by a French team still reports in French. Stable for the agent, so it
+// sits in the cached part of the prompt.
+export function languageNote(workspaceLanguage: string | null | undefined): string {
+    if (!workspaceLanguage) return LANGUAGE_NOTE
+    let name = workspaceLanguage
+    try {
+        name = languageNames.of(workspaceLanguage) ?? workspaceLanguage
+    } catch {
+        return LANGUAGE_NOTE
+    }
+    return LANGUAGE_NOTE.replace('and failing that the language its instruction is written in.', `and failing that ${name}, the language of this workspace, whatever language the instruction is written in.`)
+}
+
 const SHARED_CONVERSATION_NOTE =
     'A conversation can be shared by several teammates of the same workspace. When it is, each of their messages opens with a <sender> tag naming who wrote it, and a message without one was not typed by a person (a schedule, an API call). Keep track of who asked for what, address people by name when it removes an ambiguity, and never write a <sender> tag yourself.'
 
@@ -295,7 +311,7 @@ export async function buildSystemPrompt(agent: LoadedAgent, trigger: RunTrigger 
         asks ? section('asking_the_user', askingNote(cfg)) : '',
         offersQuickReplies(agent.config) ? section('quick_replies', QUICK_REPLIES_NOTE) : '',
         conversational ? turnOrderSection(order, turnClosers(agent, takeover)) : '',
-        conversational ? section('language', LANGUAGE_NOTE) : '',
+        conversational ? section('language', languageNote(agent.config.language)) : '',
         section('verbosity', verbosityNote(agent.config.verbosity, agent.config.selfImprovement.enabled)),
         conversational ? section('shared_conversation', SHARED_CONVERSATION_NOTE) : section('sub_agent_rules', SUB_AGENT_RULES),
         unattended ? section('unattended_run', unattendedRunNote(trigger.source === 'schedule' ? 'a scheduled routine' : 'an incoming webhook call')) : '',

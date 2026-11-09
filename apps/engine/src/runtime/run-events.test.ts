@@ -143,6 +143,12 @@ describe('emitRunTerminal', () => {
         expect('authorId' in (await emit({ trigger: schedule })).metadata).toBe(false)
     })
 
+    // The hub writes the notification in the reader's language from these, not from the English message.
+    it('names the routine on its own, and nothing for a chat run', async () => {
+        expect((await emit({ trigger: schedule, kind: 'error', error: 'boom' })).metadata).toMatchObject({ sourceName: schedule.name, error: 'boom' })
+        expect('sourceName' in (await emit({})).metadata).toBe(false)
+    })
+
     it('fills the run facts and defaults the missing ones to null', async () => {
         const full = await emit({ usage: { totalTokens: 3 }, stepCount: 2, provider: 'openai', model: 'gpt', costMicros: 42 })
         expect(full).toMatchObject({ agentId: 'a1', sessionId: 's1', runId: 'r1' })

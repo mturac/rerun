@@ -221,6 +221,16 @@ describe('current time', () => {
         expect(nowBlock(new Date('2026-08-16T14:32:07Z'))).toBe('<now>\n2026-08-16T14:32:07Z (Sunday, 16 August 2026, 14:32 UTC)\n</now>')
     })
 
+    // A routine written in English by a French team still reports in French; without a workspace
+    // language the run keeps the language of its instruction, as before.
+    it('falls back on the workspace language for a run nobody started', async () => {
+        const french = { ...agent, config: agentConfigSchema.parse({ name: 'Prompt test', provider: 'rerun', language: 'fr', tools: { memory: false, db: false, schedule: false } }) }
+        expect(await buildSystemPrompt(french, { source: 'schedule', slug: 'daily', name: 'daily' })).toContain('and failing that French, the language of this workspace')
+        expect(await buildSystemPrompt(agent, { source: 'schedule', slug: 'daily', name: 'daily' })).toContain('and failing that the language its instruction is written in.')
+        const { stable } = await buildSystemPromptBlocks(french, { source: 'chat' })
+        expect(stable).toContain('French, the language of this workspace')
+    })
+
     it('names the language of the user in the turn block of an install, and adds nothing without one', () => {
         expect(userLanguageBlock('French')).toMatch(/^<user_language>\nFrench: /)
         expect(userLanguageBlock(undefined)).toBe('')
