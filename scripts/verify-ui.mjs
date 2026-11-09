@@ -370,7 +370,8 @@ const server = await ensureServer(base, outDir)
 
 // Chromium's Local Network Access checks hold every request the page makes to the loopback stack
 // (127.0.0.1:54421) and the dev server's HMR socket behind a permission prompt nobody answers.
-const browser = await chromium.launch({ headless: !options.headed, args: ['--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests'] })
+const chromiumArgs = ['--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests', ...(process.env.VERIFY_CHROMIUM_ARGS ?? '').split(' ').filter(Boolean)]
+const browser = await chromium.launch({ headless: !options.headed, args: chromiumArgs })
 const context = await browser.newContext()
 await context.addCookies([{ name: 'rerun-consent', value: `v1:denied:${Date.now()}`, url: base }])
 let failed = false
