@@ -326,16 +326,14 @@ describe('applySubscriptionToWorkspace', () => {
         expect(m.requestAgentActivationSync).toHaveBeenCalledWith(['a4'], { switchOn: true })
     })
 
-    it('wakes nothing on a renewal, a trial still running, or a trial that did not get paid', async () => {
-        for (const [before, after] of [
-            ['active', 'active'],
-            ['trialing', 'trialing'],
-            ['trialing', 'past_due'],
-            ['canceled', 'active'],
-        ] as const) {
-            useDb({ row: { current_period_end: null, subscription_status: before, rerun_budget_micros: 0 } })
-            await applySubscriptionToWorkspace(sub({ status: after }))
-        }
+    it.each([
+        ['active', 'active'],
+        ['trialing', 'trialing'],
+        ['trialing', 'past_due'],
+        ['canceled', 'active'],
+    ] as const)('wakes nothing going from %s to %s', async (before, after) => {
+        useDb({ row: { current_period_end: null, subscription_status: before, rerun_budget_micros: 0 } })
+        await applySubscriptionToWorkspace(sub({ status: after }))
         expect(m.wakePlanLimitedAgents).not.toHaveBeenCalled()
     })
 
