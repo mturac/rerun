@@ -105,7 +105,7 @@ function App() {
                             {signedIn && <PushRouting />}
                             <SplitShell enabled={signedIn}>
                                 <Stack screenOptions={{ headerShown: false }}>
-                                    <Stack.Protected guard={signedIn}>
+                                    <Stack.Protected guard={signedIn} redirectTo="/sign-in">
                                         <Stack.Screen name="index" />
                                         <Stack.Screen name="chat/[id]" />
                                         <Stack.Screen name="search" options={{ animation: 'fade' }} />
@@ -121,7 +121,7 @@ function App() {
                                         <Stack.Screen name="new-coworker" options={{ presentation: 'formSheet', sheetAllowedDetents: [1], sheetGrabberVisible: true, contentStyle: { backgroundColor: palette[scheme].background } }} />
                                         <Stack.Screen name="providers" options={{ presentation: 'formSheet', sheetAllowedDetents: [1], sheetGrabberVisible: true, contentStyle: { backgroundColor: palette[scheme].background } }} />
                                     </Stack.Protected>
-                                    <Stack.Protected guard={!signedIn}>
+                                    <Stack.Protected guard={!signedIn} redirectTo="/">
                                         <Stack.Screen name="sign-in" />
                                     </Stack.Protected>
                                     <Stack.Protected guard={__DEV__}>
