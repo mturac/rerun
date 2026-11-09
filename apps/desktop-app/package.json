@@ -1,0 +1,19 @@
+{
+    "name": "desktop-app",
+    "license": "AGPL-3.0-only",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "main": "dist/main/index.js",
+    "scripts": {
+        "dev": "tsc && electron .",
+        "build": "tsc",
+        "start": "electron .",
+        "ts-check": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@types/node": "^20.11.17",
+        "electron": "^45.2.3",
+        "typescript": "^5.8.3"
+    }
+}
