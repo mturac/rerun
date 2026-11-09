@@ -137,7 +137,8 @@ type ChatHeaderProps = {
     // The pager's position, in pages: the chip's content slides with the finger.
     progress: SharedValue<number>
     allSessions: ChatTab[]
-    onBack: () => void
+    // Absent beside the sidebar of a wide window, where the conversation is the root of its pane.
+    onBack?: () => void
     onSelect: (sessionId: string) => void
     onNewSession: () => void
     onOpenDetails?: () => void
@@ -181,7 +182,7 @@ export function ChatHeader({ coworker, tabs, activeId, progress, allSessions, on
         <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0 }}>
             <EdgeFade edge="top" height={insets.top + CHAT_HEADER_HEIGHT + 16} />
             <View pointerEvents="box-none" style={{ paddingTop: insets.top + spacing.xs, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
-                <GlassButton symbol="chevron.left" label="Back" onPress={onBack} />
+                {onBack ? <GlassButton symbol="chevron.left" label="Back" onPress={onBack} /> : <View style={{ width: GLASS_BUTTON_SIZE }} />}
                 <View pointerEvents="box-none" style={{ flex: 1, alignItems: 'center' }}>
                     {menuOpens ? (
                         <NativeMenu label={`${coworker.name}, ${activeTitle}, conversations`} trigger={identity}>
