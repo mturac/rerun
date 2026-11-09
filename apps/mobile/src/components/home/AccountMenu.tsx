@@ -3,6 +3,7 @@ import { Image } from 'expo-image'
 import { router } from 'expo-router'
 import { SymbolView } from 'expo-symbols'
 import { useState } from 'react'
+import { useTranslations } from 'use-intl'
 
 import { useAuth } from '@/auth/AuthProvider'
 import { contactSupport, initialsOf } from '@/components/home/account-actions'
@@ -17,10 +18,11 @@ export function AccountMenu() {
     const initials = initialsOf(me?.user)
     const avatarUrl = me?.user?.avatarUrl
     const [brokenAvatar, setBrokenAvatar] = useState<string | null>(null)
+    const t = useTranslations('mobileHome')
     return (
         <NativeMenu
             glass="circle"
-            label="Account"
+            label={t('header.account')}
             trigger={
                 <CircleTrigger>
                         {avatarUrl && brokenAvatar !== avatarUrl ? (
@@ -36,9 +38,9 @@ export function AccountMenu() {
             }
         >
             <WorkspaceSubmenu />
-            <Button label="Preferences" systemImage="gearshape" onPress={() => router.push('/settings')} />
-            <Button label="Contact support" systemImage="bubble.left" onPress={() => contactSupport(me?.user)} />
-            <Button label="Sign out" systemImage="rectangle.portrait.and.arrow.right" role="destructive" onPress={signOut} />
+            <Button label={t('account.preferences')} systemImage="gearshape" onPress={() => router.push('/settings')} />
+            <Button label={t('account.contactSupport')} systemImage="bubble.left" onPress={() => contactSupport(me?.user)} />
+            <Button label={t('account.signOut')} systemImage="rectangle.portrait.and.arrow.right" role="destructive" onPress={signOut} />
         </NativeMenu>
     )
 }

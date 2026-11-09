@@ -1,6 +1,7 @@
 import { COWORKER_STARTER_SUGGESTIONS, teamEmptyStateOf, type TeamEmptyStateAction, type TeamEmptyStateModel, type TeamEmptyStateRow, type TeamPulse } from '@rerun/contracts'
 import { SymbolView, type SFSymbol } from 'expo-symbols'
 import { Pressable, StyleSheet, View } from 'react-native'
+import { useTranslations } from 'use-intl'
 
 import { useAuth } from '@/auth/AuthProvider'
 import { AgentBuddy } from '@/components/buddy/AgentBuddy'
@@ -29,13 +30,14 @@ function StarterChip({ text, onPress }: { text: string; onPress: () => void }) {
  * starter questions, each sent on a tap. A coworker turned off says that a message wakes it.
  */
 export function CoworkerEmptyState({ agentId, mood, asleep, onSend }: { agentId: string; mood: BuddyMood; asleep: boolean; onSend: (text: string) => void }) {
+    const t = useTranslations('mobileChat.empty')
     return (
         <View style={{ alignItems: 'center', gap: spacing.lg, paddingHorizontal: spacing.md }}>
             <AgentBuddy agentId={agentId} size={96} mood={mood} />
             <View style={{ alignItems: 'center', gap: 2 }}>
-                <AppText variant="headline">Start a conversation</AppText>
+                <AppText variant="headline">{t('startTitle')}</AppText>
                 <AppText variant="callout" tone="muted" style={{ textAlign: 'center' }}>
-                    {asleep ? 'Asleep. A message wakes it up.' : 'Send a message to this coworker'}
+                    {asleep ? t('asleep') : t('sendToCoworker')}
                 </AppText>
             </View>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.sm }}>
@@ -48,6 +50,7 @@ export function CoworkerEmptyState({ agentId, mood, asleep, onSend }: { agentId:
 }
 
 function Pulse({ pulse }: { pulse: TeamPulse }) {
+    const t = useTranslations('mobileChat.empty')
     const count = pulse.agents.length
     return (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: spacing.sm }}>
@@ -59,10 +62,10 @@ function Pulse({ pulse }: { pulse: TeamPulse }) {
                 ))}
             </View>
             <AppText variant="footnote" tone="muted">
-                {`${count} ${count === 1 ? 'coworker' : 'coworkers'}`}
+                {t('pulseCoworkers', { count })}
                 {pulse.working > 0 ? (
                     <AppText variant="footnote" style={{ color: '#10b981' }}>
-                        {` · ${pulse.working} working now`}
+                        {` · ${t('pulseWorking', { count: pulse.working })}`}
                     </AppText>
                 ) : null}
             </AppText>
@@ -125,8 +128,9 @@ export function ForemanEmptyStateView({ model, onSend, onPrefill }: { model: Tea
 
 // Drawn after the view: the orb, a title line and three rows.
 function ForemanEmptyStateSkeleton() {
+    const t = useTranslations('mobileChat.empty')
     return (
-        <View accessible accessibilityLabel="Loading" style={{ alignItems: 'center', gap: spacing.lg }}>
+        <View accessible accessibilityLabel={t('loading')} style={{ alignItems: 'center', gap: spacing.lg }}>
             <Skeleton style={{ width: 84, height: 84, borderRadius: 42 }} />
             <Skeleton style={{ width: 220, height: 16 }} />
             <View style={{ alignSelf: 'stretch', gap: spacing.sm }}>

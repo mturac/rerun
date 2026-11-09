@@ -1,6 +1,7 @@
 import { GlassView } from 'expo-glass-effect'
 import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native'
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated'
+import { useTranslations } from 'use-intl'
 
 import { useGlassStyle } from '@/components/ui/GlassButton'
 import { AppText } from '@/components/ui/AppText'
@@ -17,6 +18,7 @@ const MAX_ROWS = 5
 export function MentionSuggestions({ trigger, items, onPick }: { trigger: '@' | '/'; items: MentionItem[]; onPick: (item: MentionItem) => void }) {
     const theme = useTheme()
     const glass = useGlassStyle()
+    const t = useTranslations('mobileChat.composer')
     const { height } = useWindowDimensions()
     // A short screen with the keyboard up keeps the conversation's header in sight.
     const maxHeight = Math.min(ROW * MAX_ROWS, height * 0.3)
@@ -24,7 +26,7 @@ export function MentionSuggestions({ trigger, items, onPick }: { trigger: '@' | 
         <Animated.View entering={FadeInDown.duration(200)} exiting={FadeOutDown.duration(200)}>
             <GlassView key={theme.scheme} colorScheme={theme.scheme} glassEffectStyle={glass} tintColor={withAlpha(theme.card, GLASS_TINT_ALPHA)} style={{ borderRadius: radius.lg, borderCurve: 'continuous', borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border, boxShadow: GLASS_SHADOW[theme.scheme], overflow: 'hidden' }}>
                 <AppText variant="caption" tone="muted" medium style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm }}>
-                    {trigger === '/' ? 'Skills' : 'Coworkers'}
+                    {trigger === '/' ? t('skills') : t('coworkers')}
                 </AppText>
                 <ScrollView style={{ maxHeight }} keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingVertical: spacing.xs }}>
                     {items.map(item => (

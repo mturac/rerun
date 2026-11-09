@@ -15,10 +15,20 @@ export function cardOf(part: ToolPart): ChatCard | null {
     return name === 'card_table' ? { kind: 'table', card: parsed.data as TableCard } : { kind: 'file', card: parsed.data as FileCard }
 }
 
+export type SizeUnit = 'b' | 'kb' | 'mb'
+
+// A file's size as the web card rounds it: whole bytes and kilobytes, megabytes to one decimal.
+export function sizeParts(size: number): { unit: SizeUnit; value: number; fractionDigits: number } {
+    if (size < 1024) return { unit: 'b', value: size, fractionDigits: 0 }
+    if (size < 1024 * 1024) return { unit: 'kb', value: Math.round(size / 1024), fractionDigits: 0 }
+    return { unit: 'mb', value: size / (1024 * 1024), fractionDigits: 1 }
+}
+
+const ENGLISH_UNITS: Record<SizeUnit, string> = { b: 'B', kb: 'KB', mb: 'MB' }
+
 export function formatBytes(size: number): string {
-    if (size < 1024) return `${size} B`
-    if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`
+    const { unit, value, fractionDigits } = sizeParts(size)
+    return `${value.toFixed(fractionDigits)} ${ENGLISH_UNITS[unit]}`
 }
 
 const HASHED_TONES = ['brand', 'cyan', 'green', 'orange', 'yellow', 'neutral'] as const

@@ -4,6 +4,9 @@ import { SymbolView } from 'expo-symbols'
 import type { ReactNode } from 'react'
 import { Pressable, ScrollView, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useTranslations } from 'use-intl'
+
+import type { AccessReason } from '@/auth/access'
 
 import { AppText } from '@/components/ui/AppText'
 import { Badge, TONES } from '@/components/ui/Badge'
@@ -18,9 +21,10 @@ export const LOGO_TILE = 36
 
 // A form sheet's header lives inside its scroll view: above it, the scroll view covers it.
 export function SheetHeader({ title, onBack, onClose }: { title: string; onBack?: () => void; onClose?: () => void }) {
+    const t = useTranslations('mobileProviders.sheet')
     return (
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {onBack ? <GlassButton symbol="chevron.left" label="Back" onPress={onBack} /> : onClose ? <GlassButton symbol="xmark" label="Close" onPress={onClose} /> : <View style={{ width: GLASS_BUTTON_SIZE }} />}
+            {onBack ? <GlassButton symbol="chevron.left" label={t('back')} onPress={onBack} /> : onClose ? <GlassButton symbol="xmark" label={t('close')} onPress={onClose} /> : <View style={{ width: GLASS_BUTTON_SIZE }} />}
             <AppText variant="headline" numberOfLines={1} maxFontSizeMultiplier={1.2} style={{ flex: 1, textAlign: 'center', paddingHorizontal: spacing.sm }}>
                 {title}
             </AppText>
@@ -52,9 +56,10 @@ export function LogoTile({ provider, size = LOGO_TILE }: { provider: Provider; s
 
 // The web's SourceStatus, word for word.
 export function ConnectionBadge({ connection }: { connection: AiConnectionView }) {
-    if (connection.status === 'credit_used_up') return <Badge label="Credits used up" tone="red" size="xs" />
-    if (connection.status === 'reconnect') return <Badge label={signsIn(connection.provider) ? 'Sign in again' : connection.credentialOnFile ? 'Key rejected' : 'Key missing'} tone="orange" size="xs" />
-    return <Badge label="Ready" tone="green" size="xs" />
+    const t = useTranslations('mobileProviders.badge')
+    if (connection.status === 'credit_used_up') return <Badge label={t('creditsUsedUp')} tone="red" size="xs" />
+    if (connection.status === 'reconnect') return <Badge label={signsIn(connection.provider) ? t('signInAgain') : connection.credentialOnFile ? t('keyRejected') : t('keyMissing')} tone="orange" size="xs" />
+    return <Badge label={t('ready')} tone="green" size="xs" />
 }
 
 type ProviderRowProps = {
@@ -94,11 +99,12 @@ export function ProviderRow({ id, provider, title, subtitle, subtitleLines = 2, 
 }
 
 // Why the screen opens on its contents without letting them change.
-export function ReadOnlyNote({ reason }: { reason: string | null | undefined }) {
+export function ReadOnlyNote({ reason }: { reason: AccessReason | null | undefined }) {
+    const t = useTranslations('mobileCoworker.access')
     if (!reason) return null
     return (
         <AppText variant="footnote" tone="muted" style={{ textAlign: 'center' }}>
-            {reason}
+            {t(reason)}
         </AppText>
     )
 }
@@ -188,18 +194,22 @@ export function ErrorLine({ error }: { error: string | null }) {
     )
 }
 
-function movers(usage: ConnectionUsage): string[] {
-    const parts: string[] = []
-    if (usage.agents.length > 0) parts.push(usage.agents.map(agent => agent.name).join(', '))
-    if (usage.automations.length > 0) parts.push(usage.automations.length === 1 ? '1 automation' : `${usage.automations.length} automations`)
-    return parts
+type UsageTranslator = ReturnType<typeof useTranslations<'mobileProviders.usage'>>
+
+function movedSentence(usage: ConnectionUsage, t: UsageTranslator): string | null {
+    const agents = usage.agents.map(agent => agent.name).join(', ')
+    const count = usage.automations.length
+    if (agents && count > 0) return t('agentsAndAutomationsFallBack', { agents, count })
+    if (agents) return t('agentsFallBack', { agents })
+    if (count > 0) return t('automationsFallBack', { count })
+    return null
 }
 
 // The web's DeleteConnectionButton wording: the delete never refuses, it says what moves.
-export function describeUsage(usage: ConnectionUsage): string {
-    const moved = movers(usage)
-    const sentences = moved.length > 0 ? [`${moved.join(' and ')} will fall back to the workspace default model.`] : []
-    if (usage.isBoxDefault) sentences.push('It holds the workspace default model, which is cleared: every coworker that picked none falls back to Rerun.')
-    if (sentences.length === 0) return 'The credential is removed. Nothing runs on it.'
+export function describeUsage(usage: ConnectionUsage, t: UsageTranslator): string {
+    const moved = movedSentence(usage, t)
+    const sentences = moved ? [moved] : []
+    if (usage.isBoxDefault) sentences.push(t('holdsDefault'))
+    if (sentences.length === 0) return t('nothingRuns')
     return sentences.join(' ')
 }

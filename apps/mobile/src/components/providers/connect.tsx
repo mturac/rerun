@@ -4,6 +4,7 @@ import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import * as WebBrowser from 'expo-web-browser'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'use-intl'
 
 import { ApiError } from '@/api/client'
 import { createAiConnection, finishClaudeSignIn, pollCodexSignIn, replaceAiConnectionKey, startClaudeSignIn, startCodexSignIn, updateAiConnection } from '@/api/aiConnections'
@@ -34,6 +35,7 @@ function useEnding(provider: AddableProvider, connectionId: string | null, recon
     const [name, setName] = useState<string | null>(null)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const t = useTranslations('mobileProviders.connect')
     if (reconnect) return { kind: 'reconnect' }
 
     const typed = name ?? suggested
@@ -45,7 +47,7 @@ function useEnding(provider: AddableProvider, connectionId: string | null, recon
                 await updateAiConnection(caller, connectionId, { name: typed.trim() })
             } catch (err) {
                 setSaving(false)
-                setError(messageOf(err, 'Failed to rename the connection'))
+                setError(messageOf(err, t('renameFailed')))
                 return
             }
         }
@@ -63,6 +65,7 @@ export function ClaudeConnect({ reconnectId }: { reconnectId: string | null }) {
     const [error, setError] = useState<string | null>(null)
     const [connectionId, setConnectionId] = useState<string | null>(null)
     const ending = useEnding('claude', connectionId, Boolean(reconnectId), view, caller)
+    const t = useTranslations('mobileProviders.connect')
 
     const open = async () => {
         if (!caller) return
@@ -73,7 +76,7 @@ export function ClaudeConnect({ reconnectId }: { reconnectId: string | null }) {
             setPhase('waiting')
             await WebBrowser.openBrowserAsync(start.authorizeUrl)
         } catch {
-            setError('Could not start the connection')
+            setError(t('startFailed'))
             track('ai_connection_failed', { provider: 'claude', method: 'oauth', surface, reason: 'start_failed' })
         }
     }
@@ -110,7 +113,7 @@ export function ClaudeConnect({ reconnectId }: { reconnectId: string | null }) {
     }
 
     const storeToken = async (token: string) => {
-        if (!caller) throw new Error('Not signed in')
+        if (!caller) throw new Error(t('notSignedIn'))
         if (!reconnectId) return createAiConnection(caller, { provider: 'claude', apiKey: token })
         await replaceAiConnectionKey(caller, reconnectId, token)
         return reconnectId
@@ -138,6 +141,7 @@ export function ChatGptConnect({ reconnectId }: { reconnectId: string | null }) 
     const [now, setNow] = useState(0)
     const ending = useEnding('codex', connectionId, Boolean(reconnectId), view, caller)
     const reconnectRef = useRef(reconnectId)
+    const t = useTranslations('mobileProviders.connect')
 
     const getCode = async () => {
         if (!caller || starting) return
@@ -150,7 +154,7 @@ export function ChatGptConnect({ reconnectId }: { reconnectId: string | null }) 
             setStartedAt(Date.now())
             setNow(Date.now())
         } catch (err) {
-            const message = messageOf(err, 'Could not start the connection')
+            const message = messageOf(err, t('startFailed'))
             setError(message)
             track('ai_connection_failed', { provider: 'codex', method: 'oauth', surface, reason: 'start_failed', error: message.slice(0, 200) })
         } finally {
@@ -219,6 +223,7 @@ export function ApiKeyConnect({ provider, reconnectId = null }: { provider: Excl
     const [baseUrl, setBaseUrl] = useState('')
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const t = useTranslations('mobileProviders.connect')
     if (!entry) return null
 
     const connect = async () => {
@@ -231,7 +236,7 @@ export function ApiKeyConnect({ provider, reconnectId = null }: { provider: Excl
             connected(provider, 'api_key', reconnectId ? 'reconnect' : 'add_provider')
             leave()
         } catch (err) {
-            const message = messageOf(err, 'Failed to create the connection')
+            const message = messageOf(err, t('createFailed'))
             setError(message)
             track('ai_connection_failed', { provider, method: 'api_key', surface: reconnectId ? 'reconnect' : 'add_provider', reason: 'rejected', error: message.slice(0, 200) })
         } finally {

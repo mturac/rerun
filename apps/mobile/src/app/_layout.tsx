@@ -16,6 +16,7 @@ import { UpdateRequired } from '@/components/update/UpdateRequired'
 import { useUpdateRequired } from '@/components/update/useUpdateRequired'
 import { MediaViewerHost } from '@/components/viewer/MediaViewerHost'
 import { InboxProvider } from '@/data/InboxProvider'
+import { I18nProvider } from '@/i18n/I18nProvider'
 import { useAiConsent } from '@/lib/ai-consent'
 import { posthog } from '@/lib/analytics'
 import { MockStore } from '@/mocks/store'
@@ -159,7 +160,9 @@ export default function RootLayout() {
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <AuthProvider>
-                <App />
+                <I18nProvider>
+                    <App />
+                </I18nProvider>
             </AuthProvider>
         </GestureHandlerRootView>
     )
