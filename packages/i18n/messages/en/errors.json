@@ -1,0 +1,29 @@
+{
+    "_context": {
+        "generic": "Fallback when an action failed for a reason the screen cannot explain."
+    },
+    "generic": "Something went wrong. Please try again.",
+    "notAuthenticated": "Not authenticated",
+    "notMember": "You are not a member of this workspace",
+    "userNotMember": "This user is not a member of the workspace.",
+    "coworkerNotFound": "Coworker not found",
+    "boxNotFound": "Box not found",
+    "nameRequired": "Name is required",
+    "nameTooLong": "Keep the name under {max} characters",
+    "unknownLanguage": "Unknown language.",
+    "chooseImage": "Please choose an image file.",
+    "noLogoFound": "No logo found at this address",
+    "invitationNotFound": "Invitation not found",
+    "invitationInvalid": "This invitation is no longer valid.",
+    "invitationExpired": "This invitation has expired.",
+    "invitationOtherEmail": "This invitation is for another email. Sign in with the invited address.",
+    "seatLimit": "This workspace has reached its seat limit.",
+    "noSeatLeft": "This workspace has no seat left. Ask an admin to free one.",
+    "noActivePlan": "This workspace has no active plan.",
+    "alreadyMember": "This person is already a member of the workspace.",
+    "needsAdmin": "The workspace needs at least one admin",
+    "adminOnlySettings": "Only an admin can change the workspace settings",
+    "adminOnlyApiKeys": "Only an admin can manage API keys",
+    "boxManagerOnly": "Only an admin or a manager of this Box can do this",
+    "noMachine": "No machine is available right now"
+}

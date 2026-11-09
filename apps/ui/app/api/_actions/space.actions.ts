@@ -1,5 +1,6 @@
 'use server'
 
+import type { ActionFailure } from '@/lib/i18n/action-error'
 import { assertAdminUser } from '@/lib/auth/admin'
 import { actorFromContext, requireLightSessionActor } from '@/app/api/_auth/access'
 import { requireWorkspaceContext, requireWorkspaceId } from '@/app/api/_auth/ownership'
@@ -12,7 +13,8 @@ import type { SpaceSide } from '@/lib/board/space-layout'
 // redacts them to a generic "an error occurred in the Server Components render"
 // digest. So these actions return the error as a serializable value instead,
 // and the client re-throws it (where the real message survives) for the UI.
-export type ActionResult<T = unknown> = ({ ok: true } & T) | { ok: false; error: string }
+// A refusal may carry an `errors` code the screen translates (lib/i18n/action-error.ts).
+export type ActionResult<T = unknown> = ({ ok: true } & T) | ActionFailure
 
 export async function claimSpaceAction(params: { workspaceId: number; name?: string | null; from?: { spaceId: string; side: SpaceSide } }): Promise<ActionResult<{ spaceId: string; colStart: number; rowStart: number }>> {
     try {
