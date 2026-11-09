@@ -2,7 +2,7 @@ import { RERUN_CONNECTION_ID, appendAttachmentsRef, authorIdOf, queuedPreview, r
 import * as Haptics from 'expo-haptics'
 import { router, useFocusEffect } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Keyboard, ScrollView, StyleSheet, View } from 'react-native'
+import { Alert, Keyboard, ScrollView, StyleSheet, View, type ScrollViewInstance } from 'react-native'
 import Animated, { FadeInDown, FadeOutDown, LayoutAnimationConfig, SlideInDown, SlideOutDown, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -95,7 +95,7 @@ export function ConversationPane({ coworker, makeEndpoints, initialSessionId, on
     const { session, me } = useAuth()
     const caller = session && me ? { accessToken: session.access_token, workspaceId: me.workspace.id } : null
     const insets = useSafeAreaInsets()
-    const scroll = useRef<ScrollView>(null)
+    const scroll = useRef<ScrollViewInstance>(null)
     // The transcript a conversation opens on is shown already at its end; only what comes after scrolls.
     const shownTranscript = useRef(false)
     const [endpoints] = useState(makeEndpoints)

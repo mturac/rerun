@@ -1,6 +1,6 @@
 import * as Sharing from 'expo-sharing'
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Modal, StatusBar, useWindowDimensions, View } from 'react-native'
+import { Alert, Modal, StatusBar, useWindowDimensions, View, type ScrollViewInstance } from 'react-native'
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -30,7 +30,7 @@ export function MediaViewerHost() {
     const [index, setIndex] = useState(0)
     const [zoomed, setZoomed] = useState(false)
     const [drag, setDrag] = useState(0)
-    const pager = useRef<ScrollView>(null)
+    const pager = useRef<ScrollViewInstance>(null)
     const items = state?.items ?? []
 
     useEffect(() => {
