@@ -18,3 +18,6 @@ export function columnsFor(width: number, minCell: number, fewest: number): numb
 
 // A conversation reads as a column, even on an iPad: lines past this width are hard to follow.
 export const CHAT_COLUMN_MAX_WIDTH = 760
+
+// A form or a short notice (sign-in, consent) keeps the width of a phone on an iPad.
+export const FORM_COLUMN_MAX_WIDTH = 440
