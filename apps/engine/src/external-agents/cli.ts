@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { agentDir } from '../config/paths.js'
 import { codexCommand } from '../runtime/codex-cli.js'
@@ -15,6 +15,7 @@ export type CliProviderOptions = {
     env: NodeJS.ProcessEnv
     command: () => CliCommand
     buildArgs: (input: ExternalAgentLaunch, runDir: string) => string[]
+    buildFollowupArgs?: (input: ExternalAgentLaunch, sessionId: string) => string[]
     extraEnvArgs?: string
     spawnImpl?: typeof spawn
     killImpl?: (pid: number, signal: NodeJS.Signals | number) => void
@@ -32,6 +33,8 @@ type RunRecord = {
     exitPath: string
     startedAt: string
     status: string
+    sessionId?: string
+    followupOf?: string
 }
 
 const WRAPPER = '"$@" >"$RERUN_LOG" 2>&1; echo $? >"$RERUN_EXIT"'
@@ -130,6 +133,54 @@ function eventSummary(events: unknown[] | undefined, fallback: string | undefine
     return fallback
 }
 
+const SESSION_ID_KEYS = ['session_id', 'sessionId', 'thread_id', 'threadId', 'chat_id', 'chatId', 'conversation_id', 'conversationId']
+const SESSION_SCAN_BYTES = 256 * 1024
+
+function sessionIdFromEvent(event: unknown): string | undefined {
+    if (!event || typeof event !== 'object') return undefined
+    const e = event as Record<string, any>
+    for (const key of SESSION_ID_KEYS) {
+        if (typeof e[key] === 'string' && e[key].trim()) return e[key]
+    }
+    for (const nested of [e.session, e.thread, e.chat, e.conversation]) {
+        if (nested && typeof nested === 'object') {
+            const n = nested as Record<string, any>
+            for (const key of [...SESSION_ID_KEYS, 'id']) {
+                if (typeof n[key] === 'string' && n[key].trim()) return n[key]
+            }
+        }
+    }
+    return undefined
+}
+
+function sessionIdFromLog(logPath: string): string | undefined {
+    let fd: number
+    try {
+        fd = openSync(logPath, 'r')
+    } catch {
+        return undefined
+    }
+    try {
+        const buffer = Buffer.alloc(SESSION_SCAN_BYTES)
+        const bytes = readSync(fd, buffer, 0, SESSION_SCAN_BYTES, 0)
+        for (const line of buffer.subarray(0, bytes).toString('utf8').split('\n')) {
+            const trimmed = line.trim()
+            if (!trimmed.startsWith('{')) continue
+            try {
+                const sessionId = sessionIdFromEvent(JSON.parse(trimmed))
+                if (sessionId) return sessionId
+            } catch {
+                // Partial line at the chunk boundary.
+            }
+        }
+        return undefined
+    } catch {
+        return undefined
+    } finally {
+        closeSync(fd)
+    }
+}
+
 export function cliProvider(opts: CliProviderOptions): ExternalAgentProvider {
     const { name, agentId, agentEnv, env } = opts
     const spawnImpl = opts.spawnImpl ?? spawn
@@ -147,6 +198,72 @@ export function cliProvider(opts: CliProviderOptions): ExternalAgentProvider {
         return { provider: run.provider, id: run.id, name: run.id, status, ...extra, raw: run }
     }
 
+    function captureSessionId(run: RunRecord): void {
+        if (run.sessionId) return
+        const sessionId = sessionIdFromLog(run.logPath)
+        if (!sessionId) return
+        run.sessionId = sessionId
+        try {
+            writeFileSync(runJsonPath(run.id), JSON.stringify(run, null, 2))
+        } catch {
+            // Best-effort persistence; the in-memory record still carries the id.
+        }
+    }
+
+    function begin(id: string, builtArgs: string[], cwd: string, meta: { followupOf?: string; sessionId?: string } = {}): ExternalAgentTask {
+        const dir = runDir(id)
+        mkdirSync(dir, { recursive: true })
+        const logPath = join(dir, 'output.log')
+        const exitPath = join(dir, 'exit.txt')
+        const cli = opts.command()
+        const args = [...builtArgs]
+        if (opts.extraEnvArgs) {
+            const extra = (agentEnv[opts.extraEnvArgs] || env[opts.extraEnvArgs] || '').split(/\s+/).filter(Boolean)
+            args.push(...extra)
+        }
+        const child = spawnImpl('sh', ['-c', WRAPPER, 'sh', cli.cmd, ...cli.args, ...args], {
+            cwd,
+            detached: true,
+            stdio: 'ignore',
+            env: { ...process.env, ...agentEnv, RERUN_LOG: logPath, RERUN_EXIT: exitPath },
+        })
+        child.unref?.()
+        const run: RunRecord = {
+            provider: name,
+            id,
+            pid: child.pid ?? -1,
+            cmd: cli.cmd,
+            args: [...cli.args, ...args],
+            cwd,
+            logPath,
+            exitPath,
+            startedAt: new Date().toISOString(),
+            status: 'running',
+            ...(meta.followupOf ? { followupOf: meta.followupOf } : {}),
+            ...(meta.sessionId ? { sessionId: meta.sessionId } : {}),
+        }
+        writeFileSync(runJsonPath(id), JSON.stringify(run, null, 2))
+        return toTask(run, 'running')
+    }
+
+    async function statusOf(id: string): Promise<ExternalAgentTask> {
+        const run = readRun(id)
+        captureSessionId(run)
+        const events = jsonEvents(run.logPath)
+        if (existsSync(run.exitPath)) {
+            const code = Number.parseInt(readFileSync(run.exitPath, 'utf8').trim(), 10)
+            const tail = logTail(run.logPath)
+            const summary = eventSummary(events, tail)
+            if (code === 0) return toTask(run, 'completed', { ...(summary ? { summary } : {}), ...(events ? { events } : {}) })
+            return toTask(run, 'failed', { error: `process exited with code ${Number.isNaN(code) ? 'unknown' : code}`, ...(summary ? { summary } : {}), ...(events ? { events } : {}) })
+        }
+        if (run.pid > 0 && pidAlive(run.pid)) {
+            const tail = logTail(run.logPath)
+            return toTask(run, 'running', { ...(events ? { events } : {}), ...(tail && !events ? { summary: tail } : {}) })
+        }
+        return toTask(run, 'failed', { error: run.pid > 0 ? 'process exited without recording a status (engine may have restarted)' : 'process failed to spawn' })
+    }
+
     return {
         name,
         isConfigured: () => binaryExists(opts.command()),
@@ -154,55 +271,31 @@ export function cliProvider(opts: CliProviderOptions): ExternalAgentProvider {
         async launch(input: ExternalAgentLaunch) {
             const id = randomUUID()
             const dir = runDir(id)
-            mkdirSync(dir, { recursive: true })
-            const logPath = join(dir, 'output.log')
-            const exitPath = join(dir, 'exit.txt')
-            const cli = opts.command()
             const delegated = { ...input, prompt: delegatePrompt(input.prompt, dir) }
             const builtArgs = opts.buildArgs(delegated, dir)
-            if (opts.extraEnvArgs) {
-                const extra = (agentEnv[opts.extraEnvArgs] || env[opts.extraEnvArgs] || '').split(/\s+/).filter(Boolean)
-                builtArgs.push(...extra)
-            }
-            const child = spawnImpl('sh', ['-c', WRAPPER, 'sh', cli.cmd, ...cli.args, ...builtArgs], {
-                cwd: dir,
-                detached: true,
-                stdio: 'ignore',
-                env: { ...process.env, ...agentEnv, RERUN_LOG: logPath, RERUN_EXIT: exitPath },
-            })
-            child.unref?.()
-            const run: RunRecord = {
-                provider: name,
-                id,
-                pid: child.pid ?? -1,
-                cmd: cli.cmd,
-                args: [...cli.args, ...builtArgs],
-                cwd: dir,
-                logPath,
-                exitPath,
-                startedAt: new Date().toISOString(),
-                status: 'running',
-            }
-            writeFileSync(runJsonPath(id), JSON.stringify(run, null, 2))
-            return toTask(run, 'running')
+            return begin(id, builtArgs, dir)
         },
 
-        async status(id: string) {
-            const run = readRun(id)
-            const events = jsonEvents(run.logPath)
-            if (existsSync(run.exitPath)) {
-                const code = Number.parseInt(readFileSync(run.exitPath, 'utf8').trim(), 10)
-                const tail = logTail(run.logPath)
-                const summary = eventSummary(events, tail)
-                if (code === 0) return toTask(run, 'completed', { ...(summary ? { summary } : {}), ...(events ? { events } : {}) })
-                return toTask(run, 'failed', { error: `process exited with code ${Number.isNaN(code) ? 'unknown' : code}`, ...(summary ? { summary } : {}), ...(events ? { events } : {}) })
-            }
-            if (run.pid > 0 && pidAlive(run.pid)) {
-                const tail = logTail(run.logPath)
-                return toTask(run, 'running', { ...(events ? { events } : {}), ...(tail && !events ? { summary: tail } : {}) })
-            }
-            return toTask(run, 'failed', { error: run.pid > 0 ? 'process exited without recording a status (engine may have restarted)' : 'process failed to spawn' })
-        },
+        status: statusOf,
+
+        ...(opts.buildFollowupArgs
+            ? {
+                  async followup(id: string, prompt: string) {
+                      const task = await statusOf(id)
+                      if (task.status === 'running' || task.status === 'queued') {
+                          throw new Error(`cannot follow up on run ${id}: task is still ${task.status}`)
+                      }
+                      const run = readRun(id)
+                      const sessionId = run.sessionId
+                      if (!sessionId) {
+                          throw new Error(`no session id captured for run ${id}; cannot resume`)
+                      }
+                      const newId = randomUUID()
+                      const builtArgs = opts.buildFollowupArgs!({ prompt }, sessionId)
+                      return begin(newId, builtArgs, run.cwd, { followupOf: id, sessionId })
+                  },
+              }
+            : {}),
 
         async stop(id: string) {
             const run = readRun(id)
@@ -236,6 +329,10 @@ export function codexCliProvider(
             const model = input.model || agentEnv.RERUN_CODEX_MODEL || env.RERUN_CODEX_MODEL
             return ['exec', '--json', '--skip-git-repo-check', '-s', 'workspace-write', '-c', 'approval_policy="never"', ...(model ? ['-m', model] : []), input.prompt]
         },
+        buildFollowupArgs: (input, sessionId) => {
+            const model = input.model || agentEnv.RERUN_CODEX_MODEL || env.RERUN_CODEX_MODEL
+            return ['exec', 'resume', sessionId, '--json', '--skip-git-repo-check', '-c', 'sandbox_mode="workspace-write"', '-c', 'approval_policy="never"', ...(model ? ['-m', model] : []), input.prompt]
+        },
         ...seams,
     })
 }
@@ -260,6 +357,10 @@ export function cursorCliProvider(
             const model = input.model || agentEnv.RERUN_CURSOR_MODEL || env.RERUN_CURSOR_MODEL
             return ['-p', '--output-format', 'stream-json', '--force', '--trust', ...(model ? ['--model', model] : []), input.prompt]
         },
+        buildFollowupArgs: (input, sessionId) => {
+            const model = input.model || agentEnv.RERUN_CURSOR_MODEL || env.RERUN_CURSOR_MODEL
+            return ['-p', '--output-format', 'stream-json', '--force', '--trust', '--resume', sessionId, ...(model ? ['--model', model] : []), input.prompt]
+        },
         ...seams,
     })
 }
@@ -283,6 +384,10 @@ export function claudeCliProvider(
         buildArgs: input => {
             const model = input.model || agentEnv.RERUN_CLAUDE_MODEL || env.RERUN_CLAUDE_MODEL
             return ['-p', input.prompt, '--output-format', 'stream-json', '--verbose', ...(model ? ['--model', model] : [])]
+        },
+        buildFollowupArgs: (input, sessionId) => {
+            const model = input.model || agentEnv.RERUN_CLAUDE_MODEL || env.RERUN_CLAUDE_MODEL
+            return ['-p', input.prompt, '--resume', sessionId, '--output-format', 'stream-json', '--verbose', ...(model ? ['--model', model] : [])]
         },
         ...seams,
     })

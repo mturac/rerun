@@ -149,6 +149,70 @@ describe('cliProvider', () => {
         await provider.launch({ prompt: 'x' })
         expect(calls[0].args.slice(-2)).toEqual(['--flag', 'value'])
     })
+
+    it('followup is absent when buildFollowupArgs is not configured', async () => {
+        const provider = cliProvider(baseOpts({ spawnImpl: fakeSpawn([]) }))
+        expect(provider.followup).toBeUndefined()
+    })
+
+    it('followup rejects for an unknown run id', async () => {
+        const provider = cliProvider(baseOpts({
+            buildFollowupArgs: (_input: any, sessionId: string) => ['--resume', sessionId, 'next'],
+            spawnImpl: fakeSpawn([]),
+        }) as any)
+        await expect(provider.followup('missing-id', 'more work')).rejects.toThrow()
+    })
+
+    it('followup rejects while the run is still active', async () => {
+        const calls: any[] = []
+        const provider = cliProvider(baseOpts({
+            buildFollowupArgs: (_input: any, sessionId: string) => ['--resume', sessionId, 'next'],
+            spawnImpl: fakeSpawn(calls),
+            pidAlive: () => true,
+        }) as any)
+        const task = await provider.launch({ prompt: 'x' })
+        await expect(provider.followup(task.id, 'more work')).rejects.toThrow(/still running/)
+        expect(calls).toHaveLength(1)
+    })
+
+    it('followup rejects when no session id was captured', async () => {
+        const provider = cliProvider(baseOpts({
+            buildFollowupArgs: (_input: any, sessionId: string) => ['--resume', sessionId, 'next'],
+            spawnImpl: fakeSpawn([]),
+            pidAlive: () => true,
+        }) as any)
+        const task = await provider.launch({ prompt: 'x' })
+        writeFileSync(join(runDirOf(task.id), 'exit.txt'), '0\n')
+        writeFileSync(join(runDirOf(task.id), 'output.log'), 'plain text output, no json events')
+        await expect(provider.followup(task.id, 'more work')).rejects.toThrow(/no session id captured/)
+    })
+
+    it('followup launches a new run with resume args, links followupOf and reuses the cwd', async () => {
+        const calls: any[] = []
+        const provider = cliProvider(baseOpts({
+            buildFollowupArgs: (input: any, sessionId: string) => ['--resume', sessionId, '--task', input.prompt],
+            spawnImpl: fakeSpawn(calls),
+            pidAlive: () => true,
+        }) as any)
+        const task = await provider.launch({ prompt: 'first' })
+        const parentDir = runDirOf(task.id)
+        writeFileSync(join(parentDir, 'exit.txt'), '0\n')
+        writeFileSync(join(parentDir, 'output.log'), '{"type":"system","subtype":"init","session_id":"sess-123"}\n')
+
+        const followup = await provider.followup(task.id, 'second')
+
+        expect(followup.id).not.toBe(task.id)
+        expect(followup.status).toBe('running')
+        const run = JSON.parse(readFileSync(join(runDirOf(followup.id), 'run.json'), 'utf8'))
+        expect(run).toMatchObject({ followupOf: task.id, sessionId: 'sess-123', status: 'running', cwd: parentDir })
+        const parent = JSON.parse(readFileSync(join(parentDir, 'run.json'), 'utf8'))
+        expect(parent.sessionId).toBe('sess-123')
+
+        expect(calls).toHaveLength(2)
+        const argv = calls[1].args.slice(5)
+        expect(argv).toEqual(['--resume', 'sess-123', '--task', 'second'])
+        expect(calls[1].opts.cwd).toBe(parentDir)
+    })
 })
 
 describe('codexCliProvider and claudeCliProvider', () => {
@@ -162,7 +226,7 @@ describe('codexCliProvider and claudeCliProvider', () => {
         expect(argv.at(-2)).toBe('--sandbox')
         expect(argv.slice(-2)).toEqual(['--sandbox', 'read-only'])
         expect(task.provider).toBe('codex-cli')
-        expect(provider.followup).toBeUndefined()
+        expect(typeof provider.followup).toBe('function')
         expect(provider.list).toBeUndefined()
     })
 
@@ -189,6 +253,53 @@ describe('codexCliProvider and claudeCliProvider', () => {
         expect(argv).toContain('--model')
         expect(argv.at(-1)).toContain('fix the bug')
         expect(task.provider).toBe('cursor-cli')
+    })
+
+    async function completedRunWithSession(provider: any, calls: any[], sessionEvent: string) {
+        const task = await provider.launch({ prompt: 'first' })
+        writeFileSync(join(runDirOf(task.id), 'exit.txt'), '0\n')
+        writeFileSync(join(runDirOf(task.id), 'output.log'), `${sessionEvent}\n`)
+        return task
+    }
+
+    it('codex followup runs exec resume with the captured thread id', async () => {
+        const calls: any[] = []
+        const provider = codexCliProvider('test-agent', { RERUN_CODEX_CLI_PATH: '/bin/echo' }, {}, { spawnImpl: fakeSpawn(calls), pidAlive: () => true })
+        const task = await completedRunWithSession(provider, calls, '{"type":"thread.started","thread_id":"thread-9"}')
+        const followup = await provider.followup!(task.id, 'second')
+        const argv = calls[1].args.slice(4)
+        expect(argv.slice(0, 3)).toEqual(['exec', 'resume', 'thread-9'])
+        expect(argv).toContain('--json')
+        expect(argv).toContain('--skip-git-repo-check')
+        expect(argv.at(-1)).toBe('second')
+        const run = JSON.parse(readFileSync(join(runDirOf(followup.id), 'run.json'), 'utf8'))
+        expect(run).toMatchObject({ followupOf: task.id, sessionId: 'thread-9' })
+    })
+
+    it('claude followup passes --resume with the captured session id', async () => {
+        const calls: any[] = []
+        const provider = claudeCliProvider('test-agent', { RERUN_CLAUDE_CLI_PATH: '/bin/echo' }, {}, { spawnImpl: fakeSpawn(calls), pidAlive: () => true })
+        const task = await completedRunWithSession(provider, calls, '{"type":"system","subtype":"init","session_id":"claude-sess-1"}')
+        await provider.followup!(task.id, 'second')
+        const argv = calls[1].args.slice(4)
+        const resumeAt = argv.indexOf('--resume')
+        expect(resumeAt).toBeGreaterThan(-1)
+        expect(argv[resumeAt + 1]).toBe('claude-sess-1')
+        expect(argv).toContain('--output-format')
+        expect(argv).toContain('stream-json')
+        expect(argv).toContain('second')
+    })
+
+    it('cursor followup passes --resume with the captured chat id', async () => {
+        const calls: any[] = []
+        const provider = cursorCliProvider('test-agent', { RERUN_CURSOR_CLI_PATH: '/bin/echo' }, {}, { spawnImpl: fakeSpawn(calls), pidAlive: () => true })
+        const task = await completedRunWithSession(provider, calls, '{"type":"system","subtype":"init","chat_id":"chat-7"}')
+        await provider.followup!(task.id, 'second')
+        const argv = calls[1].args.slice(4)
+        const resumeAt = argv.indexOf('--resume')
+        expect(resumeAt).toBeGreaterThan(-1)
+        expect(argv[resumeAt + 1]).toBe('chat-7')
+        expect(argv.at(-1)).toBe('second')
     })
 })
 
