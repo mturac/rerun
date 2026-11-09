@@ -2,6 +2,7 @@
 
 import type { UIMessage } from 'ai'
 import { AnimatePresence, motion } from 'motion/react'
+import { useTranslations } from 'next-intl'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useScrollFade } from '@rerun/ui/primitives'
 
@@ -99,6 +100,7 @@ type ForemanChatLayerProps = {
  * retour en bas.
  */
 export function ForemanChatLayer({ messages, streaming, guided, intake, gated, arrival, restored, error, onWidgetAnswer, onWidgetDismiss, pending = null, nextSteps, onSuggestion, onPrefill, onStop, onStopTask, actions, rawUrlFor, readFile, sharedFiles, onStackElement, className }: ForemanChatLayerProps) {
+    const t = useTranslations('foreman.welcome')
     const { workspace } = useSession()
     const priceArm = usePriceArm()
     const entitled = isSubscriptionEntitled(workspace?.subscription_status)
@@ -178,7 +180,7 @@ export function ForemanChatLayer({ messages, streaming, guided, intake, gated, a
             <AnimatePresence>
                 {greeting &&
                     (gated ? (
-                        <ForemanWelcome key="gate" title="Your team is ready to be built" subtitle="Create your account and the Foreman starts building it right away." />
+                        <ForemanWelcome key="gate" title={t('gateTitle')} subtitle={t('gateSubtitle')} />
                     ) : (
                         <ForemanWelcome key="welcome" thinking={streaming} />
                     ))}

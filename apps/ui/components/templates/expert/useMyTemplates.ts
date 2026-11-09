@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useTranslations } from 'next-intl'
 import { removeMyTemplateAgentAction } from '@/app/api/_actions/expert-capture.actions'
 import {
     createMyTemplateDraftAction,
@@ -20,6 +21,7 @@ type ListResult = Awaited<ReturnType<typeof listMyTemplatesAction>>
 // so there is nothing to keep in sync while it is closed. `templates === null` means loading, and so
 // does `detail === null` while an id is selected.
 export function useMyTemplates(open: boolean, selectedId: string | null) {
+    const t = useTranslations('templates.expert.toasts')
     const [templates, setTemplates] = useState<ExpertTemplate[] | null>(null)
     const [detail, setDetail] = useState<ExpertTemplateDetail | null>(null)
 
@@ -84,11 +86,11 @@ export function useMyTemplates(open: boolean, selectedId: string | null) {
                 toast.error(result.error)
                 return false
             }
-            toast.success('Template saved.')
+            toast.success(t('saved'))
             await reload()
             return true
         },
-        [reload],
+        [reload, t],
     )
 
     const submit = useCallback(
@@ -98,11 +100,11 @@ export function useMyTemplates(open: boolean, selectedId: string | null) {
                 toast.error(result.error)
                 return false
             }
-            toast.success('Submitted. We will get back to you.')
+            toast.success(t('submitted'))
             await reload()
             return true
         },
-        [reload],
+        [reload, t],
     )
 
     const withdraw = useCallback(

@@ -6,6 +6,7 @@ import { useBrainStore } from '@/stores/brain.store'
 import { useWorkspaceSettingsStore } from '@/stores/workspace-settings.store'
 import { BRAIN_CHANGE_NOTES, brainChangeHeadline, type BrainChange } from '@rerun/contracts'
 import { Button, Icon } from '@rerun/ui/primitives'
+import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -43,22 +44,23 @@ export function BrainChangeBlock({ change }: { change: BrainChange }) {
 export type BrainChangeUndo = 'idle' | 'pending' | 'done'
 
 export function BrainChangeCard({ change, undo, onUndo, onOpen }: { change: BrainChange; undo: BrainChangeUndo; onUndo?: () => void; onOpen: () => void }) {
+    const t = useTranslations('chat.brainChange')
     return (
         <div className="rounded-xl bg-muted/30 px-1.5 py-1.5">
             <div className="flex items-center gap-3 text-sm">
                 <Icon size="sm" icon={BrainIcon} />
                 <div className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{undo === 'done' ? `Undone: ${change.title}` : brainChangeHeadline(change)}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{undo === 'done' ? 'The previous version is back.' : BRAIN_CHANGE_NOTES[change.status]}</span>
+                    <span className="block truncate font-medium">{undo === 'done' ? t('undone', { title: change.title }) : brainChangeHeadline(change)}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{undo === 'done' ? t('undoneNote') : BRAIN_CHANGE_NOTES[change.status]}</span>
                 </div>
                 {onUndo && undo !== 'done' && (
                     <Button size="xs" variant="ghost" loading={undo === 'pending'} onClick={onUndo}>
-                        Undo
+                        {t('undo')}
                     </Button>
                 )}
                 {change.status !== 'deleted' && (
                     <Button size="xs" variant="ghost" onClick={onOpen}>
-                        Open
+                        {t('open')}
                     </Button>
                 )}
             </div>

@@ -8,7 +8,7 @@ import type { StatsChartType, StatsDataset, StatsGroupBy, StatsMetric, StatsPoin
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../primitives/chart'
 import { CHART_FALLBACK_COLOR, CHART_PALETTE, chartColorAt } from './chart-palette'
 import { cn } from '../cn'
-import { useUiLocale } from '../locale'
+import { useKitTranslations, useUiLocale } from '../locale'
 
 const MAX_SERIES = 8
 
@@ -64,6 +64,8 @@ export type StatsChartProps = {
 
 export function StatsChart({ dataset, metric, groupBy = 'none', chartType = 'area', points, className }: StatsChartProps) {
     const locale = useUiLocale()
+    const t = useKitTranslations()
+    const otherLabel = t('monitoring.chart.other')
     const agg = STATS_METRIC_META[metric].agg
     const formatValue = useMemo(() => makeFormatter(metric, locale), [metric, locale])
 
@@ -95,7 +97,7 @@ export function StatsChart({ dataset, metric, groupBy = 'none', chartType = 'are
             return { rows: r, series: s }
         }
         const s: Series[] = groups.kept.map(g => ({ key: g.key, label: g.name, color: g.color }))
-        if (hasOther) s.push({ key: 'g_other', label: 'Other', color: CHART_FALLBACK_COLOR })
+        if (hasOther) s.push({ key: 'g_other', label: otherLabel, color: CHART_FALLBACK_COLOR })
         const r = buckets.map(b => {
             const inBucket = (points ?? []).filter(p => p.bucket === b)
             const row: Record<string, number | string> = { bucket: bucketLabel(b, locale) }
@@ -106,14 +108,14 @@ export function StatsChart({ dataset, metric, groupBy = 'none', chartType = 'are
             return row
         })
         return { rows: r, series: s }
-    }, [points, groups, hasOther, groupBy, metric, agg, locale])
+    }, [points, groups, hasOther, groupBy, metric, agg, locale, otherLabel])
 
     const chartConfig = useMemo<ChartConfig>(() => Object.fromEntries(series.map(s => [s.key, { label: s.label, color: s.color }])), [series])
 
     const donutData = useMemo(() => {
         const perGroup = new Map<string, { value: number; count: number }[]>()
         for (const p of points ?? []) {
-            const name = groups.folded.has(p.group ?? 'unknown') ? 'Other' : p.group ?? 'unknown'
+            const name = groups.folded.has(p.group ?? 'unknown') ? otherLabel : p.group ?? 'unknown'
             const list = perGroup.get(name) ?? []
             list.push({ value: p.value, count: p.count })
             perGroup.set(name, list)
@@ -123,7 +125,7 @@ export function StatsChart({ dataset, metric, groupBy = 'none', chartType = 'are
             .map(([name, entries]) => ({ name, value: combine(agg, entries), fill: colorByName.get(name) ?? CHART_FALLBACK_COLOR }))
             .filter(d => d.value > 0)
             .sort((a, b) => b.value - a.value)
-    }, [points, groups, agg])
+    }, [points, groups, agg, otherLabel])
 
     const stat = useMemo(() => {
         const all = (points ?? []).map(p => ({ value: p.value, count: p.count }))
@@ -147,7 +149,7 @@ export function StatsChart({ dataset, metric, groupBy = 'none', chartType = 'are
     return (
         <div className={cn('h-full w-full p-1', className)}>
             {isEmpty ? (
-                <div className="flex h-full items-center justify-center text-center text-[12px] text-muted-foreground">{points === null ? 'Loading...' : 'No data in this period.'}</div>
+                <div className="flex h-full items-center justify-center text-center text-[12px] text-muted-foreground">{points === null ? t('monitoring.chart.loading') : t('monitoring.chart.noData')}</div>
             ) : effectiveChart === 'stat' ? (
                 <div className="flex h-full flex-col justify-center gap-1 px-2">
                     <div className="text-3xl font-semibold leading-none text-foreground">{formatValue(stat.total)}</div>

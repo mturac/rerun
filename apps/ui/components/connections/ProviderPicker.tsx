@@ -4,6 +4,7 @@ import { Command, CommandGroup, CommandItem, CommandList } from '@/components/ui
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { PROVIDER_PITCH, type AddableProvider } from '@/lib/engine/ai-sources'
 import { ProviderIcon } from '@/lib/engine/provider-icons'
+import { useTranslations } from 'next-intl'
 import { useState, type ReactNode } from 'react'
 
 type ProviderPickerProps = {
@@ -17,6 +18,7 @@ type ProviderPickerProps = {
 }
 
 export function ProviderPicker({ taken, onPick, providers, children }: ProviderPickerProps) {
+    const t = useTranslations('connections.providerPicker')
     const [open, setOpen] = useState(false)
 
     return (
@@ -41,7 +43,7 @@ export function ProviderPicker({ taken, onPick, providers, children }: ProviderP
                                         <span className="truncate text-sm">{PROVIDER_PITCH[provider].title}</span>
                                         <span className="truncate text-[11px] text-muted-foreground">{PROVIDER_PITCH[provider].hint}</span>
                                     </span>
-                                    {taken.has(provider) && <span className="shrink-0 text-[11px] text-muted-foreground">Added</span>}
+                                    {taken.has(provider) && <span className="shrink-0 text-[11px] text-muted-foreground">{t('added')}</span>}
                                 </CommandItem>
                             ))}
                         </CommandGroup>

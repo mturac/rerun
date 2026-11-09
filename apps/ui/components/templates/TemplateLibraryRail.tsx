@@ -3,6 +3,7 @@
 import type { TemplateCategory } from '@rerun/contracts'
 import { TEMPLATE_CATEGORY_LABELS } from '@rerun/contracts'
 import type { ComponentType, ReactNode } from 'react'
+import { useTranslations } from 'next-intl'
 import { ConnectorLogo } from '@/components/templates/TemplateConnectorLogos'
 import { TemplateLibrarySearch } from '@/components/templates/TemplateLibrarySearch'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,7 @@ export function TemplateLibraryRail({
     onQuery: (query: string) => void
     onScratch: () => void
 }) {
+    const t = useTranslations('templates.library')
     const searching = query.trim() !== ''
     const isActive = (target: LibraryView) => !searching && isSameView(view, target)
 
@@ -36,21 +38,21 @@ export function TemplateLibraryRail({
         <aside className="flex w-60 shrink-0 flex-col border-r bg-muted/20">
             <div className="flex flex-col gap-3 px-3 pt-6 pb-3">
                 <div className="flex items-baseline gap-2 px-2">
-                    <h2 className="font-heading text-lg leading-none font-semibold tracking-tight">Templates</h2>
+                    <h2 className="font-heading text-lg leading-none font-semibold tracking-tight">{t('templates')}</h2>
                     {counts && <span className="text-xs text-muted-foreground tabular-nums">{counts.all}</span>}
                 </div>
                 <TemplateLibrarySearch value={query} onChange={onQuery} />
             </div>
 
-            <nav aria-label="Template library" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3 [scrollbar-width:thin]">
-                <RailItem icon={CompassIcon} label="Discover" active={isActive({ kind: 'discover' })} onClick={() => onView({ kind: 'discover' })} />
-                <RailItem icon={SparkleIcon} label="For you" active={isActive({ kind: 'foryou' })} onClick={() => onView({ kind: 'foryou' })} />
-                <RailItem icon={Grid2x2Icon} label="All templates" count={counts?.all} active={isActive({ kind: 'all' })} onClick={() => onView({ kind: 'all' })} />
-                {!!counts?.mine && <RailItem icon={BookmarkIcon} label="My library" count={counts.mine} active={isActive({ kind: 'mine' })} onClick={() => onView({ kind: 'mine' })} />}
+            <nav aria-label={t('title')} className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3 [scrollbar-width:thin]">
+                <RailItem icon={CompassIcon} label={t('nav.discover')} active={isActive({ kind: 'discover' })} onClick={() => onView({ kind: 'discover' })} />
+                <RailItem icon={SparkleIcon} label={t('nav.forYou')} active={isActive({ kind: 'foryou' })} onClick={() => onView({ kind: 'foryou' })} />
+                <RailItem icon={Grid2x2Icon} label={t('nav.allTemplates')} count={counts?.all} active={isActive({ kind: 'all' })} onClick={() => onView({ kind: 'all' })} />
+                {!!counts?.mine && <RailItem icon={BookmarkIcon} label={t('nav.mine')} count={counts.mine} active={isActive({ kind: 'mine' })} onClick={() => onView({ kind: 'mine' })} />}
 
                 {counts && counts.stack.apps.length > 0 && (
                     <>
-                        <RailLabel>{counts.stack.mine ? 'Your stack' : 'Popular apps'}</RailLabel>
+                        <RailLabel>{counts.stack.mine ? t('nav.stack') : t('nav.popularApps')}</RailLabel>
                         {counts.stack.apps.map(({ connector, count }) => (
                             <RailItem
                                 key={connector.slug}
@@ -66,7 +68,7 @@ export function TemplateLibraryRail({
 
                 {counts && counts.categories.length > 0 && (
                     <>
-                        <RailLabel>Categories</RailLabel>
+                        <RailLabel>{t('nav.categories')}</RailLabel>
                         {counts.categories.map(({ category, count }) => (
                             <RailItem
                                 key={category}
@@ -84,7 +86,7 @@ export function TemplateLibraryRail({
             <div className="border-t p-3">
                 <Button type="button" size="lg" className="w-full" onClick={onScratch}>
                     <PlusIcon />
-                    Create New Coworker
+                    {t('createCoworker')}
                 </Button>
             </div>
         </aside>

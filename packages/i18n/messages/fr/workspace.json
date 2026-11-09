@@ -1,6 +1,20 @@
 {
     "settings": {
         "coworkersLanguage": "Langue des coworkers",
-        "coworkersLanguageHint": "La langue de vos coworkers quand ils travaillent seuls, sur un planning ou un déclencheur."
+        "coworkersLanguageHint": "La langue de vos coworkers quand ils travaillent seuls, sur un planning ou un déclencheur.",
+        "fallbackName": "Workspace",
+        "adminOnly": "Seul un admin peut modifier les réglages du workspace",
+        "nameRequired": "Le nom est obligatoire",
+        "nameTooLong": "Restez sous {max} caractères",
+        "title": "Réglages du workspace",
+        "description": "Le nom et le logo de votre workspace, tels que les voient votre équipe et vos invitations.",
+        "uploadLogo": "Importer un logo",
+        "name": "Nom",
+        "namePlaceholder": "ex. Acme Inc.",
+        "logoLink": "Logo depuis un site ou un lien",
+        "noLogoFound": "Aucun logo trouvé à cette adresse",
+        "pickIllustration": "Ou choisissez une illustration",
+        "showLess": "Afficher moins",
+        "showAll": "Tout afficher ({count})"
     }
 }

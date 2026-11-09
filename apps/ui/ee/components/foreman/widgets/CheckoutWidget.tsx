@@ -1,6 +1,7 @@
 'use client'
 
 import { track } from '@rerun/analytics/client'
+import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { startTrialAction } from '@/ee/actions/billing.actions'
@@ -30,9 +31,10 @@ type CheckoutWidgetProps = {
 type Stage = 'offer' | 'checkout'
 
 export function CheckoutOutcome({ result, entitled, onReopen }: { result: CheckoutResult; entitled: boolean; onReopen: () => void }) {
+    const t = useTranslations('foreman.checkout')
     const openBilling = useBillingStore(state => state.openBilling)
 
-    if (result.ok) return <ForemanOutcomeRow className="mb-2" icon={CircleCheckIcon} tone="text-emerald-500" text="Trial started" />
+    if (result.ok) return <ForemanOutcomeRow className="mb-2" icon={CircleCheckIcon} tone="text-emerald-500" text={t('started')} />
 
     // Un trial refusé n'est pas un refus de l'utilisateur : il veut toujours de Rerun, il a juste
     // déjà eu son essai. Sans cette sortie, la conversation s'arrête sur un constat.
@@ -42,17 +44,17 @@ export function CheckoutOutcome({ result, entitled, onReopen }: { result: Checko
                 className="mb-2"
                 icon={CreditCardIcon}
                 tone="text-amber-500"
-                text="This card has already been used for a trial"
+                text={t('cardUsed')}
                 action={
                     <Button variant="secondary" size="sm" onClick={() => openBilling(undefined, 'trial_refused')}>
-                        Start my plan
+                        {t('startPlan')}
                     </Button>
                 }
             />
         )
     }
 
-    if (result.reason === 'pending') return <ForemanOutcomeRow className="mb-2" icon={ClockIcon} text="Still waiting on Stripe" />
+    if (result.reason === 'pending') return <ForemanOutcomeRow className="mb-2" icon={ClockIcon} text={t('pending')} />
 
     // Refuser n'est pas fermer la porte : la ligne dit ce que le refus laisse derrière lui, et le
     // bouton rouvre le formulaire sans avoir à redemander le trial au foreman.
@@ -60,11 +62,11 @@ export function CheckoutOutcome({ result, entitled, onReopen }: { result: Checko
         <ForemanOutcomeRow
             className="mb-2"
             icon={XCircleIcon}
-            text="Trial not started. Nothing can be built until it is."
+            text={t('notStarted')}
             action={
                 entitled ? undefined : (
                     <Button variant="secondary" size="sm" onClick={onReopen}>
-                        Start free trial
+                        {t('startTrial')}
                     </Button>
                 )
             }

@@ -6,6 +6,7 @@ import { CheckIcon, ChevronDownIcon } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import type { BrainProposal } from '@rerun/contracts'
 import { BorderBeam } from '@rerun/ui'
+import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 
 import { Byline, CoworkerBuddy, Details, Expandable, FactChanges, When } from './parts'
@@ -19,6 +20,7 @@ type ProposalCardProps = {
 }
 
 export function ProposalCard({ proposal, busy, onAccept, onDismiss, onOpenPage }: ProposalCardProps) {
+    const t = useTranslations('brain.proposals')
     const [open, setOpen] = useState(false)
 
     return (
@@ -39,16 +41,16 @@ export function ProposalCard({ proposal, busy, onAccept, onDismiss, onOpenPage }
                     </div>
                     <footer className="mt-4 flex items-center gap-2">
                         <Button size="sm" variant="outline" onClick={() => setOpen(value => !value)} aria-expanded={open}>
-                            {open ? 'Hide details' : 'More details'}
+                            {open ? t('hideDetails') : t('moreDetails')}
                             <ChevronDownIcon className={cn('transition-transform duration-200', open && 'rotate-180')} />
                         </Button>
                         <div className="ml-auto flex items-center gap-1.5">
                             <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={onDismiss} disabled={busy}>
-                                Dismiss
+                                {t('dismiss')}
                             </Button>
                             <Button size="sm" onClick={onAccept} loading={busy}>
                                 <CheckIcon />
-                                Accept
+                                {t('accept')}
                             </Button>
                         </div>
                     </footer>

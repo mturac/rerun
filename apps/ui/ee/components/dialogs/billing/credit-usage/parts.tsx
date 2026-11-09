@@ -1,11 +1,11 @@
 'use client'
 
 import { AgentBuddy } from '@rerun/ui/iso-grid'
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { createElement } from 'react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { KIND_LABEL, type CreditBalance, type CreditCoworker, type CreditKind, type CreditSource } from '@/ee/lib/billing/credit-usage'
+import { sourceLabel, type CreditBalance, type CreditCoworker, type CreditKind, type CreditSource } from '@/ee/lib/billing/credit-usage'
 import { formatCredits } from '@/ee/lib/billing/plans'
 import { BrainIcon, CpuIcon, UsersIcon, ZapIcon, type LucideIcon } from '@/lib/icons'
 import { paidDataIcon } from '@/lib/paid-data/spend'
@@ -22,6 +22,12 @@ const TIER_ICON = { fast: ZapIcon, balanced: CpuIcon, smart: BrainIcon } satisfi
 
 function sourceIcon(source: CreditSource): LucideIcon {
     return source.kind === 'ai' ? TIER_ICON[source.tier] : paidDataIcon(source.capability)
+}
+
+// A Rerun model reads by its tier; a paid data source keeps the catalog's own label.
+export function useSourceLabel(): (source: CreditSource) => string {
+    const t = useTranslations('billing')
+    return source => (source.kind === 'ai' ? t(`usage.tier.${source.tier}`) : sourceLabel(source))
 }
 
 export function Swatch({ kind, className }: { kind: CreditKind; className?: string }) {
@@ -55,7 +61,16 @@ type Segment = { key: string; micros: number; className: string; label: string; 
 // trial's credit is all top-up and never resets, so it is simply what is left.
 export function SplitBar({ balance, trial = false }: { balance: CreditBalance; trial?: boolean }) {
     const locale = useLocale()
-    const segments: Segment[] = [{ key: 'ai', micros: balance.usedAiMicros, className: KIND_FILL.ai, label: `${KIND_LABEL.ai} · ${formatCredits(balance.usedAiMicros, locale)} credits` }, { key: 'data', micros: balance.usedDataMicros, className: KIND_FILL.data, label: `${KIND_LABEL.data} · ${formatCredits(balance.usedDataMicros, locale)} credits` }, { key: 'month', micros: balance.monthLeftMicros, className: 'bg-muted-foreground/20', label: `Left this month · ${formatCredits(balance.monthLeftMicros, locale)} credits` }, trial ? { key: 'topup', micros: balance.topupLeftMicros, className: 'bg-muted-foreground/20', label: `Left · ${formatCredits(balance.topupLeftMicros, locale)} credits` } : { key: 'topup', micros: balance.topupLeftMicros, className: 'bg-muted-foreground/15', label: `Top-up, never expires · ${formatCredits(balance.topupLeftMicros, locale)} credits`, hatched: true }].filter(segment => segment.micros > 0)
+    const t = useTranslations('billing')
+    const figure = (micros: number) => formatCredits(micros, locale)
+    const segments: Segment[] = [
+        { key: 'ai', micros: balance.usedAiMicros, className: KIND_FILL.ai, label: t('usage.bar.aiSpent', { figure: figure(balance.usedAiMicros) }) },
+        { key: 'data', micros: balance.usedDataMicros, className: KIND_FILL.data, label: t('usage.bar.dataSpent', { figure: figure(balance.usedDataMicros) }) },
+        { key: 'month', micros: balance.monthLeftMicros, className: 'bg-muted-foreground/20', label: t('usage.bar.leftThisMonth', { figure: figure(balance.monthLeftMicros) }) },
+        trial
+            ? { key: 'topup', micros: balance.topupLeftMicros, className: 'bg-muted-foreground/20', label: t('usage.bar.left', { figure: figure(balance.topupLeftMicros) }) }
+            : { key: 'topup', micros: balance.topupLeftMicros, className: 'bg-muted-foreground/15', label: t('usage.bar.topup', { figure: figure(balance.topupLeftMicros) }), hatched: true },
+    ].filter(segment => segment.micros > 0)
 
     if (segments.length === 0) return <div className="h-2.5 w-full rounded-full bg-muted-foreground/20" />
 
@@ -77,18 +92,19 @@ export function SplitBar({ balance, trial = false }: { balance: CreditBalance; t
 
 export function KindLegend({ balance }: { balance: CreditBalance }) {
     const locale = useLocale()
+    const t = useTranslations('billing')
     return (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             {(['ai', 'data'] as const).map(kind => (
                 <span key={kind} className="flex items-center gap-1.5">
                     <Swatch kind={kind} />
-                    {KIND_LABEL[kind]}
+                    {t(`usage.kind.${kind}`)}
                     <span className="text-foreground tabular-nums">{formatCredits(kind === 'ai' ? balance.usedAiMicros : balance.usedDataMicros, locale)}</span>
                 </span>
             ))}
             <span className="flex items-center gap-1.5">
                 <span aria-hidden className="inline-block size-2 rounded-[2px] bg-muted-foreground/25" />
-                Left
+                {t('usage.legendLeft')}
                 <span className="text-foreground tabular-nums">{formatCredits(balance.leftMicros, locale)}</span>
             </span>
         </div>

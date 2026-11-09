@@ -2,7 +2,7 @@
 
 import { formatDate } from '@rerun/i18n/format'
 import { motion } from 'motion/react'
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 
 import { Gauge } from '@/components/ui/gauge'
 import { dailyTotals } from '@/lib/rewind/format'
@@ -28,6 +28,7 @@ function SuccessRing({ ratio }: { ratio: number }) {
 
 export function RhythmSlide({ payload }: RewindSlideProps) {
     const locale = useLocale()
+    const t = useTranslations('rewind.rhythm')
     const days = dailyTotals(useLocalHourly(payload.hourly, payload.weekStart), locale)
     const peak = Math.max(1, ...days.map(day => day.runs))
     const busiest = days.find(day => day.runs === peak) ?? days[0]
@@ -36,7 +37,7 @@ export function RhythmSlide({ payload }: RewindSlideProps) {
     return (
         <RewindSlideFrame
             tone="magenta"
-            eyebrow="The rhythm"
+            eyebrow={t('eyebrow')}
             visual={
                 <>
                     <div className="flex h-[38cqh] items-end gap-2 rewind-wide:h-auto rewind-wide:min-h-0 rewind-wide:flex-1">
@@ -63,17 +64,15 @@ export function RhythmSlide({ payload }: RewindSlideProps) {
                     <RewindReveal delay={1.6} className="mt-6 flex items-center gap-4 rounded-2xl bg-black/25 p-4 backdrop-blur-sm">
                         <SuccessRing ratio={successRatio} />
                         <p className="text-sm text-white/80">
-                            <span className="block text-base font-semibold text-white">{payload.totals.done} finished without a hitch</span>
-                            {payload.totals.errors > 0 ? `${payload.totals.errors} hit a wall and told you about it.` : 'Not a single run went wrong.'}
+                            <span className="block text-base font-semibold text-white">{t('finished', { count: payload.totals.done })}</span>
+                            {payload.totals.errors > 0 ? t('errors', { count: payload.totals.errors }) : t('noErrors')}
                         </p>
                     </RewindReveal>
                 </>
             }
         >
             <RewindHeadline>
-                <RewindCount value={payload.totals.runs} delay={0.3} /> runs.
-                <br />
-                {fullDayName(days.indexOf(busiest), locale)} was the big one.
+                {t.rich('headline', { count: payload.totals.runs, day: fullDayName(days.indexOf(busiest), locale), value: () => <RewindCount value={payload.totals.runs} delay={0.3} />, br: () => <br /> })}
             </RewindHeadline>
         </RewindSlideFrame>
     )

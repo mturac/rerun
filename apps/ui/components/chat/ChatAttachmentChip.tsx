@@ -7,7 +7,7 @@ import { CheckIcon, FileIcon, RefreshCwIcon, XIcon } from '@/lib/icons'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { FileUIPart } from 'ai'
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 
 type ChatAttachmentChipProps = {
     file: FileUIPart & { id: string }
@@ -16,15 +16,15 @@ type ChatAttachmentChipProps = {
     onRetry: (id: string) => void
 }
 
-function progressLine(upload: UploadItem): string {
-    if (upload.status === 'queued') return 'Waiting'
-    if (upload.status === 'finishing') return 'Finishing'
-    const parts = [`${Math.round(upload.progress * 100)}%`]
-    if (upload.etaMs != null) parts.push(formatEta(upload.etaMs))
-    return parts.join(' · ')
+function progressLine(upload: UploadItem, t: ReturnType<typeof useTranslations<'chat.attachments'>>): string {
+    if (upload.status === 'queued') return t('waiting')
+    if (upload.status === 'finishing') return t('finishing')
+    const percent = Math.round(upload.progress * 100)
+    return upload.etaMs != null ? t('progressWithEta', { percent, eta: formatEta(upload.etaMs) }) : t('progress', { percent })
 }
 
 export function ChatAttachmentChip({ file, upload, onRemove, onRetry }: ChatAttachmentChipProps) {
+    const t = useTranslations('chat.attachments')
     const locale = useLocale()
     const isImage = file.mediaType?.startsWith('image/')
     const failed = upload?.status === 'error'
@@ -47,11 +47,11 @@ export function ChatAttachmentChip({ file, upload, onRemove, onRetry }: ChatAtta
             </span>
 
             <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="max-w-40 truncate text-foreground">{file.filename ?? 'file'}</span>
+                <span className="max-w-40 truncate text-foreground">{file.filename ?? t('fileFallback')}</span>
                 {pending && (
                     <>
-                        <Progress value={upload.status === 'finishing' ? null : upload.progress * 100} label={`Uploading ${file.filename ?? 'file'}`} className="w-40" />
-                        <span className="text-[10px] text-muted-foreground">{progressLine(upload)}</span>
+                        <Progress value={upload.status === 'finishing' ? null : upload.progress * 100} label={t('uploading', { name: file.filename ?? t('fileFallback') })} className="w-40" />
+                        <span className="text-[10px] text-muted-foreground">{progressLine(upload, t)}</span>
                     </>
                 )}
                 {failed && <span className="max-w-40 truncate text-[10px] text-destructive">{upload.error}</span>}
@@ -64,7 +64,7 @@ export function ChatAttachmentChip({ file, upload, onRemove, onRetry }: ChatAtta
                 {failed && (
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <button type="button" onClick={() => onRetry(file.id)} className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="Retry upload">
+                            <button type="button" onClick={() => onRetry(file.id)} className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title={t('retryUpload')}>
                                 <RefreshCwIcon className="size-3" />
                             </button>
                         </TooltipTrigger>
@@ -75,7 +75,7 @@ export function ChatAttachmentChip({ file, upload, onRemove, onRetry }: ChatAtta
                     type="button"
                     onClick={() => onRemove(file.id)}
                     className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    title={pending ? 'Cancel upload' : 'Remove attachment'}
+                    title={pending ? t('cancelUpload') : t('remove')}
                 >
                     <XIcon className="size-3" />
                 </button>

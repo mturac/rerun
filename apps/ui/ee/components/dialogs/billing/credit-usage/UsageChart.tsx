@@ -1,6 +1,7 @@
 'use client'
 
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
+import type { ReactNode } from 'react'
 import { useState } from 'react'
 
 import { dayLabel, periodDayCount, type CreditBalance, type CreditUsage } from '@/ee/lib/billing/credit-usage'
@@ -56,6 +57,8 @@ function Cumulative({ days, slots, balance, trial, hover, onHover, locale }: { d
     const line = points.map((micros, index) => `${index === 0 ? 'M' : 'L'}${x(index)},${y(micros)}`).join(' ')
     const area = `${line} L${x(points.length - 1)},${HEIGHT} L${x(0)},${HEIGHT} Z`
     const showMonth = !trial && month > 0 && month < whole
+    const t = useTranslations('billing')
+    const figure = formatCredits(whole, locale)
 
     return (
         <div className="relative" style={{ height: HEIGHT }} onMouseLeave={() => onHover(null)}>
@@ -69,11 +72,11 @@ function Cumulative({ days, slots, balance, trial, hover, onHover, locale }: { d
             </svg>
             {showMonth && (
                 <span className="absolute left-0 -translate-y-full pb-0.5 text-[10px] text-muted-foreground" style={{ top: y(month) }}>
-                    Monthly {formatCredits(month, locale)}
+                    {t('usage.chart.monthly', { figure: formatCredits(month, locale) })}
                 </span>
             )}
             <span className={cn('absolute -translate-y-full pb-0.5 text-[10px]', showMonth ? 'right-0 text-muted-foreground/70' : 'left-0 text-muted-foreground')} style={{ top: y(whole) }}>
-                {trial ? `Trial credits ${formatCredits(whole, locale)}` : showMonth ? `+ top-up ${formatCredits(whole, locale)}` : `Credits ${formatCredits(whole, locale)}`}
+                {trial ? t('usage.chart.trialCredits', { figure }) : showMonth ? t('usage.chart.topup', { figure }) : t('usage.chart.credits', { figure })}
             </span>
             <div className="absolute inset-0 flex">
                 {Array.from({ length: slots }, (_, index) => (
@@ -84,8 +87,13 @@ function Cumulative({ days, slots, balance, trial, hover, onHover, locale }: { d
     )
 }
 
+function value(chunks: ReactNode) {
+    return <span className="text-foreground tabular-nums">{chunks}</span>
+}
+
 export function UsageChart({ usage, balance, trial, mode }: { usage: CreditUsage; balance: CreditBalance; trial: boolean; mode: ChartMode }) {
     const locale = useLocale()
+    const t = useTranslations('billing')
     const [hover, setHover] = useState<number | null>(null)
     const slots = periodDayCount(usage)
     const day = hover != null ? usage.days[hover] : null
@@ -99,25 +107,23 @@ export function UsageChart({ usage, balance, trial, mode }: { usage: CreditUsage
                         <span className="font-medium">{dayLabel(day.day, locale)}</span>
                         <span className="flex items-center gap-3 text-muted-foreground">
                             {mode === 'cumulative' ? (
-                                <span>
-                                    <span className="text-foreground tabular-nums">{formatCredits(upTo, locale)}</span> spent so far
-                                </span>
+                                <span>{t.rich('usage.chart.spentSoFar', { figure: formatCredits(upTo, locale), value })}</span>
                             ) : (
                                 <>
                                     <span className="flex items-center gap-1.5">
                                         <Swatch kind="ai" />
-                                        AI <span className="text-foreground tabular-nums">{formatCredits(day.aiMicros, locale)}</span>
+                                        {t.rich('usage.chart.ai', { figure: formatCredits(day.aiMicros, locale), value })}
                                     </span>
                                     <span className="flex items-center gap-1.5">
                                         <Swatch kind="data" />
-                                        Data <span className="text-foreground tabular-nums">{formatCredits(day.dataMicros, locale)}</span>
+                                        {t.rich('usage.chart.data', { figure: formatCredits(day.dataMicros, locale), value })}
                                     </span>
                                 </>
                             )}
                         </span>
                     </>
                 ) : (
-                    <span className="text-muted-foreground">{mode === 'daily' ? 'Credits per day' : 'Spent so far, and where this pace lands'}</span>
+                    <span className="text-muted-foreground">{mode === 'daily' ? t('usage.chart.perDay') : t('usage.chart.paceCaption')}</span>
                 )}
             </div>
             {mode === 'daily' ? <Daily days={usage.days} slots={slots} hover={hover} onHover={setHover} /> : <Cumulative days={usage.days} slots={slots} balance={balance} trial={trial} hover={hover} onHover={setHover} locale={locale} />}
@@ -125,12 +131,10 @@ export function UsageChart({ usage, balance, trial, mode }: { usage: CreditUsage
                 <span>{shortDate(usage.period.start, locale)}</span>
                 {usage.days.length < slots && (
                     <span className="absolute -translate-x-1/2 text-foreground" style={{ left: `${((usage.days.length - 0.5) / slots) * 100}%` }}>
-                        Today
+                        {t('usage.chart.today')}
                     </span>
                 )}
-                <span>
-                    {trial ? 'Trial ends' : 'Resets'} {shortDate(usage.period.end, locale)}
-                </span>
+                <span>{trial ? t('usage.chart.trialEnds', { date: shortDate(usage.period.end, locale) }) : t('usage.chart.resets', { date: shortDate(usage.period.end, locale) })}</span>
             </div>
         </figure>
     )

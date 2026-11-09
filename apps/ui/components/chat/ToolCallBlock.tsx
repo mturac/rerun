@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { useBoardStore } from '@/stores/board.store'
 import { readableToolError } from '@rerun/contracts'
 import { ToolCallRow, type ToolCallStatus } from '@rerun/ui/chat'
+import { useTranslations } from 'next-intl'
 
 export type ToolState = 'input-streaming' | 'input-available' | 'output-available' | 'output-error' | 'output-denied' | 'approval-requested' | 'approval-responded'
 
@@ -72,26 +73,27 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
 }
 
 function ToolCallDetails({ toolName, state, input, inputText, output, errorText }: ToolCallBlockProps) {
+    const t = useTranslations('chat.tool')
     const args = argsOf(input)
     return (
         <>
             {state === 'input-streaming' && inputText && (
-                <ToolSection label="Input">
+                <ToolSection label={t('input')}>
                     <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background px-2 py-1.5 text-xs font-mono text-foreground opacity-60">{inputText}</pre>
                 </ToolSection>
             )}
             {args && Object.keys(args).length > 0 && (
-                <ToolSection label="Input">
+                <ToolSection label={t('input')}>
                     <ToolArgs args={args} toolName={toolName} />
                 </ToolSection>
             )}
             {errorText && (
-                <ToolSection label="Error">
+                <ToolSection label={t('error')}>
                     <p className="rounded bg-red-950/20 px-2 py-1.5 text-xs text-red-400">{readableToolError(errorText)}</p>
                 </ToolSection>
             )}
             {output !== undefined && (
-                <ToolSection label="Output">
+                <ToolSection label={t('output')}>
                     <ToolOutput output={output} />
                 </ToolSection>
             )}
@@ -125,10 +127,11 @@ function ToolArgs({ args, toolName }: { args: Record<string, unknown>; toolName:
 }
 
 export function ToolOutput({ output }: { output: unknown }) {
+    const t = useTranslations('chat.tool')
     if (output && typeof output === 'object' && 'duration' in output && Object.keys(output).length === 1) {
         const duration = (output as { duration?: number }).duration
         if (typeof duration === 'number') {
-            return <span className="text-xs text-muted-foreground">Completed in {duration < 1 ? `${Math.round(duration * 1000)}ms` : `${duration.toFixed(1)}s`}</span>
+            return <span className="text-xs text-muted-foreground">{t('completedIn', { duration: duration < 1 ? `${Math.round(duration * 1000)}ms` : `${duration.toFixed(1)}s` })}</span>
         }
     }
 

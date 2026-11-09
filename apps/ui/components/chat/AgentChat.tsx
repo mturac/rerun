@@ -77,6 +77,7 @@ import { COWORKER_STARTER_SUGGESTIONS, paidDataSourcesByTurn, RERUN_CONNECTION_I
 import { track } from '@rerun/analytics/client'
 import { AnimatePresence, motion } from 'motion/react'
 import { DefaultChatTransport } from 'ai'
+import { useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { scrollFadeMask, useScrollEdges } from '@rerun/ui/primitives'
@@ -129,6 +130,7 @@ type AgentChatProps = {
 }
 
 export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessionCreated, initialRunId, arrival = 0, mentionAgents = [], mentionSkills = [], sessionWorking = false, sessionIdle = false, alertPending = false, body, header, suppressEmptyState = false, setup, onSetupSkipped, onOpenInstall, onRunFinished, onSessionInserted, onSessionStatusChange, onMessageSent, onNewConversation, threads, onOpenThread, composerPlaceholder }: AgentChatProps) {
+    const t = useTranslations('chat.agentChat')
     const { workspace, user } = useSession()
     const userId = user?.id
     const onSessionCreatedRef = useRef(onSessionCreated)
@@ -619,8 +621,8 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
         setRunError(null)
         const stopped = await stopRun()
         setStopping(false)
-        if (!stopped) toast.error('Could not stop the current run. Your message will be sent when it ends.')
-    }, [queued, stopRun, setRunError, setStopping])
+        if (!stopped) toast.error(t('stopFailed'))
+    }, [queued, stopRun, setRunError, setStopping, t])
 
     // The install this tab just asked for already runs in another conversation, started from a tab
     // or a device this one had not heard of yet. Nothing was sent: the tab goes back to blank and
@@ -719,7 +721,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
     // Only surface the hint while it's both armed (a blocked send) and still no model.
     const showModelHint = hintArmed && !modelReady
     // Shared by the composer and the install gate, which both refuse to run without a model.
-    const modelHint = showModelHint ? <p className="text-xs text-destructive">{refusedModel ?? 'Select a model to start — open the model menu below.'}</p> : null
+    const modelHint = showModelHint ? <p className="text-xs text-destructive">{refusedModel ?? t('selectModel')}</p> : null
     // A model the plan refuses has served models next to it: the picker opens on them right away.
     const blockSend = useCallback(() => {
         setHintArmed(true)
@@ -938,8 +940,8 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
                             <ConversationEmptyState>
                                 <AgentBuddy agentId={agentId} mood={buddyMood} size={96} />
                                 <div className="space-y-1">
-                                    <h3 className="font-medium text-sm">Start a conversation</h3>
-                                    <p className="text-muted-foreground text-sm">Send a message to this coworker</p>
+                                    <h3 className="font-medium text-sm">{t('emptyTitle')}</h3>
+                                    <p className="text-muted-foreground text-sm">{t('emptyDescription')}</p>
                                 </div>
                                 <Suggestions className="mt-2 justify-center">
                                     {COWORKER_STARTER_SUGGESTIONS.map(s => (

@@ -19,12 +19,14 @@ import { Dialog } from '@/components/ui/dialog'
 import { useMemberDirectory } from '@/hooks/useMemberProfiles'
 import { syncBoardGrant, syncBoardVisibility } from '@/lib/board/sync-space-access'
 import { useSession, type WorkspaceRole } from '@/supabase/session/SessionProvider'
+import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 type Result = { ok: true } | { ok: false; error: string }
 
 export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+    const t = useTranslations('dialogs.members')
     const [members, setMembers] = useState<WorkspaceMember[]>([])
     const [inviteLink, setInviteLink] = useState<{ email: string; url: string } | null>(null)
     const [invites, setInvites] = useState<WorkspaceInviteRow[]>([])
@@ -115,7 +117,7 @@ export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; 
             return false
         }
         if (result.inviteUrl) setInviteLink({ email, url: result.inviteUrl })
-        else toast.success(`Invitation sent to ${email}`)
+        else toast.success(t('invite.sent', { email }))
         refresh()
         return true
     }
@@ -130,7 +132,7 @@ export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; 
         refresh()
     }
 
-    const label = (member: WorkspaceMember) => member.email ?? 'Member'
+    const label = (member: WorkspaceMember) => member.email ?? t('fallbackLabel')
 
     return (
         <Dialog
@@ -152,8 +154,8 @@ export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; 
                     busy={busy}
                     profileOf={profileOf}
                     onInvite={invite}
-                    onRoleChange={(member, role) => run(() => setMemberRoleAction(member.userId, role), role === 'admin' ? `${label(member)} is now an admin` : `${label(member)} is now a member`)}
-                    onRemove={member => run(() => removeMemberAction(member.userId), `${label(member)} removed from the workspace`)}
+                    onRoleChange={(member, role) => run(() => setMemberRoleAction(member.userId, role), role === 'admin' ? t('nowAdmin', { name: label(member) }) : t('nowMember', { name: label(member) }))}
+                    onRemove={member => run(() => removeMemberAction(member.userId), t('removed', { name: label(member) }))}
                     onRevoke={inv => run(() => revokeInvitationAction(inv.id))}
                     opened={opened}
                     onOpenMember={openMember}

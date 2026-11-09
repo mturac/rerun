@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useFormContext } from 'react-hook-form'
+import { useTranslations } from 'next-intl'
 import { Wand2 } from '@/lib/icons'
 import { toTemplateBrief } from '@/lib/templates/describe'
 import type { TemplateFormValues } from '@/lib/templates/edit-schema'
@@ -14,6 +15,7 @@ type Props = {
 }
 
 export function GenerateAltTextButton({ imageUrl, isCover, onGenerated }: Props) {
+    const t = useTranslations('templates.authoring')
     const { getValues } = useFormContext<TemplateFormValues>()
     const { actions } = useTemplateAuthoring()
     const [pending, startTransition] = React.useTransition()
@@ -37,7 +39,7 @@ export function GenerateAltTextButton({ imageUrl, isCover, onGenerated }: Props)
             onClick={generate}
             disabled={pending}
             className="shrink-0 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-            title={error ?? 'Write the alt text'}
+            title={error ?? t('altText')}
         >
             <Wand2 className="size-4" />
         </button>

@@ -2,6 +2,7 @@
 
 import { IsoGrid } from '@rerun/ui/iso-grid'
 import { Badge } from '@rerun/ui/primitives'
+import { useTranslations } from 'next-intl'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -46,8 +47,8 @@ function readOutput(output: unknown): PlanAnswer | null {
 // the card rather than a line under the team: the answer is the card's state, not one more entry
 // in it.
 function verdictOf(answer: PlanAnswer) {
-    if (!answer.answered) return { icon: MinusIcon, label: 'Skipped', className: 'text-muted-foreground' }
-    return answer.confirmed ? { icon: CircleCheckIcon, label: 'Confirmed', className: 'text-emerald-500' } : { icon: PencilIcon, label: 'Asked for changes', className: 'text-muted-foreground' }
+    if (!answer.answered) return { icon: MinusIcon, labelKey: 'skipped', className: 'text-muted-foreground' } as const
+    return answer.confirmed ? ({ icon: CircleCheckIcon, labelKey: 'confirmed', className: 'text-emerald-500' } as const) : ({ icon: PencilIcon, labelKey: 'askedChanges', className: 'text-muted-foreground' } as const)
 }
 
 // Which ends of the row still hide a card, for the fade and the arrows alike.
@@ -98,6 +99,7 @@ function PlanBoxScene({ group, animated, framed }: { group: PlanGroup; animated:
 }
 
 function PlanAgent({ item }: { item: PlanItem }) {
+    const t = useTranslations('foreman.plan')
     return (
         <div className="flex min-w-0 flex-col gap-3">
             <div className="flex min-w-0 flex-col gap-1">
@@ -111,13 +113,12 @@ function PlanAgent({ item }: { item: PlanItem }) {
             )}
             {item.need && (
                 <p className="rounded-md border-l-2 border-amber-500/70 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">Goes after: </span>
-                    {item.need}
+                    {t.rich('goesAfter', { need: item.need, label: chunks => <span className="font-medium text-foreground">{chunks}</span> })}
                 </p>
             )}
             {item.gets && (
                 <div className="flex flex-col gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground">What you get this week</span>
+                    <span className="text-xs font-medium text-muted-foreground">{t('thisWeek')}</span>
                     <ul className="flex flex-col gap-1.5">
                         {item.gets.map((line, index) => (
                             <li key={index} className="flex items-start gap-2 text-xs">
@@ -151,6 +152,7 @@ function PlanBoxCard({ group, answered, streaming, framed }: { group: PlanGroup;
 }
 
 export function PlanCardWidget({ input, output, streaming = false, onAnswer }: PlanCardWidgetProps) {
+    const t = useTranslations('foreman.plan')
     // A Box nobody works in yet is still built on the board, it only has nothing to say on the card.
     const { title, groups } = useMemo(() => {
         const plan = readPlan(input)
@@ -166,18 +168,18 @@ export function PlanCardWidget({ input, output, streaming = false, onAnswer }: P
         // outside it. The rest of it hangs inside, where the carousel arrows sit, so they step down.
         <div className={cn('relative mb-2 flex flex-col gap-3 py-4', verdict && 'mt-3 pt-6', PANEL_CARD)}>
             {verdict && (
-                <TooltipLabeled label={verdict.label}>
+                <TooltipLabeled label={t(verdict.labelKey)}>
                     <Icon icon={verdict.icon} size="sm" className={cn('absolute -top-3 right-2 z-10 bg-card shadow-lg shadow-black/40', verdict.className)} />
                 </TooltipLabeled>
             )}
             <div className="flex items-start justify-between gap-3 px-4">
-                <p className="min-w-0 text-sm font-medium">{title}</p>
+                <p className="min-w-0 text-sm font-medium">{title || t('defaultTitle')}</p>
                 {groups.length > 1 && (
                     <div className="flex shrink-0 gap-1">
-                        <Button size="icon-xs" variant="ghost" aria-label="Previous Box" disabled={edges.start} onClick={() => scrollByCard(-1)}>
+                        <Button size="icon-xs" variant="ghost" aria-label={t('previousBox')} disabled={edges.start} onClick={() => scrollByCard(-1)}>
                             <ChevronLeftIcon />
                         </Button>
-                        <Button size="icon-xs" variant="ghost" aria-label="Next Box" disabled={edges.end} onClick={() => scrollByCard(1)}>
+                        <Button size="icon-xs" variant="ghost" aria-label={t('nextBox')} disabled={edges.end} onClick={() => scrollByCard(1)}>
                             <ChevronRightIcon />
                         </Button>
                     </div>
@@ -201,10 +203,10 @@ export function PlanCardWidget({ input, output, streaming = false, onAnswer }: P
             {!answered && (
                 <div className="flex flex-col gap-2 px-4">
                     <Button size="lg" disabled={streaming} onClick={() => onAnswer({ answered: true, confirmed: true })}>
-                        Build my coworker
+                        {t('build')}
                     </Button>
                     <Button size="lg" variant="outline" disabled={streaming} onClick={() => onAnswer({ answered: true, confirmed: false })}>
-                        Change something
+                        {t('change')}
                     </Button>
                 </div>
             )}

@@ -19,6 +19,7 @@ import { BorderBeam } from '@rerun/ui'
 import { ArrowRight, CheckIcon, Loader2Icon, RefreshCwIcon } from '@/lib/icons'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 type SuggestedService = { slug: string; reason?: string }
 
@@ -120,10 +121,11 @@ export function ServiceSuggestionBlock({ agentId, services, onDone, inline }: Se
 }
 
 export function ServiceSuggestionLoading() {
+    const t = useTranslations('services.suggestion')
     return (
         <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
             <Loader2Icon className="size-4 animate-spin" />
-            <span>Loading suggested apps…</span>
+            <span>{t('loading')}</span>
         </div>
     )
 }
@@ -149,6 +151,7 @@ type ServiceSuggestionCardProps = {
 }
 
 export function ServiceSuggestionCard({ agentId, services, onDone, inline, defaultOpen }: ServiceSuggestionCardProps) {
+    const t = useTranslations('services')
     const driver = useServiceSetupDriver()
     const [resolved, setResolved] = useState(services)
     const [statuses, setStatuses] = useState(() => initialStatuses(services))
@@ -201,7 +204,7 @@ export function ServiceSuggestionCard({ agentId, services, onDone, inline, defau
     const authTarget = s.installStatus === 'needs_auth' && (s.oauth || s.managed || s.composio) ? { oauth: s.oauth, managed: s.managed, composio: s.composio } : undefined
 
     const connect = () => {
-        if (connectsInOneClick(s.authMethods, s.installedMethodId, authTarget)) setAutoConnect({ slug: s.slug, popup: openPendingSignInPopup(s.name) })
+        if (connectsInOneClick(s.authMethods, s.installedMethodId, authTarget)) setAutoConnect({ slug: s.slug, popup: openPendingSignInPopup(s.name, t('signInPopup.connecting', { name: s.name })) })
         setOpen(s.slug, true)
     }
 
@@ -263,7 +266,7 @@ export function ServiceSuggestionCard({ agentId, services, onDone, inline, defau
         const details = await driver.details(agentId, alternative.slug)
         setSwapping(null)
         if (!details || details.authMethods.length === 0) {
-            setSwapError(`${alternative.name} could not be loaded.`)
+            setSwapError(t('suggestion.loadFailed', { name: alternative.name }))
             return
         }
         const original = s.replaces ?? { slug: s.slug, name: s.name }
@@ -294,23 +297,23 @@ export function ServiceSuggestionCard({ agentId, services, onDone, inline, defau
                         <Icon {...serviceIconProps(s.icon, s.category)} size="sm" />
                         <div className="min-w-32 flex-1">
                             <span className="block truncate font-medium leading-snug">{s.name}</span>
-                            {s.notFound ? <p className="text-xs text-muted-foreground">Not found in the catalog, skipped.</p> : s.reason && <p className="text-xs text-muted-foreground">{s.reason}</p>}
+                            {s.notFound ? <p className="text-xs text-muted-foreground">{t('suggestion.notFoundSkipped')}</p> : s.reason && <p className="text-xs text-muted-foreground">{s.reason}</p>}
                         </div>
                         {folded && (
                             <div className="flex items-center gap-1">
                                 {!multiple && (
                                     <Button size="sm" variant="ghost" disabled={locked} onClick={skip}>
-                                        Not now
+                                        {t('suggestion.notNow')}
                                     </Button>
                                 )}
                                 <Button size="sm" disabled={locked || swapping !== null} onClick={connect}>
-                                    Connect
+                                    {t('suggestion.connect')}
                                 </Button>
                             </div>
                         )}
                         {showForm && (
                             <Button size="sm" variant="ghost" disabled={locked} onClick={cancel} className="text-muted-foreground">
-                                Cancel
+                                {t('suggestion.cancel')}
                             </Button>
                         )}
                     </div>
@@ -338,15 +341,15 @@ export function ServiceSuggestionCard({ agentId, services, onDone, inline, defau
                     ) : status === 'connected' ? (
                         <div className="flex flex-wrap items-center gap-2 text-sm">
                             <IconBadge tone="green" icon={CheckIcon} glow={false} />
-                            <span className="min-w-0 flex-1 truncate font-medium">{s.name} connected</span>
+                            <span className="min-w-0 flex-1 truncate font-medium">{t('suggestion.connected', { name: s.name })}</span>
                             <Button size="sm" variant="ghost" className="-my-1 shrink-0 text-muted-foreground" disabled={locked || resetting === s.slug} onClick={reconnect}>
                                 {resetting === s.slug ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
-                                Reconnect
+                                {t('suggestion.reconnect')}
                             </Button>
                             {resetError && <p className="basis-full text-xs text-destructive">{resetError}</p>}
                         </div>
                     ) : (
-                        !folded && <p className="text-sm text-muted-foreground">{s.notFound ? 'Not found in the catalog.' : 'Skipped.'}</p>
+                        !folded && <p className="text-sm text-muted-foreground">{s.notFound ? t('suggestion.notFound') : t('suggestion.skipped')}</p>
                     )}
                 </motion.div>
             </AnimatePresence>
@@ -371,10 +374,10 @@ export function ServiceSuggestionCard({ agentId, services, onDone, inline, defau
                         <div className="ml-auto flex items-center gap-2">
                             {multiple && (
                                 <Button size="sm" variant="outline" disabled={locked} onClick={skip}>
-                                    Skip
+                                    {t('suggestion.skip')}
                                 </Button>
                             )}
-                            <Button size="icon-sm" disabled={locked} onClick={() => advance(statuses)} aria-label={current === last ? 'Finish' : 'Next app'}>
+                            <Button size="icon-sm" disabled={locked} onClick={() => advance(statuses)} aria-label={current === last ? t('suggestion.finish') : t('suggestion.nextApp')}>
                                 <ArrowRight className="size-4" />
                             </Button>
                         </div>

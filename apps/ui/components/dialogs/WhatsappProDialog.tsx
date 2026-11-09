@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { formatNumber } from '@rerun/i18n/format'
+import { useLocale, useTranslations } from 'next-intl'
 import { addAppSlotAction, cancelAppConnectAction, connectWhatsappAction, disconnectAppConnectionAction, getAppsOverviewAction, submitAppCheckpointAction } from '@/app/api/_actions/apps.actions'
 import type { AppConnectionView, AppsOverview, ConnectOutcome } from '@/app/api/_services/apps.service'
 import type { WhatsappConnectInput, WhatsappLinkMethod } from '@/components/apps/WhatsappProViews'
@@ -24,6 +26,8 @@ function preferredMethod(): WhatsappLinkMethod {
 }
 
 export function WhatsappProDialog() {
+    const t = useTranslations('dialogs')
+    const locale = useLocale()
     const open = usePaidAppsStore(s => s.openSlug === SLUG)
     const reconnectId = usePaidAppsStore(s => s.reconnectId)
     const closeApp = usePaidAppsStore(s => s.closeApp)
@@ -194,7 +198,7 @@ export function WhatsappProDialog() {
         const result = await addAppSlotAction(SLUG, randomUuid())
         setPending(null)
         if (!result.ok) return setError(result.error)
-        toast.success(result.value.trialSlot ? 'Slot added, $0 during your trial.' : 'Slot added to your plan.')
+        toast.success(result.value.trialSlot ? t('paidApp.slotAddedTrial', { price: formatNumber(0, locale, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) }) : t('paidApp.slotAdded'))
         // The webhook moves the slot count, a moment after Stripe answers.
         setTimeout(() => void load(), 1500)
         await load()

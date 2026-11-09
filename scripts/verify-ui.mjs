@@ -232,7 +232,8 @@ async function skipPhoneStep(admin, userId) {
 async function signIn(context, base, account) {
     const page = await context.newPage()
     await page.goto(`${base}/auth/confirm?token_hash=${account.tokenHash}&type=magiclink`)
-    await page.getByRole('button', { name: 'Continue' }).click()
+    // The confirm page is in the browser's language: its one submit button, whatever it says.
+    await page.locator('form button[type="submit"]').first().click()
     await page.waitForURL((url) => !url.pathname.startsWith('/auth'), { timeout: 60_000 })
     await skipPhoneStep(account.admin, account.userId)
     await page.close()

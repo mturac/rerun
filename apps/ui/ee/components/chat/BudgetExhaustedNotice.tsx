@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { setRerunCreditPausedAction } from '@/ee/actions/billing.actions'
@@ -53,6 +54,7 @@ export function BudgetExhaustedNotice({
     noCredit,
     ...upgrade
 }: { onConnectProvider?: (provider: SubscriptionProvider) => void; ownConnection?: BudgetNoticeOwnConnection; preTrial?: boolean; trialing?: boolean; paused?: boolean; noCredit?: boolean } & TrialUpgrade) {
+    const t = useTranslations('chat.budget')
     const openBilling = useBillingStore(s => s.openBilling)
 
     if (paused) {
@@ -65,10 +67,10 @@ export function BudgetExhaustedNotice({
                 <BorderBeam animated pattern="arcs" tone="orange" glow width={1} duration={7} />
                 <div className="flex items-center gap-2.5 text-sm">
                     <Icon size="sm" tone="orange" icon={PauseIcon} />
-                    <span className="font-medium">Rerun credits paused</span>
+                    <span className="font-medium">{t('paused.title')}</span>
                 </div>
-                <p className="text-sm">Your coworkers can&apos;t use Rerun models or paid data until someone resumes them.</p>
-                <NoticeActions actions={[{ key: 'resume', leading: <Icon icon={Play} size="sm" />, title: 'Resume Rerun credits', description: 'Spending starts again right away.', cta: 'Resume', onClick: resume }]} />
+                <p className="text-sm">{t('paused.body')}</p>
+                <NoticeActions actions={[{ key: 'resume', leading: <Icon icon={Play} size="sm" />, title: t('paused.actionTitle'), description: t('paused.actionDescription'), cta: t('paused.cta'), onClick: resume }]} />
             </div>
         )
     }
@@ -79,10 +81,10 @@ export function BudgetExhaustedNotice({
                 <BorderBeam animated pattern="arcs" tone="red" glow width={1} duration={7} />
                 <div className="flex items-center gap-2.5 text-sm">
                     <Icon size="sm" tone="red" icon={ZapOffIcon} className="bg-red-500/10 text-foreground" />
-                    <span className="font-medium">Rerun credits</span>
+                    <span className="font-medium">{t('title')}</span>
                 </div>
-                <p className="text-sm">You&apos;ve used up the {creditsLabel(TRIAL_CREDITS)} that come with a new account. Subscribing is what opens the rest.</p>
-                <NoticeActions actions={[{ key: 'trial', leading: <Icon icon={CreditCardIcon} size="sm" />, title: 'Subscribe now', description: 'Your coworkers keep working, cancel any time.', cta: 'Subscribe', onClick: () => openBilling(undefined, 'budget_exhausted_pre_trial') }]} />
+                <p className="text-sm">{t('preTrial.body', { credits: creditsLabel(TRIAL_CREDITS) })}</p>
+                <NoticeActions actions={[{ key: 'trial', leading: <Icon icon={CreditCardIcon} size="sm" />, title: t('subscribe.title'), description: t('preTrial.actionDescription'), cta: t('subscribe.cta'), onClick: () => openBilling(undefined, 'budget_exhausted_pre_trial') }]} />
             </div>
         )
     }
@@ -94,67 +96,67 @@ export function BudgetExhaustedNotice({
         ? {
               key: 'plan',
               leading: <Icon icon={CreditCardIcon} size="sm" />,
-              title: 'Subscribe now',
-              cta: 'Subscribe',
-              description: trialing ? `Ends your trial today. ${creditsLabel(BASE_PLAN_CREDITS)} included every month.` : `${creditsLabel(BASE_PLAN_CREDITS)} included every month.`,
+              title: t('subscribe.title'),
+              cta: t('subscribe.cta'),
+              description: trialing ? t('subscribe.descriptionTrial', { credits: creditsLabel(BASE_PLAN_CREDITS) }) : t('subscribe.description', { credits: creditsLabel(BASE_PLAN_CREDITS) }),
               onClick: () => openBilling(undefined, trialing ? 'budget_exhausted_trial' : 'budget_exhausted'),
           }
         : {
               key: 'credits',
               leading: <Icon icon={CoinsIcon} size="sm" />,
-              title: 'Top up your Rerun credits',
-              cta: 'Top up',
-              description: 'Or wait, it resets next month.',
+              title: t('topUp.title'),
+              cta: t('topUp.cta'),
+              description: t('topUp.description'),
               onClick: () => openBilling('credit_pack', 'budget_exhausted'),
           }
-    const usedUp = noCredit ? 'This workspace has no Rerun credits yet.' : trialing ? `You've used up the ${creditsLabel(TRIAL_CREDITS)} of your free trial.` : "You've used up your Rerun credits for this period."
+    const usedUp = noCredit ? t('usedUp.noCredit') : trialing ? t('usedUp.trial', { credits: creditsLabel(TRIAL_CREDITS) }) : t('usedUp.period')
 
     return (
         <div className="relative mb-2 space-y-2.5 overflow-hidden rounded-lg px-4 pt-3 pb-4">
             <BorderBeam animated pattern="arcs" tone="red" glow width={1} duration={7} />
             <div className="flex items-center gap-2.5 text-sm">
                 <Icon size="sm" tone="red" icon={ZapOffIcon} className="bg-red-500/10 text-foreground" />
-                <span className="font-medium">Rerun credits</span>
+                <span className="font-medium">{t('title')}</span>
             </div>
             {ownConnection ? (
                 <>
                     <p className="text-sm">
-                        {usedUp} This conversation ran on Rerun, and your {ownConnection.label} plan is connected.
+                        {usedUp} {t('ownConnection.body', { plan: ownConnection.label })}
                     </p>
                     <Button size="sm" className="w-full" onClick={ownConnection.onUse}>
                         <ProviderIcon provider={ownConnection.provider} className="size-3.5" />
-                        <span className="truncate">Run on {ownConnection.label}</span>
+                        <span className="truncate">{t('runOn', { plan: ownConnection.label })}</span>
                     </Button>
                     <div className="flex items-center gap-2 text-xs uppercase">
                         <span className="flex-1 border-t" />
-                        <span className="text-muted-foreground">Or</span>
+                        <span className="text-muted-foreground">{t('or')}</span>
                         <span className="flex-1 border-t" />
                     </div>
                     <NoticeActions actions={[{ ...paidWayOut, variant: 'outline' }]} />
                 </>
             ) : onConnectProvider ? (
                 <>
-                    <p className="text-sm">{usedUp} Already paying for Claude or ChatGPT? Run your coworkers on that plan, at no extra cost here.</p>
+                    <p className="text-sm">{usedUp} {t('connectProvider.body')}</p>
                     <div className="grid grid-cols-2 gap-2">
                         <Button size="sm" onClick={() => onConnectProvider('claude')}>
                             <ProviderIcon provider="claude" className="size-3.5" />
-                            Connect Claude
+                            {t('connectProvider.claude')}
                         </Button>
                         <Button size="sm" onClick={() => onConnectProvider('codex')}>
                             <ProviderIcon provider="openai" className="size-3.5" />
-                            Connect ChatGPT
+                            {t('connectProvider.chatgpt')}
                         </Button>
                     </div>
                     <div className="flex items-center gap-2 text-xs uppercase">
                         <span className="flex-1 border-t" />
-                        <span className="text-muted-foreground">Or</span>
+                        <span className="text-muted-foreground">{t('or')}</span>
                         <span className="flex-1 border-t" />
                     </div>
                     <NoticeActions actions={[{ ...paidWayOut, variant: 'outline' }]} />
                 </>
             ) : (
                 <>
-                    <p className="text-sm">{trialing || noCredit ? `${usedUp} Subscribe to keep your coworkers working.` : `${usedUp} It resets next month.`}</p>
+                    <p className="text-sm">{usedUp} {trialing || noCredit ? t('subscribeToKeepWorking') : t('resetsNextMonth')}</p>
                     <NoticeActions actions={[paidWayOut]} />
                 </>
             )}
@@ -163,6 +165,7 @@ export function BudgetExhaustedNotice({
 }
 
 function TrialUpgradeNotice({ coworker, priceArm = DEFAULT_PRICE_ARM, onPaid, resuming, onResumeNow, onConnectProvider, ownConnection }: TrialUpgrade & { onConnectProvider?: (provider: SubscriptionProvider) => void; ownConnection?: BudgetNoticeOwnConnection }) {
+    const t = useTranslations('chat.budget')
     const openBilling = useBillingStore(s => s.openBilling)
 
     if (resuming) {
@@ -172,11 +175,11 @@ function TrialUpgradeNotice({ coworker, priceArm = DEFAULT_PRICE_ARM, onPaid, re
                     <CheckIcon className="size-3" />
                 </span>
                 <span className="min-w-0 flex-1">
-                    <span className="font-medium">You&apos;re on Pro.</span> <span className="text-muted-foreground">{coworker ?? 'Your coworker'} picks the task back up.</span>
+                    <span className="font-medium">{t('trial.onPro')}</span> <span className="text-muted-foreground">{coworker ? t('trial.resumingNamed', { name: coworker }) : t('trial.resuming')}</span>
                 </span>
                 {onResumeNow && (
                     <Button size="xs" variant="outline" onClick={onResumeNow}>
-                        Resume
+                        {t('paused.cta')}
                     </Button>
                 )}
             </div>
@@ -190,12 +193,12 @@ function TrialUpgradeNotice({ coworker, priceArm = DEFAULT_PRICE_ARM, onPaid, re
             <div className="flex items-start gap-2.5">
                 <Icon size="sm" tone="red" icon={ZapOffIcon} className="bg-red-500/10 text-foreground" />
                 <div className="min-w-0 text-sm">
-                    <p className="font-medium">Trial credits used up</p>
-                    {coworker && <p className="text-muted-foreground">{coworker} stopped.</p>}
+                    <p className="font-medium">{t('trial.title')}</p>
+                    {coworker && <p className="text-muted-foreground">{t('trial.stopped', { name: coworker })}</p>}
                 </div>
             </div>
             <Button size="lg" className="w-full" onClick={() => openBilling(undefined, 'budget_exhausted_trial', { coworker, onPaid })}>
-                <span className="truncate">Continue with Pro · {monthly}/mo</span>
+                <span className="truncate">{t('trial.continueWithPro', { price: monthly })}</span>
                 <ArrowRightIcon className="size-3.5" />
             </Button>
             <ul className="flex flex-wrap justify-center gap-x-4 gap-y-1">
@@ -210,13 +213,13 @@ function TrialUpgradeNotice({ coworker, priceArm = DEFAULT_PRICE_ARM, onPaid, re
                 <div className="flex justify-center">
                     <Button size="xs" variant="ghost" className="max-w-full text-muted-foreground" onClick={ownConnection.onUse}>
                         <ProviderIcon provider={ownConnection.provider} className="size-3" />
-                        <span className="truncate">Run on {ownConnection.label}</span>
+                        <span className="truncate">{t('runOn', { plan: ownConnection.label })}</span>
                     </Button>
                 </div>
             ) : (
                 onConnectProvider && (
                     <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-xs text-muted-foreground">
-                        <span>Or use my plan:</span>
+                        <span>{t('trial.useMyPlan')}</span>
                         <Button size="xs" variant="ghost" className="text-muted-foreground" onClick={() => onConnectProvider('claude')}>
                             <ProviderIcon provider="claude" className="size-3" />
                             Claude

@@ -7,8 +7,8 @@ import { PanelDialogContent } from '@/components/dialogs/PanelDialogContent'
 import { Dialog } from '@/components/ui/dialog'
 import { useMemberDirectory } from '@/hooks/useMemberProfiles'
 import { syncBoardGrants, syncBoardVisibility } from '@/lib/board/sync-space-access'
-import { UNNAMED_BOX_LABEL } from '@/lib/board/types'
 import { useSession } from '@/supabase/session/SessionProvider'
+import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -17,6 +17,7 @@ type Result = { ok: true } | { ok: false; error: string }
 // Who can use a Box, and so every coworker in it. Admin only: the menu that opens it is disabled for
 // a member, and every action refuses one anyway.
 export function BoxAccessDialog({ spaceId, boxName, open, onOpenChange }: { spaceId: string | null; boxName?: string | null; open: boolean; onOpenChange: (open: boolean) => void }) {
+    const t = useTranslations('dialogs.boxAccess')
     const [access, setAccess] = useState<SpaceAccessView | null>(null)
     const [loading, setLoading] = useState(true)
     const [busy, setBusy] = useState(false)
@@ -59,7 +60,7 @@ export function BoxAccessDialog({ spaceId, boxName, open, onOpenChange }: { spac
             <PanelDialogContent className="sm:h-[min(36rem,88dvh)] sm:max-w-lg">
                 <BoxAccessView
                     key={spaceId ?? 'none'}
-                    boxName={access?.name || boxName || UNNAMED_BOX_LABEL}
+                    boxName={access?.name || boxName || t('unnamedBox')}
                     loading={loading}
                     access={access}
                     busy={busy}

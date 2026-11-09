@@ -4,7 +4,7 @@ import { APP_INFO } from '@/lib/apps/catalog'
 import { APP_ADDON_KEYS, APP_SLUGS } from '@/lib/apps/types'
 import { useCheckout } from '@stripe/react-stripe-js/checkout'
 import type { StripeExpressCheckoutElementConfirmEvent } from '@stripe/stripe-js'
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 
@@ -24,7 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useWorkspaceAccess } from '@/hooks/useWorkspaceAccess'
 import type { CheckoutRoute } from '@/ee/lib/billing/checkout-variant'
 import { isSubscriptionEntitled } from '@/ee/lib/billing/entitlement'
-import { BASE_PLAN_CREDITS, PLAN_PRICES_CENTS, TRIAL_DAYS, creditsLabel, ZERO_QUANTITIES, planPriceCents, trialEndDate, trialLimitsLabel, type AddonQuantities, type BillingInterval, type PriceArm } from '@/ee/lib/billing/plans'
+import { BASE_PLAN_CREDITS, PLAN_PRICES_CENTS, TRIAL_ACTIVE_AGENTS, TRIAL_CREDITS, TRIAL_DAYS, ZERO_QUANTITIES, planPriceCents, trialEndDate, type AddonQuantities, type BillingInterval, type PriceArm } from '@/ee/lib/billing/plans'
 import { usePriceArm } from '@/ee/lib/billing/usePriceArm'
 import { TRIAL_ENDING_LEAD_MS } from '@/ee/lib/lifecycle/sequences'
 import { useStartPending } from '@/lib/onboarding/useStartPending'
@@ -38,7 +38,7 @@ import { CreditCard } from './credit-usage/CreditCard'
 import { UsagePane } from './credit-usage/UsagePane'
 import { useCreditUsage } from './credit-usage/useCreditUsage'
 import { PerksComparison } from './PerksComparison'
-import { checkoutCopy, longDate, nextInvoiceDate, shortDate, type CheckoutContext } from './checkout-copy'
+import { checkoutCopy, longDate, nextInvoiceDate, shortDate, type BillingTranslator, type CheckoutContext } from './checkout-copy'
 import { BilledFlow, CardOnFile, Headline, IntervalToggle, PayFooter, PayHeader, PlanCard, RightTitle, SuccessPanel, SummaryRows, TermsConsent, TestimonialStrip, Timeline, UsdFlow, usd } from './parts'
 import { StripeCheckoutProvider, StripePaymentFields, StripePaymentFieldsSkeleton, StripePromoCode } from './StripeCheckout'
 import { usePlanQuote } from './usePlanQuote'
@@ -60,8 +60,9 @@ function selectionOf(interval: BillingInterval, current?: AddonQuantities): Plan
     return { quantities: current ?? ZERO_QUANTITIES, interval }
 }
 
-function billedLabel(interval: BillingInterval, priceArm: PriceArm): string {
-    return `${usd(planPriceCents(ZERO_QUANTITIES, interval, priceArm))}${interval === 'yearly' ? '/yr' : '/mo'}`
+function billedLabel(t: BillingTranslator, interval: BillingInterval, priceArm: PriceArm): ReactNode {
+    const amount = usd(planPriceCents(ZERO_QUANTITIES, interval, priceArm))
+    return t.rich(interval === 'yearly' ? 'parts.interval.perYear' : 'parts.interval.perMonth', { amount: () => amount })
 }
 
 // A year from now reads with its year: "Oct 2" alone would read as today.
@@ -70,8 +71,8 @@ function invoiceDateLabel(interval: BillingInterval, locale: string): string {
     return interval === 'yearly' ? longDate(date, locale) : shortDate(date, locale)
 }
 
-function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : 'Something went wrong'
+function errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error ? error.message : fallback
 }
 
 export function CheckoutDialog({
@@ -89,6 +90,7 @@ export function CheckoutDialog({
     onChanged: () => void
     onTrialRefused: () => void
 }) {
+    const t = useTranslations('billing')
     const locale = useLocale()
     const { workspace, refreshWorkspace } = useSession()
     const { keptUntil } = useWorkspaceAccess()
@@ -131,7 +133,7 @@ export function CheckoutDialog({
         parked: parkedTemplate ? { title: parkedTemplate.title, agentCount: parkedTemplate.agentCount } : null,
         coworker: upgrade?.coworker ?? null,
     }
-    const copy = checkoutCopy(route.variant === 'trial_card' && payNow ? 'trial_card_pay_now' : route.variant, context)
+    const copy = checkoutCopy(t, route.variant === 'trial_card' && payNow ? 'trial_card_pay_now' : route.variant, context)
     const selection = selectionOf(interval, state?.quantities)
 
     // On a trial, more credit comes with Pro: the card's button leads to paying now, or back to the
@@ -174,7 +176,7 @@ export function CheckoutDialog({
 
     if (done) {
         const entitled = isSubscriptionEntitled(workspace?.subscription_status)
-        const placeLabel = parkedTemplate ? (parkedTemplate.agentCount > 1 ? `Place ${parkedTemplate.agentCount} coworkers` : 'Place it on my board') : 'Start my coworker'
+        const placeLabel = parkedTemplate ? (parkedTemplate.agentCount > 1 ? t('checkout.success.placeCoworkers', { count: parkedTemplate.agentCount }) : t('checkout.success.placeOnBoard')) : t('checkout.success.startCoworker')
         const onDone = async () => {
             if (!parked) return onClose()
             setPlacing(true)
@@ -185,7 +187,7 @@ export function CheckoutDialog({
                 setPlacing(false)
             }
         }
-        const success = creditLocked && done === 'paid' ? creditUnlockedCopy(interval, priceArm, upgrade, locale) : successCopy(done, { interval, priceArm, trialEnds: context.trialEnds, firstCharge: context.firstCharge, locale })
+        const success = creditLocked && done === 'paid' ? creditUnlockedCopy(t, interval, priceArm, upgrade, locale) : successCopy(t, done, { interval, priceArm, trialEnds: context.trialEnds, firstCharge: context.firstCharge, locale })
         return (
             <BillingDialogShell
                 title={success.title}
@@ -198,7 +200,7 @@ export function CheckoutDialog({
     }
 
     const right = (() => {
-        if (usageOpen) return <UsagePane credit={credit} onBack={() => setUsageOpen(false)} backLabel={trialView ? 'Trial' : 'Back'} />
+        if (usageOpen) return <UsagePane credit={credit} onBack={() => setUsageOpen(false)} backLabel={trialView ? t('checkout.usageBack.trial') : t('checkout.usageBack.back')} />
         switch (route.payment) {
             case 'subscribe':
                 return <SubscribePane key={route.variant} selection={selection} priceArm={priceArm} copy={copy} onDone={trialStarted => void finish(route.variant === 'paused' ? 'restoring' : trialStarted ? 'trial_started' : 'paid')} onTrialRefused={onTrialRefused} />
@@ -227,41 +229,51 @@ export function CheckoutDialog({
     return <BillingDialogShell title={copy.title} mobileOrder={planFixed ? 'payment-first' : 'plan-first'} intro={intro} left={left} right={right} />
 }
 
-function successCopy(done: Done, { interval, priceArm, trialEnds, firstCharge, locale }: { interval: BillingInterval; priceArm: PriceArm; trialEnds: string | null; firstCharge: string; locale: string }) {
-    const next = `${invoiceDateLabel(interval, locale)} · ${billedLabel(interval, priceArm)}`
-    const planRows = [
-        { label: 'Plan', value: 'Pro · Unlimited coworkers' },
-        { label: 'Next invoice', value: next },
-    ]
+function successCopy(t: BillingTranslator, done: Done, { interval, priceArm, trialEnds, firstCharge, locale }: { interval: BillingInterval; priceArm: PriceArm; trialEnds: string | null; firstCharge: string; locale: string }) {
+    const next = (
+        <>
+            {invoiceDateLabel(interval, locale)} · {billedLabel(t, interval, priceArm)}
+        </>
+    )
+    const planRow = { label: t('checkout.success.plan'), value: t('checkout.success.planValue') }
+    const planRows = [planRow, { label: t('checkout.success.nextInvoice'), value: next }]
+    const chargeDate = trialEnds ?? t('checkout.success.lastDayFallback')
     switch (done) {
         case 'paid':
-            return { title: "You're on Pro", body: 'Your receipt is on its way by email.', rows: planRows, cta: 'Back to my board' }
+            return { title: t('checkout.success.paid.title'), body: t('checkout.success.paid.body'), rows: planRows, cta: t('checkout.success.backToBoard') }
         case 'card_saved':
             return {
-                title: 'Card saved',
-                body: `Your trial keeps running. Pro starts on ${trialEnds ?? 'the last day of your trial'}, ${firstCharge} charged to this card.`,
-                rows: [{ label: 'Plan', value: 'Pro · Unlimited coworkers' }],
-                cta: 'Back to my board',
+                title: t('checkout.success.cardSaved.title'),
+                body: t('checkout.success.cardSaved.body', { date: chargeDate, charge: firstCharge }),
+                rows: [planRow],
+                cta: t('checkout.success.backToBoard'),
             }
         case 'trial_started':
-            return { title: 'Your trial is on', body: `Nothing charged today. ${firstCharge} on ${trialEnds ?? 'the last day of your trial'} unless you cancel before.`, cta: 'Build my coworkers' }
+            return { title: t('checkout.success.trialStarted.title'), body: t('checkout.success.trialStarted.body', { charge: firstCharge, date: chargeDate }), cta: t('checkout.success.trialStarted.cta') }
         case 'restoring':
-            return { title: 'Welcome back', body: 'Your workspace is being restored. Your coworkers wake up in about a minute.', rows: planRows, cta: 'Back to my board' }
+            return { title: t('checkout.success.restoring.title'), body: t('checkout.success.restoring.body'), rows: planRows, cta: t('checkout.success.backToBoard') }
     }
 }
 
 // Paying from a chat that ran out of trial credit: what came with Pro, and the way back to the task.
-function creditUnlockedCopy(interval: BillingInterval, priceArm: PriceArm, upgrade: BillingUpgrade | null, locale: string) {
+function creditUnlockedCopy(t: BillingTranslator, interval: BillingInterval, priceArm: PriceArm, upgrade: BillingUpgrade | null, locale: string) {
     return {
-        title: "You're on Pro",
-        body: `${upgrade?.coworker ?? 'Your coworker'} is ready to pick the task back up. Your receipt is on its way by email.`,
+        title: t('checkout.success.paid.title'),
+        body: upgrade?.coworker ? t('checkout.success.creditUnlocked.body', { coworker: upgrade.coworker }) : t('checkout.success.creditUnlocked.bodyNoCoworker'),
         rows: [
-            { label: 'Credits', value: `${creditsLabel(BASE_PLAN_CREDITS)} a month` },
-            { label: 'Models', value: 'Every premium model' },
-            { label: 'Coworkers', value: 'Unlimited' },
-            { label: 'Next invoice', value: `${invoiceDateLabel(interval, locale)} · ${billedLabel(interval, priceArm)}` },
+            { label: t('checkout.success.creditUnlocked.credits'), value: t('checkout.success.creditUnlocked.creditsValue', { credits: BASE_PLAN_CREDITS }) },
+            { label: t('checkout.success.creditUnlocked.models'), value: t('checkout.success.creditUnlocked.modelsValue') },
+            { label: t('checkout.success.creditUnlocked.coworkers'), value: t('checkout.success.creditUnlocked.coworkersValue') },
+            {
+                label: t('checkout.success.nextInvoice'),
+                value: (
+                    <>
+                        {invoiceDateLabel(interval, locale)} · {billedLabel(t, interval, priceArm)}
+                    </>
+                ),
+            },
         ],
-        cta: upgrade?.onPaid ? 'Resume the task' : 'Back to my board',
+        cta: upgrade?.onPaid ? t('checkout.success.creditUnlocked.resume') : t('checkout.success.backToBoard'),
     }
 }
 
@@ -320,6 +332,7 @@ function SubscribeForm({
     onDone: () => void
     onTrialRefused: () => void
 }) {
+    const t = useTranslations('billing')
     const checkout = useCheckout()
     const [accepted, setAccepted] = useState(false)
     const [recordingTerms, setRecordingTerms] = useState(false)
@@ -355,7 +368,7 @@ function SubscribeForm({
                     <>
                         {result.error.message}{' '}
                         <button type="button" onClick={() => setFailedKey(null)} className="text-foreground underline underline-offset-4">
-                            Try again
+                            {t('checkout.pay.tryAgain')}
                         </button>
                     </>,
                 )
@@ -365,7 +378,7 @@ function SubscribeForm({
             }
         }, SELECTION_DEBOUNCE_MS)
         return () => clearTimeout(timer)
-    }, [key, stale, failedKey, updating, trial, checkout, sessionId])
+    }, [key, stale, failedKey, updating, trial, checkout, sessionId, t])
 
     const loaded = checkout.type === 'success' ? checkout.checkout : null
     const interval = selection.interval
@@ -398,38 +411,36 @@ function SubscribeForm({
 
             const outcome = await awaitOutcome(sessionId)
             if (outcome === 'trial_refused') {
-                toast.error('This card already had a free trial', { description: 'You can still subscribe, billed today.' })
+                toast.error(t('checkout.pay.trialRefused'), { description: t('checkout.pay.trialRefusedDescription') })
                 onTrialRefused()
                 return
             }
             onDone()
         } catch (err) {
-            setError(errorMessage(err))
+            setError(errorMessage(err, t('checkout.pay.genericError')))
         } finally {
             setSubmitting(false)
         }
     }
 
-    const blockedReason = !accepted ? 'Accept the terms first' : failedKey === key ? 'Your plan could not be updated' : stale ? 'Your plan is still updating' : undefined
+    const blockedReason = !accepted ? t('checkout.pay.acceptTerms') : failedKey === key ? t('checkout.pay.updateFailed') : stale ? t('checkout.pay.stillUpdating') : undefined
     const walletBlocked = !loaded || submitting || updating || stale || !accepted || recordingTerms
 
     return (
         <>
-            <PayHeader title={trial ? `Rerun Pro, free for ${TRIAL_DAYS} days` : 'Subscribe to Rerun Pro'} amount={amount} unit={trial ? 'due today' : interval === 'yearly' ? 'per year' : 'per month'} />
+            <PayHeader title={trial ? t('checkout.pay.freeFor', { days: TRIAL_DAYS }) : t('checkout.pay.subscribe')} amount={amount} unit={trial ? t('checkout.pay.dueToday') : interval === 'yearly' ? t('checkout.pay.perYear') : t('checkout.pay.perMonth')} />
             {trial && (
-                <p className="mt-2 text-sm text-muted-foreground">
-                    Then <UsdFlow cents={afterTrialCents} /> per month, excl. VAT.
-                </p>
+                <p className="mt-2 text-sm text-muted-foreground">{t.rich('checkout.pay.thenPerMonth', { amount: () => <UsdFlow cents={afterTrialCents} /> })}</p>
             )}
             <div className="mt-4 flex flex-col">
                 <StripePromoCode disabled={submitting || updating} />
             </div>
             <div className="mt-4">
-                <StripePaymentFields wallet={{ onConfirm: event => void pay(event), disabledReason: walletBlocked ? (blockedReason ?? 'Please wait') : undefined }} />
+                <StripePaymentFields wallet={{ onConfirm: event => void pay(event), disabledReason: walletBlocked ? (blockedReason ?? t('checkout.pay.pleaseWait')) : undefined }} />
             </div>
             <PayFooter
                 cta={copy.cta}
-                footnote={copy.footnote ?? 'By subscribing, you authorize Rerun to charge you until you cancel.'}
+                footnote={copy.footnote ?? t('checkout.pay.authorize')}
                 onClick={() => void pay()}
                 loading={submitting}
                 disabled={walletBlocked || !loaded?.canConfirm}
@@ -481,6 +492,7 @@ function CardFormPane({ selection, priceArm, copy, trialEnds, onDone }: { select
 }
 
 function CardForm({ sessionId, selection, priceArm, copy, trialEnds, onDone }: { sessionId: string; selection: PlanSelection; priceArm: PriceArm; copy: PaneCopy; trialEnds: string | null; onDone: (outcome: 'paid' | 'card_saved') => void }) {
+    const t = useTranslations('billing')
     const checkout = useCheckout()
     const loaded = checkout.type === 'success' ? checkout.checkout : null
     const [accepted, setAccepted] = useState(false)
@@ -503,7 +515,7 @@ function CardForm({ sessionId, selection, priceArm, copy, trialEnds, onDone }: {
             if (!changed.ok) throw new Error(copy.refusal ? copy.refusal(changed.error) : changed.error)
             onDone('paid')
         } catch (err) {
-            setError(errorMessage(err))
+            setError(errorMessage(err, t('checkout.pay.genericError')))
         } finally {
             setSubmitting(null)
         }
@@ -511,26 +523,25 @@ function CardForm({ sessionId, selection, priceArm, copy, trialEnds, onDone }: {
 
     return (
         <>
-            <PayHeader title="Subscribe to Rerun Pro" amount={<UsdFlow cents={planPriceCents(selection.quantities, interval, priceArm)} />} unit={interval === 'yearly' ? 'per year' : 'per month'} />
-            <p className="mt-2 text-sm text-muted-foreground">Excl. VAT, computed from your address.</p>
+            <PayHeader title={t('checkout.pay.subscribe')} amount={<UsdFlow cents={planPriceCents(selection.quantities, interval, priceArm)} />} unit={interval === 'yearly' ? t('checkout.pay.perYear') : t('checkout.pay.perMonth')} />
+            <p className="mt-2 text-sm text-muted-foreground">{t('checkout.card.exclVat')}</p>
             <div className="mt-6">
-                <StripePaymentFields wallet={{ onConfirm: event => void save('now', event), disabledReason: !accepted ? 'Accept the terms first' : submitting ? 'Please wait' : undefined }} />
+                <StripePaymentFields wallet={{ onConfirm: event => void save('now', event), disabledReason: !accepted ? t('checkout.pay.acceptTerms') : submitting ? t('checkout.pay.pleaseWait') : undefined }} />
             </div>
             <PayFooter
                 cta={copy.cta}
                 onClick={() => void save('now')}
                 loading={submitting === 'now'}
                 disabled={!loaded || !accepted || !!submitting}
-                disabledReason={!accepted ? 'Accept the terms first' : undefined}
+                disabledReason={!accepted ? t('checkout.pay.acceptTerms') : undefined}
                 error={error}
-                footnote={
-                    <>
-                        Paying now ends your free trial today, and you authorize Rerun to charge you until you cancel. Rather finish your trial?{' '}
+                footnote={t.rich('checkout.card.payLaterFootnote', {
+                    later: () => (
                         <button type="button" disabled={!loaded || !!submitting} onClick={() => void save('later')} className="text-foreground underline underline-offset-4 disabled:opacity-60">
-                            {submitting === 'later' ? 'Saving…' : `Pay on ${trialEnds ?? 'the last day'}`}
+                            {submitting === 'later' ? t('checkout.card.saving') : trialEnds ? t('checkout.card.payOn', { date: trialEnds }) : t('checkout.card.payOnLastDay')}
                         </button>
-                    </>
-                }
+                    ),
+                })}
             >
                 <TermsConsent checked={accepted} onChange={setAccepted} />
             </PayFooter>
@@ -563,6 +574,7 @@ function CardOnFilePane({
     onCancelTrial: () => void
     onResumed: () => void
 }) {
+    const t = useTranslations('billing')
     const quote = usePlanQuote(selection, true)
     const [accepted, setAccepted] = useState(false)
     const [submitting, setSubmitting] = useState(false)
@@ -589,25 +601,25 @@ function CardOnFilePane({
         <>
             {onBack && (
                 <div className="mb-5">
-                    <RightTitle onBack={onBack} backLabel="Your trial">
-                        Start Pro today
+                    <RightTitle onBack={onBack} backLabel={t('checkout.cardOnFile.back')}>
+                        {t('checkout.cardOnFile.title')}
                     </RightTitle>
                 </div>
             )}
-            <PayHeader title="End trial, start Rerun Pro" amount={amount} unit="due today" />
+            <PayHeader title={t('checkout.cardOnFile.header')} amount={amount} unit={t('checkout.pay.dueToday')} />
             <div className="mt-6 flex flex-col gap-3">
                 <SummaryRows
                     rows={[
-                        { label: 'Pro · Unlimited coworkers', value: <BilledFlow cents={listCents} interval={interval} /> },
+                        { label: t('checkout.success.planValue'), value: <BilledFlow cents={listCents} interval={interval} /> },
                         {
-                            label: quote && quote !== 'loading' && quote.taxIncluded ? 'Tax' : 'Tax, from your address',
+                            label: quote && quote !== 'loading' && quote.taxIncluded ? t('checkout.cardOnFile.tax') : t('checkout.cardOnFile.taxFromAddress'),
                             value: quote === 'loading' ? <Skeleton className="inline-block h-4 w-12" /> : quote ? usd(quote.taxCents) : '-',
                             muted: true,
                         },
-                        { label: 'Due today', value: amount, strong: true },
+                        { label: t('checkout.cardOnFile.dueToday'), value: amount, strong: true },
                     ]}
                 />
-                <CardOnFile card={state?.card ?? null} action={onChangeCard && 'Change'} onAction={onChangeCard} />
+                <CardOnFile card={state?.card ?? null} action={onChangeCard && t('checkout.cardOnFile.change')} onAction={onChangeCard} />
             </div>
             <PayFooter
                 cta={copy.payCta && dueToday ? copy.payCta(dueToday) : copy.cta}
@@ -615,14 +627,14 @@ function CardOnFilePane({
                 onClick={() => void start()}
                 loading={submitting}
                 disabled={!accepted}
-                disabledReason="Accept the terms first"
+                disabledReason={t('checkout.pay.acceptTerms')}
                 error={error}
             >
                 <TermsConsent checked={accepted} onChange={setAccepted} />
             </PayFooter>
             {state?.cancelPhase === 'trial' && (
                 <button type="button" onClick={onCancelTrial} className="mt-3 text-center text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">
-                    Cancel trial
+                    {t('checkout.cancelTrial')}
                 </button>
             )}
         </>
@@ -652,37 +664,44 @@ function TrialPane({
     onPayNow: () => void
     onResumed: () => void
 }) {
+    const t = useTranslations('billing')
     if (state?.cancelAtPeriodEnd) return <TrialCancelledPane trialEnds={trialEnds} onResumed={onResumed} />
 
-    const chargeDate = trialEnds ?? 'the end of your trial'
+    const chargeDate = trialEnds ?? t('checkout.trialEndFallback')
     return (
         <>
-            <PayHeader title="Your free trial" amount={usd(0)} unit="due today" />
+            <PayHeader title={t('checkout.trial.title')} amount={usd(0)} unit={t('checkout.pay.dueToday')} />
             <div className="mt-6 flex flex-col gap-3">
                 <SummaryRows
                     rows={[
-                        { label: 'Included', value: trialLimitsLabel() },
+                        { label: t('checkout.trial.included'), value: t('checkout.trial.includedValue', { agents: TRIAL_ACTIVE_AGENTS, credits: TRIAL_CREDITS }) },
                         ...APP_SLUGS.flatMap(slug => {
                             const count = state?.quantities[APP_ADDON_KEYS[slug]] ?? 0
                             if (!state || count === 0) return []
                             const cents = count * PLAN_PRICES_CENTS[state.interval][APP_ADDON_KEYS[slug]]
-                            return [{ label: `${APP_INFO[slug].providerLabel} slot${count === 1 ? '' : 's'} × ${count}`, value: `$0 now, ${usd(cents)}${state.interval === 'yearly' ? '/yr' : '/mo'} from ${chargeDate}` }]
+                            const values = { amount: usd(cents), date: chargeDate }
+                            return [
+                                {
+                                    label: t('checkout.trial.slots', { provider: APP_INFO[slug].providerLabel, count }),
+                                    value: state.interval === 'yearly' ? t('checkout.trial.slotPriceYearly', values) : t('checkout.trial.slotPriceMonthly', values),
+                                },
+                            ]
                         }),
-                        { label: 'Trial ends', value: chargeDate },
-                        ...(reminderOn ? [{ label: 'Reminder by email', value: reminderOn }] : []),
-                        { label: 'First charge', value: <>{firstCharge} on {chargeDate}</>, strong: true },
+                        { label: t('checkout.trial.ends'), value: chargeDate },
+                        ...(reminderOn ? [{ label: t('checkout.trial.reminder'), value: reminderOn }] : []),
+                        { label: t('checkout.trial.firstCharge'), value: t.rich('checkout.trial.firstChargeValue', { charge: () => firstCharge, date: chargeDate }), strong: true },
                     ]}
                 />
                 <CardOnFile card={state?.card ?? null} />
-                <p className="text-sm text-muted-foreground">Cancel before {chargeDate} and nothing is charged. Your coworkers keep running until then.</p>
+                <p className="text-sm text-muted-foreground">{t('checkout.trial.cancelBefore', { date: chargeDate })}</p>
             </div>
             <PayFooter cta={copy.cta} onClick={onPayNow} />
             <Button variant="outline" size="lg" className="mt-3 h-11 w-full text-base" onClick={onContinue}>
-                Continue my trial
+                {t('checkout.trial.continue')}
             </Button>
             {state?.cancelPhase === 'trial' && (
                 <button type="button" onClick={onCancelTrial} className="mt-4 text-center text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">
-                    Cancel trial
+                    {t('checkout.cancelTrial')}
                 </button>
             )}
         </>
@@ -690,21 +709,22 @@ function TrialPane({
 }
 
 function TrialCancelledPane({ trialEnds, onResumed }: { trialEnds: string | null; onResumed: () => void }) {
+    const t = useTranslations('billing')
     const [resuming, setResuming] = useState(false)
 
     const resume = async () => {
         setResuming(true)
         const result = await resumeSubscriptionAction()
         setResuming(false)
-        if (!result.ok) return toast.error('Could not resume your trial', { description: result.error })
+        if (!result.ok) return toast.error(t('checkout.trialCancelled.resumeFailed'), { description: result.error })
         onResumed()
     }
 
     return (
         <>
-            <PayHeader title="Your trial ends" amount={trialEnds ?? ''} unit="nothing charged" />
-            <p className="mt-6 text-sm text-muted-foreground">You cancelled your trial. Your coworkers keep running until then, and nothing is charged.</p>
-            <PayFooter cta="Resume my trial" onClick={() => void resume()} loading={resuming} />
+            <PayHeader title={t('checkout.trialCancelled.title')} amount={trialEnds ?? ''} unit={t('checkout.trialCancelled.unit')} />
+            <p className="mt-6 text-sm text-muted-foreground">{t('checkout.trialCancelled.body')}</p>
+            <PayFooter cta={t('checkout.trialCancelled.resume')} onClick={() => void resume()} loading={resuming} />
         </>
     )
 }
@@ -728,9 +748,10 @@ function PaneSkeleton() {
 }
 
 function PaneError({ message }: { message: string }) {
+    const t = useTranslations('billing')
     return (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-            <p className="text-sm font-medium">The payment form could not open</p>
+            <p className="text-sm font-medium">{t('checkout.paneError')}</p>
             <p className="max-w-xs text-sm text-muted-foreground">{message}</p>
         </div>
     )

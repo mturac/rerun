@@ -2,15 +2,12 @@
 
 import { defaultExcludedPaths, isSetupAnswered } from '@rerun/contracts'
 import * as React from 'react'
+import { useTranslations } from 'next-intl'
 import type { AgentCapturePlan, CaptureSourceSpace } from '@/lib/templates/capture'
 import type { AgentSetupDraft } from '@/components/agent/AgentSetupFields'
 import type { CaptureActions } from './types'
 
 export type CaptureStep = 'select' | 'review' | 'done'
-
-// A server action rejects rather than answering when the request itself fails (offline, a redeploy
-// invalidating the action id), and a silent no-op reads as "nothing happened, click again".
-const FAILED_REQUEST = 'The request did not go through. Check your connection and try again.'
 
 // `excluded` and `approved` are both keyed by the agent row id rather than by the engine id the
 // plan carries: two rows can address the same folder, and the capture itself speaks row ids.
@@ -42,6 +39,10 @@ export type CaptureFlow = {
 // whether they succeeded and the shell owns the stepping, so the same flow drives a standalone
 // dialog and a step inside a longer wizard.
 export function useCaptureFlow(actions: CaptureActions): CaptureFlow {
+    const t = useTranslations('templates.capture')
+    // A server action rejects rather than answering when the request itself fails (offline, a
+    // redeploy invalidating the action id), and a silent no-op reads as "nothing happened, click again".
+    const failedRequest = t('failedRequest')
     const [spaces, setSpaces] = React.useState<CaptureSourceSpace[]>([])
     const [spaceId, setSpaceIdState] = React.useState('')
     const [selectedIds, setSelectedIds] = React.useState<string[]>([])
@@ -57,6 +58,7 @@ export function useCaptureFlow(actions: CaptureActions): CaptureFlow {
     // Held in a ref so a shell that rebuilds its actions object on every render does not re-run the
     // load. The flow is mounted only while its step is on screen, so the mount value is the one.
     const listSourcesRef = React.useRef(actions.listSources)
+    const failedRequestRef = React.useRef(failedRequest)
 
     React.useEffect(() => {
         let cancelled = false
@@ -72,7 +74,7 @@ export function useCaptureFlow(actions: CaptureActions): CaptureFlow {
                 if (result.spaces.length === 1) setSpaceIdState(result.spaces[0].id)
             })
             .catch(() => {
-                if (!cancelled) setError(FAILED_REQUEST)
+                if (!cancelled) setError(failedRequestRef.current)
             })
             .finally(() => {
                 if (!cancelled) setLoadingSpaces(false)
@@ -127,12 +129,12 @@ export function useCaptureFlow(actions: CaptureActions): CaptureFlow {
             setApproved({})
             return true
         } catch {
-            setError(FAILED_REQUEST)
+            setError(failedRequest)
             return false
         } finally {
             setBusy(false)
         }
-    }, [actions, spaceId, selectedIds])
+    }, [actions, spaceId, selectedIds, failedRequest])
 
     const capture = React.useCallback(async () => {
         setError(null)
@@ -154,12 +156,12 @@ export function useCaptureFlow(actions: CaptureActions): CaptureFlow {
             setWarnings(result.warnings)
             return true
         } catch {
-            setError(FAILED_REQUEST)
+            setError(failedRequest)
             return false
         } finally {
             setBusy(false)
         }
-    }, [actions, plans, excluded, setups, spaceId])
+    }, [actions, plans, excluded, setups, spaceId, failedRequest])
 
     // An agent whose setup question is still unanswered cannot be signed off: the answer is what a
     // template is submitted on, and after the capture it is too late to ask. Re-checked here rather

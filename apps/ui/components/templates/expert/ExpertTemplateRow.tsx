@@ -1,12 +1,14 @@
 'use client'
 
 import { Badge } from '@rerun/ui/primitives'
+import { useTranslations } from 'next-intl'
 import { TemplatePriceBadge } from '@/components/templates/TemplatePriceBadge'
 import { templateStatusLabel, templateStatusTone } from '@/lib/templates/status'
 import type { ExpertTemplate } from '@/lib/templates/expert'
 import { cn } from '@/lib/utils'
 
 export function ExpertTemplateRow({ template, selected, onSelect }: { template: ExpertTemplate; selected: boolean; onSelect: () => void }) {
+    const t = useTranslations('templates.expert.row')
     return (
         <button
             type="button"
@@ -28,7 +30,7 @@ export function ExpertTemplateRow({ template, selected, onSelect }: { template: 
                     </Badge>
                     <TemplatePriceBadge pricing={template.pricing} />
                     <span className="text-[10px] text-muted-foreground">
-                        {template.agentCount} {template.agentCount === 1 ? 'agent' : 'agents'}
+                        {t('agents', { count: template.agentCount })}
                     </span>
                 </div>
             </div>

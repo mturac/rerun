@@ -12,11 +12,13 @@ import type { LibraryTemplate } from '@/lib/templates/library'
 import { cn } from '@/lib/utils'
 import { ClockIcon } from '@/lib/icons'
 import { AnimatePresence } from 'motion/react'
+import { useTranslations } from 'next-intl'
 
 // The wide sibling of TemplateCard, for the Featured row: cover on the left, editorial on the
 // right. Same props, so a click feeds the detail panel exactly like a grid card does, and the same
 // three lines under the title, with the tagline in between as the one thing the extra room buys.
 export function TemplateFeaturedCard({ template, selected, showStatus, onSelect }: { template: LibraryTemplate; selected: boolean; showStatus: boolean; onSelect: () => void }) {
+    const t = useTranslations('templates.detail')
     const image = templateCardImage(template)
     const category = TEMPLATE_CATEGORY_LABELS[template.category] ?? TEMPLATE_CATEGORY_LABELS.other
     const { live, handlers } = useBoardOnHover(template.agents.length > 0)
@@ -79,7 +81,7 @@ export function TemplateFeaturedCard({ template, selected, showStatus, onSelect 
                         <span aria-hidden className="size-0.5 shrink-0 rounded-full bg-current opacity-50" />
                         <span className="flex shrink-0 items-center gap-1.5">
                             <ClockIcon className="size-3" />
-                            {template.setupMinutes} min
+                            {t('minutes', { minutes: template.setupMinutes })}
                         </span>
                     </span>
                     <TemplateCardPrice pricing={template.pricing} access={template.access} />

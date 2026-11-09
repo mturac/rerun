@@ -8,6 +8,7 @@ import { useToolDisplay } from '@/hooks/useToolDisplay'
 import { isSubRunLive, subRunHeadline, type SubRunProgress } from '@/lib/chat/sub-run-progress'
 import { readableToolError } from '@rerun/contracts'
 import { ToolCallRow, type ToolCallStatus } from '@rerun/ui/chat'
+import { useTranslations } from 'next-intl'
 import { useEffect, useRef, useState } from 'react'
 
 type SubRunBlockProps = {
@@ -23,6 +24,7 @@ type SubRunBlockProps = {
 }
 
 export function SubRunBlock({ toolName, agentId, state, output, errorText, progress, onStopTask, dense = false }: SubRunBlockProps) {
+    const t = useTranslations('chat.tool')
     const toolDisplay = useToolDisplay(agentId)
     const { iconProps } = toolDisplay(toolName)
     const live = toolStatusOf(state) === 'running' && progress.tasks.some(isSubRunLive)
@@ -37,19 +39,19 @@ export function SubRunBlock({ toolName, agentId, state, output, errorText, progr
         wasLive.current = live
     }, [live])
 
-    const everyTaskFailed = progress.tasks.every(t => t.status === 'error')
+    const everyTaskFailed = progress.tasks.every(task => task.status === 'error')
     const status: ToolCallStatus = live ? 'running' : everyTaskFailed ? 'error' : toolStatusOf(state) === 'error' ? 'error' : 'done'
 
     const details = (
         <>
             <SubRunTree tasks={progress.tasks} toolDisplay={toolDisplay} onStopTask={onStopTask} />
             {errorText && (
-                <ToolSection label="Error">
+                <ToolSection label={t('error')}>
                     <p className="rounded bg-red-950/20 px-2 py-1.5 text-xs text-red-400">{readableToolError(errorText)}</p>
                 </ToolSection>
             )}
             {output !== undefined && (
-                <ToolSection label="Output">
+                <ToolSection label={t('output')}>
                     <ToolOutput output={output} />
                 </ToolSection>
             )}

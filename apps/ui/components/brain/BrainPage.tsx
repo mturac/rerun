@@ -17,7 +17,7 @@ import { shortRelativeTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import type { BrainPage as BrainPageData, BrainPageSummary, BrainPageType, BrainProposal } from '@rerun/contracts'
 import { Badge } from '@rerun/ui/primitives'
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -35,22 +35,25 @@ type BrainPageProps = {
     onDelete: () => Promise<void>
 }
 
-function saveLabel(status: AutosaveStatus, page: BrainPageData, locale: string): string | null {
-    if (status === 'pending' || status === 'saving') return 'Saving…'
-    if (status === 'saved') return 'Saved'
-    if (status === 'error') return 'Not saved'
+type PageTranslator = ReturnType<typeof useTranslations<'brain.page'>>
+
+function saveLabel(status: AutosaveStatus, page: BrainPageData, locale: string, t: PageTranslator): string | null {
+    if (status === 'pending' || status === 'saving') return t('saving')
+    if (status === 'saved') return t('saved')
+    if (status === 'error') return t('notSaved')
     if (status === 'conflict') return null
-    return page.updatedAt ? `Edited ${shortRelativeTime(page.updatedAt, locale)}` : null
+    return page.updatedAt ? t('edited', { time: shortRelativeTime(page.updatedAt, locale) }) : null
 }
 
 function Backlinks({ links, onOpenPage }: { links: BrainPageData['backlinks']; onOpenPage: (slug: string) => void }) {
+    const t = useTranslations('brain.page')
     const [open, setOpen] = useState(false)
     if (links.length === 0) return null
     return (
         <div className="mt-12 border-t border-border pt-4">
             <button type="button" onClick={() => setOpen(value => !value)} className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground" aria-expanded={open}>
                 <ChevronRightIcon className={cn('size-3.5 transition-transform duration-150', open && 'rotate-90')} />
-                {links.length} {links.length === 1 ? 'page links here' : 'pages link here'}
+                {t('backlinks', { count: links.length })}
             </button>
             {open && (
                 <div className="mt-2 space-y-0.5">
@@ -68,6 +71,8 @@ function Backlinks({ links, onOpenPage }: { links: BrainPageData['backlinks']; o
 // A brain page is its own editor: the title, the type and the body are typed in place and saved as
 // they change, the way Notion does it.
 export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, onOpenFile, onReviewProposals, onSaved, onHistory, onDelete }: BrainPageProps) {
+    const t = useTranslations('brain')
+    const tPage = useTranslations('brain.page')
     const locale = useLocale()
     const page = detail.page
     const autosave = useBrainAutosave({ page, onSaved })
@@ -104,18 +109,18 @@ export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, 
         else toast.error(result.error)
     }
 
-    const section = isCardType(type) ? 'Company' : 'Pages'
-    const status = saveLabel(autosave.status, page, locale)
+    const section = isCardType(type) ? t('crumbs.company') : t('crumbs.pages')
+    const status = saveLabel(autosave.status, page, locale, tPage)
 
     return (
         <div className="flex min-h-0 flex-1 flex-col">
-            <BrainTopBar crumbs={[{ label: section }, { label: title.trim() || 'Untitled', icon: BRAIN_PAGE_ICONS[type] }]} status={status && <span className={cn(autosave.status === 'error' && 'text-destructive')} title={autosave.error ?? undefined}>{status}</span>}>
-                <Button size="icon-sm" variant="ghost" onClick={onHistory} aria-label="Version history" title="Version history">
+            <BrainTopBar crumbs={[{ label: section }, { label: title.trim() || t('crumbs.untitled'), icon: BRAIN_PAGE_ICONS[type] }]} status={status && <span className={cn(autosave.status === 'error' && 'text-destructive')} title={autosave.error ?? undefined}>{status}</span>}>
+                <Button size="icon-sm" variant="ghost" onClick={onHistory} aria-label={tPage('versionHistory')} title={tPage('versionHistory')}>
                     <HistoryIcon />
                 </Button>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button size="icon-sm" variant="ghost" aria-label="More" title="More">
+                        <Button size="icon-sm" variant="ghost" aria-label={tPage('more')} title={tPage('more')}>
                             <EllipsisIcon />
                         </Button>
                     </DropdownMenuTrigger>
@@ -123,17 +128,17 @@ export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, 
                         <DropdownMenuItem
                             onSelect={() => {
                                 void navigator.clipboard.writeText(`[[${page.slug}]]`)
-                                toast.success('Link copied', { description: `Paste [[${page.slug}]] in another page.` })
+                                toast.success(tPage('linkCopied'), { description: tPage('linkCopiedHint', { link: `[[${page.slug}]]` }) })
                             }}
                         >
-                            <CopyIcon /> Copy link
+                            <CopyIcon /> {tPage('copyLink')}
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={onHistory}>
-                            <HistoryIcon /> Version history
+                            <HistoryIcon /> {tPage('versionHistory')}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem variant="destructive" onSelect={() => setConfirmingDelete(true)}>
-                            <Trash2Icon /> Delete
+                            <Trash2Icon /> {tPage('delete')}
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
@@ -142,13 +147,16 @@ export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, 
             {autosave.status === 'conflict' && (
                 <div className="flex flex-wrap items-center gap-2 border-y border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm">
                     <span className="min-w-0 flex-1">
-                        <span className="font-medium">{autosave.conflictWith ? brainAuthorLabel(autosave.conflictWith.updatedBy) : 'Someone'}</span> changed this page while you were editing.
+                        {tPage.rich('conflict', {
+                            name: autosave.conflictWith ? brainAuthorLabel(autosave.conflictWith.updatedBy) : tPage('someone'),
+                            b: chunks => <span className="font-medium">{chunks}</span>,
+                        })}
                     </span>
                     <Button size="xs" variant="outline" onClick={loadTheirs}>
-                        Load their version
+                        {tPage('loadTheirs')}
                     </Button>
                     <Button size="xs" onClick={() => void autosave.keepMine()}>
-                        Keep mine
+                        {tPage('keepMine')}
                     </Button>
                 </div>
             )}
@@ -156,10 +164,14 @@ export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, 
             {proposal && autosave.status !== 'conflict' && (
                 <div className="flex items-center gap-2 border-y border-border bg-muted/40 px-4 py-2 text-sm">
                     <span className="min-w-0 flex-1 truncate">
-                        <span className="font-medium">{proposal.agentName}</span> <span className="text-muted-foreground">proposes a change to this page</span>
+                        {tPage.rich('proposes', {
+                            name: proposal.agentName,
+                            b: chunks => <span className="font-medium">{chunks}</span>,
+                            muted: chunks => <span className="text-muted-foreground">{chunks}</span>,
+                        })}
                     </span>
                     <Button size="xs" variant="outline" onClick={onReviewProposals}>
-                        Review
+                        {tPage('review')}
                     </Button>
                 </div>
             )}
@@ -175,10 +187,10 @@ export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, 
                         }}
                         onEnter={() => editorHandle.current?.focus('start')}
                     />
-                    {!title.trim() && <p className="mt-1 text-xs text-muted-foreground">A page needs a title to be saved.</p>}
+                    {!title.trim() && <p className="mt-1 text-xs text-muted-foreground">{tPage('titleRequired')}</p>}
 
                     <div className="mt-4 space-y-0.5 border-b border-border pb-4">
-                        <PageProperty label="Type">
+                        <PageProperty label={tPage('type')}>
                             <PageTypeSelect
                                 value={type}
                                 onChange={next => {
@@ -188,7 +200,7 @@ export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, 
                             />
                         </PageProperty>
                         {page.sources.length > 0 && (
-                            <PageProperty label="Sources">
+                            <PageProperty label={tPage('sources')}>
                                 {brainSourceLabels(page.sources).map(source => (
                                     <Badge key={source} size="xs" tone="neutral" glow={false} fill="outline">
                                         {source}
@@ -198,9 +210,9 @@ export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, 
                         )}
                         {page.unconfirmed.length > 0 && <UnconfirmedSections headings={page.unconfirmed} confirming={confirming} onConfirm={() => void confirm()} />}
                         {page.updatedAt && (
-                            <PageProperty label="Last edited">
+                            <PageProperty label={tPage('lastEdited')}>
                                 <span className="text-foreground/80">
-                                    {shortRelativeTime(page.updatedAt, locale)} by {brainAuthorLabel(page.updatedBy)}
+                                    {tPage('lastEditedValue', { time: shortRelativeTime(page.updatedAt, locale), author: brainAuthorLabel(page.updatedBy) })}
                                 </span>
                             </PageProperty>
                         )}
@@ -229,8 +241,8 @@ export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, 
                 open={confirmingDelete}
                 onOpenChange={setConfirmingDelete}
                 pending={deleting}
-                title={`Delete "${page.title}"?`}
-                description="Coworkers stop reading it and other pages linking to it lose the link."
+                title={tPage('deleteTitle', { title: page.title })}
+                description={tPage('deleteDescription')}
                 onConfirm={() => void remove()}
             />
         </div>

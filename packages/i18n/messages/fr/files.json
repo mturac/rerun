@@ -1,0 +1,80 @@
+{
+    "detail": {
+        "readOnly": "Ce fichier est en lecture seule",
+        "stillLoading": "Chargement du fichier en cours",
+        "previousFile": "Fichier précédent",
+        "nextFile": "Fichier suivant"
+    },
+    "actions": {
+        "truncated": "Tronqué",
+        "edit": "Modifier",
+        "download": "Télécharger",
+        "deleteFile": "Supprimer le fichier"
+    },
+    "delete": {
+        "title": "Supprimer {name} ?",
+        "file": "Le fichier est supprimé de la box. Cette action est irréversible.",
+        "folder": "Le dossier et tout son contenu sont supprimés de la box. Cette action est irréversible."
+    },
+    "editor": {
+        "unsaved": "Non enregistré",
+        "close": "Fermer l'éditeur",
+        "cancel": "Annuler",
+        "noChanges": "Aucune modification à enregistrer",
+        "save": "Enregistrer",
+        "conflictTitle": "{name} a changé sur la Box",
+        "conflictDescription": "Quelqu'un, ou un coworker, a modifié ce fichier après que vous l'avez ouvert. Enregistrer maintenant remplace sa version par la vôtre.",
+        "overwrite": "Écraser",
+        "keepTheirs": "Garder la sienne",
+        "discardTitle": "Abandonner vos modifications ?",
+        "discardDescription": "Vos modifications de {name} ne sont pas encore enregistrées. Fermer l'éditeur les supprime.",
+        "discard": "Abandonner",
+        "keepEditing": "Continuer à modifier"
+    },
+    "preview": {
+        "noPreview": "Aucun aperçu disponible pour ce type de fichier",
+        "download": "Télécharger",
+        "readFailed": "Impossible de lire ce fichier"
+    },
+    "publish": {
+        "publish": "Publier",
+        "publishPublicly": "Publier publiquement",
+        "publishedLink": "Lien publié",
+        "publicLink": "Lien public",
+        "open": "Ouvrir",
+        "openPublicLink": "Ouvrir le lien public",
+        "copyLink": "Copier le lien",
+        "copyPublicLink": "Copier le lien public",
+        "shareSettings": "Paramètres de partage",
+        "unpublish": "Dépublier",
+        "unshare": "Ne plus partager",
+        "unpublishTitle": "Dépublier {name} ?",
+        "unshareTitle": "Ne plus partager {name} ?",
+        "unpublishDescription": "Le lien cesse de fonctionner immédiatement, pour tous ceux qui l'ont.",
+        "unshareDescription": "Le lien public cesse de fonctionner immédiatement. Quiconque l'a obtient une erreur 404."
+    },
+    "empty": {
+        "title": "Dossier vide",
+        "goUp": "Remonter d'un niveau"
+    },
+    "grid": {
+        "parentDirectory": "Dossier parent",
+        "openFolder": "Ouvrir le dossier",
+        "open": "Ouvrir",
+        "download": "Télécharger",
+        "rename": "Renommer",
+        "delete": "Supprimer",
+        "published": "Publié"
+    },
+    "list": {
+        "newName": "Nouveau nom",
+        "dropHere": "Déposez des fichiers ou des dossiers ici pour les importer",
+        "name": "Nom",
+        "size": "Taille",
+        "type": "Type",
+        "empty": "Rien ici pour l'instant. Tout ce qu'un coworker télécharge, crée ou modifie pour tout le workspace arrive dans ce dossier, tout comme ce que vous déposez sur cette page.",
+        "actionsFor": "Actions pour {name}",
+        "folder": "Dossier",
+        "file": "Fichier"
+    }
+}

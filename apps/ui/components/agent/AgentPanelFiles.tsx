@@ -20,6 +20,7 @@ import { useSiblingFiles } from '@/components/files/useSiblingFiles'
 import { usePublishedAccessEnabled } from '@/components/layout/FeatureFlagsProvider'
 import { ShareDialog } from '@/components/published/ShareDialog'
 import { openPublishedHref } from '@/lib/published/links'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 type AgentPanelFilesProps = {
@@ -29,6 +30,7 @@ type AgentPanelFilesProps = {
 }
 
 export function AgentPanelFiles({ agentId, focusPath, onFocusConsumed }: AgentPanelFilesProps) {
+    const t = useTranslations('agent.agentPanelFiles')
     const [openFile, setOpenFile] = useState<{ path: string; name: string } | null>(null)
     const [dragOver, setDragOver] = useState(false)
     const [published, setPublished] = useState<PublishedFile[]>([])
@@ -91,13 +93,13 @@ export function AgentPanelFiles({ agentId, focusPath, onFocusConsumed }: AgentPa
         const filePath = currentPath ? `${currentPath}/${name}` : name
         const result = await publishFileAction(agentId, filePath)
         if (!result.success) {
-            toast.error(`Could not publish ${name}`, { description: result.error })
+            toast.error(t('publishFailed', { name }), { description: result.error })
             return
         }
         await loadPublished()
         // A new link starts with the access the workspace gives it: the share dialog is where it changes.
         if (publishedAccess && result.slug) setSharingSlug(result.slug)
-    }, [agentId, currentPath, loadPublished, publishedAccess])
+    }, [agentId, currentPath, loadPublished, publishedAccess, t])
 
     const handleUnpublish = useCallback(async (name: string) => {
         const filePath = currentPath ? `${currentPath}/${name}` : name
@@ -199,7 +201,7 @@ export function AgentPanelFiles({ agentId, focusPath, onFocusConsumed }: AgentPa
                     >
                         {dragOver && (
                             <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/5 pointer-events-none">
-                                <p className="text-sm font-medium text-primary">Drop files or folders to upload</p>
+                                <p className="text-sm font-medium text-primary">{t('dropToUpload')}</p>
                             </div>
                         )}
                         <div className="flex items-center gap-1 px-3 py-2 border-b border-border text-xs overflow-x-auto">
@@ -219,7 +221,7 @@ export function AgentPanelFiles({ agentId, focusPath, onFocusConsumed }: AgentPa
                             <button
                                 onClick={() => setShowHidden(v => !v)}
                                 className={`shrink-0 p-1 rounded hover:bg-accent/50 transition-colors ${showHidden ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                                title={showHidden ? 'Hide hidden files' : 'Show hidden files'}
+                                title={showHidden ? t('hideHidden') : t('showHidden')}
                             >
                                 {showHidden ? <EyeIcon className="size-3.5" /> : <EyeOffIcon className="size-3.5" />}
                             </button>
@@ -236,7 +238,7 @@ export function AgentPanelFiles({ agentId, focusPath, onFocusConsumed }: AgentPa
                                     </div>
                                 ) : entries.length === 0 ? (
                                     <FilesEmptyState
-                                        description="This is your coworker's workspace. Files it downloads, creates or edits during its runs are stored here."
+                                        description={t('emptyDescription')}
                                         onGoUp={currentPath ? goUp : undefined}
                                     />
                                 ) : (

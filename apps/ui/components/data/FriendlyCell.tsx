@@ -1,6 +1,6 @@
 'use client'
 
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 
 import { absoluteDate, capitalize, domainOf, externalHref, isEmpty, parseJson, plainValue, relativeDate, truthy, type ColumnKind, type FriendlyColumn } from '@/lib/data/friendly-columns'
 import {
@@ -145,12 +145,13 @@ type FriendlyCellProps = {
 /** One value, written the way a person would write it: no NULL, no ISO date, no raw JSON. */
 export function FriendlyCell({ value, column, currency, tones, maxTags = 2, wrap = false, className }: FriendlyCellProps) {
     const locale = useLocale()
+    const t = useTranslations('data.cell')
     if (column.kind === 'boolean') {
         const checked = truthy(value)
         return (
             <span
                 role="img"
-                aria-label={checked ? 'Yes' : 'No'}
+                aria-label={checked ? t('yes') : t('no')}
                 className={cn('inline-flex size-4 items-center justify-center rounded border', checked ? 'border-primary bg-primary text-primary-foreground' : 'border-border', className)}
             >
                 {checked && <CheckIcon className="size-3" />}

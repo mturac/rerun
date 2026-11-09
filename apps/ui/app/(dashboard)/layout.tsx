@@ -10,10 +10,11 @@ import { computerFlag, i18nFlag, publishedAccessFlag, rewindFlag } from '@/flags
 import { FOREMAN_PLACEMENT_COOKIE, parseForemanPlacement } from '@/lib/foreman-layout'
 import { FOREMAN_OPEN_COOKIE, parseForemanOpen } from '@/lib/foreman-open'
 import { SessionProvider } from '@/supabase/session/SessionProvider'
+import { getTranslations } from 'next-intl/server'
 
-export const metadata: Metadata = {
-    title: 'Dashboard',
-    description: 'Your Boxes and coworkers on Rerun.',
+export async function generateMetadata(): Promise<Metadata> {
+    const t = await getTranslations('layout.dashboard')
+    return { title: t('metaTitle'), description: t('metaDescription') }
 }
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {

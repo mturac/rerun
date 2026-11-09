@@ -3,6 +3,7 @@
 import { LAYOUT_META } from '@/lib/data/views'
 import { cn } from '@/lib/utils'
 import type { CardLayout } from '@rerun/contracts'
+import { useTranslations } from 'next-intl'
 
 type LayoutTileProps = {
     layout: CardLayout
@@ -11,6 +12,7 @@ type LayoutTileProps = {
 }
 
 export function LayoutTile({ layout, active, onClick }: LayoutTileProps) {
+    const t = useTranslations('data.layouts')
     const meta = LAYOUT_META[layout]
     return (
         <button
@@ -23,7 +25,7 @@ export function LayoutTile({ layout, active, onClick }: LayoutTileProps) {
             )}
         >
             <meta.icon className="size-5" />
-            {meta.label}
+            {t(layout)}
         </button>
     )
 }

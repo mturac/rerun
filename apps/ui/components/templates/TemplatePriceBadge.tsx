@@ -2,6 +2,7 @@
 
 import { isPaid, priceLabel, type TemplatePricing } from '@rerun/contracts'
 import { Badge } from '@rerun/ui/primitives'
+import { useTranslations } from 'next-intl'
 import type { PurchaseAccess } from '@/lib/templates/entitlement'
 import { cn } from '@/lib/utils'
 
@@ -9,6 +10,7 @@ import { cn } from '@/lib/utils'
 // A free template gets no pill at all, since one on every card would be noise; the detail panel
 // states it in its meta rows instead.
 export function TemplatePriceBadge({ pricing, access, className }: { pricing: TemplatePricing; access?: PurchaseAccess; className?: string }) {
+    const t = useTranslations('templates.price')
     if (!isPaid(pricing)) return null
 
     const shared = cn('font-medium', className)
@@ -16,7 +18,7 @@ export function TemplatePriceBadge({ pricing, access, className }: { pricing: Te
     if (access === 'active') {
         return (
             <Badge tone="green" size="xs" glow={false} className={shared}>
-                Purchased
+                {t('purchased')}
             </Badge>
         )
     }
@@ -24,7 +26,7 @@ export function TemplatePriceBadge({ pricing, access, className }: { pricing: Te
     if (access === 'lapsed') {
         return (
             <Badge tone="orange" size="xs" glow={false} className={shared}>
-                Expired
+                {t('expired')}
             </Badge>
         )
     }

@@ -6,27 +6,33 @@ import type { LucideIcon } from '../icons'
 import { AlertCircleIcon, BanIcon, CheckIcon, ChevronRightIcon, LoaderIcon, ScrollTextIcon } from '../icons'
 import { Icon } from '../primitives/icon'
 import { Badge, type BadgeTone } from '../primitives/badge'
-import { useUiLocale } from '../locale'
+import { useKitTranslations, useUiLocale } from '../locale'
+import type { KitTranslator } from '../kit-translator'
 
-export const RUN_STATUS_META: Record<Run['status'], { label: string; icon: LucideIcon; color: string; tint: string; tone: BadgeTone }> = {
-    running: { label: 'Running', icon: LoaderIcon, color: 'text-amber-400', tint: 'border-amber-400/20 bg-amber-400/10 text-amber-400', tone: 'orange' },
-    done: { label: 'Done', icon: CheckIcon, color: 'text-emerald-400', tint: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-400', tone: 'green' },
-    error: { label: 'Error', icon: AlertCircleIcon, color: 'text-red-400', tint: 'border-red-400/20 bg-red-400/10 text-red-400', tone: 'red' },
-    cancelled: { label: 'Cancelled', icon: BanIcon, color: 'text-muted-foreground', tint: 'border-muted-foreground/20 bg-muted-foreground/10 text-muted-foreground', tone: 'neutral' },
+export const RUN_STATUS_META: Record<Run['status'], { icon: LucideIcon; color: string; tint: string; tone: BadgeTone }> = {
+    running: { icon: LoaderIcon, color: 'text-amber-400', tint: 'border-amber-400/20 bg-amber-400/10 text-amber-400', tone: 'orange' },
+    done: { icon: CheckIcon, color: 'text-emerald-400', tint: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-400', tone: 'green' },
+    error: { icon: AlertCircleIcon, color: 'text-red-400', tint: 'border-red-400/20 bg-red-400/10 text-red-400', tone: 'red' },
+    cancelled: { icon: BanIcon, color: 'text-muted-foreground', tint: 'border-muted-foreground/20 bg-muted-foreground/10 text-muted-foreground', tone: 'neutral' },
+}
+
+function runStatusLabel(status: Run['status'], t: KitTranslator): string {
+    return t(`monitoring.runStatus.${status in RUN_STATUS_META ? status : 'done'}`)
 }
 
 export function RunStatusBadge({ status }: { status: Run['status'] }) {
+    const t = useKitTranslations()
     const meta = RUN_STATUS_META[status] ?? RUN_STATUS_META.done
     return (
         <Badge tone={meta.tone} size="xs" className="font-medium uppercase tracking-wide">
-            {meta.label}
+            {runStatusLabel(status, t)}
         </Badge>
     )
 }
 
-function formatUsage(run: Run, locale: string): string {
+function formatUsage(run: Run, locale: string, t: KitTranslator): string {
     const total = run.totalTokens ?? (((run.inputTokens ?? 0) + (run.outputTokens ?? 0)) || undefined)
-    return total ? `${formatNumber(total, locale)} tokens` : ''
+    return total ? t('monitoring.runs.tokens', { tokens: formatNumber(total, locale) }) : ''
 }
 
 function SkeletonRows({ rows }: { rows: number }) {
@@ -46,6 +52,7 @@ export type AgentRunLogsProps = {
 }
 
 export function AgentRunLogs({ runs, loading, onOpenRun }: AgentRunLogsProps) {
+    const t = useKitTranslations()
     if (loading) {
         return (
             <div className="p-3">
@@ -59,8 +66,8 @@ export function AgentRunLogs({ runs, loading, onOpenRun }: AgentRunLogsProps) {
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center">
                 <Icon size="lg" icon={ScrollTextIcon} className="text-muted-foreground" />
                 <div className="flex flex-col gap-0.5">
-                    <p className="text-[13px] font-medium text-foreground">No runs yet</p>
-                    <p className="text-[11px] text-muted-foreground">Every run of the coworker is recorded here</p>
+                    <p className="text-[13px] font-medium text-foreground">{t('monitoring.runs.emptyTitle')}</p>
+                    <p className="text-[11px] text-muted-foreground">{t('monitoring.runs.emptyDescription')}</p>
                 </div>
             </div>
         )
@@ -79,8 +86,9 @@ export function AgentRunLogs({ runs, loading, onOpenRun }: AgentRunLogsProps) {
 
 function RunRow({ run, onOpen }: { run: Run; onOpen: () => void }) {
     const locale = useUiLocale()
+    const t = useKitTranslations()
     const meta = RUN_STATUS_META[run.status] ?? RUN_STATUS_META.done
-    const usage = formatUsage(run, locale)
+    const usage = formatUsage(run, locale, t)
     const trigger = run.triggerSlug ?? run.triggerSource
     return (
         <button
@@ -95,13 +103,11 @@ function RunRow({ run, onOpen }: { run: Run; onOpen: () => void }) {
                     {run.startedAt ? formatDate(run.startedAt, locale) : run.id}
                 </span>
                 <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <span className={meta.color}>{meta.label}</span>
+                    <span className={meta.color}>{runStatusLabel(run.status, t)}</span>
                     {typeof run.stepCount === 'number' && (
                         <>
                             <span className="text-muted-foreground/50">·</span>
-                            <span className="shrink-0">
-                                {run.stepCount} step{run.stepCount !== 1 ? 's' : ''}
-                            </span>
+                            <span className="shrink-0">{t('monitoring.runs.steps', { count: run.stepCount })}</span>
                         </>
                     )}
                     {usage && (

@@ -82,6 +82,7 @@ function ProfileTab() {
 type SignInStep = 'list' | 'email' | 'phone'
 
 function SignInTab() {
+    const t = useTranslations('dialogs.account')
     const { refreshPhoneStep } = useSession()
     const [methods, setMethods] = useState<SignInMethods | null>(null)
     const [step, setStep] = useState<SignInStep>(() => useAccountStore.getState().signInStart)
@@ -122,16 +123,16 @@ function SignInTab() {
         if (error) throw error
         // Supabase answers a success while the change still waits on the current address, which is
         // how a project left on double confirmation behaves.
-        if (data.user?.email?.toLowerCase() !== email) throw new Error('This change still has to be confirmed from your current address.')
+        if (data.user?.email?.toLowerCase() !== email) throw new Error(t('emailChangeNeedsCurrentAddress'))
         void syncAccountEmailAction()
-        toast.success('Email updated')
+        toast.success(t('emailUpdated'))
         await backToList()
     }
 
     const onPhoneChanged = async () => {
         // An account born from a number is filed under it, so its address just moved with it.
         await Promise.all([refreshSession(), refreshPhoneStep()])
-        toast.success('Phone number updated')
+        toast.success(t('phoneUpdated'))
         await backToList()
     }
 
@@ -145,12 +146,12 @@ function SignInTab() {
         if (!error) return
         forgetLinkIntent()
         setBusyProvider(null)
-        toast.error(`Could not connect ${label}. Try again.`)
+        toast.error(t('connectFailed', { provider: label }))
     }
 
     const disconnectProvider = async (provider: OAuthProvider) => {
         const { label } = OAUTH_PROVIDER_CONFIG[provider]
-        const failure = `Could not disconnect ${label}. Try again.`
+        const failure = t('disconnectFailed', { provider: label })
         setBusyProvider(provider)
         try {
             const supabase = createClient()
@@ -158,9 +159,9 @@ function SignInTab() {
             const identity = data?.identities.find(candidate => candidate.provider === provider)
             if (readError || !identity) throw new Error(failure)
             const { error } = await supabase.auth.unlinkIdentity(identity)
-            if (error) throw new Error(error.code === 'single_identity_not_deletable' ? `${label} is the only sign-in method connected to this account.` : failure)
+            if (error) throw new Error(error.code === 'single_identity_not_deletable' ? t('onlySignInMethod', { provider: label }) : failure)
             await refreshSession()
-            toast.success(`${label} disconnected`)
+            toast.success(t('disconnected', { provider: label }))
             await load()
         } catch (error) {
             toast.error(error instanceof Error ? error.message : failure)
@@ -173,7 +174,7 @@ function SignInTab() {
         return (
             <PanelSteps stepKey="email" depth={1}>
                 <PanelEditorShell>
-                    <PanelEditorHeader title={methods?.email ? 'Change email' : 'Add email'} onBack={() => setStep('list')} />
+                    <PanelEditorHeader title={methods?.email ? t('changeEmail') : t('addEmail')} onBack={() => setStep('list')} />
                     <PanelEditorBody>
                         <div className="mx-auto w-full max-w-sm py-4">
                             <EmailCodeForm purpose="change" sendCode={sendEmailCode} verifyCode={verifyEmailCode} />
@@ -188,7 +189,7 @@ function SignInTab() {
         return (
             <PanelSteps stepKey="phone" depth={1}>
                 <PanelEditorShell>
-                    <PanelEditorHeader title={methods?.phone ? 'Change phone number' : 'Add phone number'} onBack={() => setStep('list')} />
+                    <PanelEditorHeader title={methods?.phone ? t('changePhone') : t('addPhone')} onBack={() => setStep('list')} />
                     <PanelEditorBody>
                         <div className="mx-auto w-full max-w-sm py-4">
                             <PhoneChangeForm onChanged={onPhoneChanged} />
@@ -203,7 +204,7 @@ function SignInTab() {
         <PanelSteps stepKey="list" depth={0}>
             <SignInMethodsPanel
                 methods={methods}
-                unavailableReasons={inAppBrowser ? { google: 'Open Rerun in your browser to connect Google.' } : undefined}
+                unavailableReasons={inAppBrowser ? { google: t('googleNeedsBrowser') } : undefined}
                 busyProvider={busyProvider}
                 onChangeEmail={() => setStep('email')}
                 onChangePhone={PHONE_ENABLED ? () => setStep('phone') : undefined}

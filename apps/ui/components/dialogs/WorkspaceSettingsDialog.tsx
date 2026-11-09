@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import type { ActionResult } from '@/app/api/_actions/space.actions'
 import { updatePublishPolicyAction } from '@/app/api/_actions/publish.actions'
@@ -28,11 +28,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
-const schema = z.object({
-    name: z.string().trim().min(1, 'Name is required').max(WORKSPACE_NAME_MAX, `Keep it under ${WORKSPACE_NAME_MAX} characters`),
-})
-
-type FormValues = z.infer<typeof schema>
+type FormValues = { name: string }
 
 // `current` keeps the icon the workspace already has, which can be a company favicon rather than
 // one of the illustrations. Sending no logo field for it is what stops a rename from replacing it.
@@ -40,9 +36,8 @@ type LogoDraft = { kind: 'current' } | { kind: 'blob'; file: string } | { kind: 
 
 const VISIBLE_ILLUSTRATIONS = 10
 
-export const WORKSPACE_SETTINGS_ADMIN_ONLY = 'Only an admin can change the workspace settings'
-
 export function WorkspaceSettingsDialog({ open, onOpenChange, fallbackIconUrl }: { open: boolean; onOpenChange: (open: boolean) => void; fallbackIconUrl?: string }) {
+    const t = useTranslations('workspace.settings')
     const { workspace, refreshWorkspace } = useSession()
     const isAdmin = useIsWorkspaceAdmin()
     const publishedAccess = usePublishedAccessEnabled()
@@ -62,12 +57,12 @@ export function WorkspaceSettingsDialog({ open, onOpenChange, fallbackIconUrl }:
         return result
     }
 
-    const policyField = policy.settings ? <PublishPolicyField value={policy.draft} onChange={policy.setDraft} publicLinks={policy.settings.publicLinks} workspaceName={workspace.name || 'Workspace'} /> : null
+    const policyField = policy.settings ? <PublishPolicyField value={policy.draft} onChange={policy.setDraft} publicLinks={policy.settings.publicLinks} workspaceName={workspace.name || t('fallbackName')} /> : null
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
-                {open && <WorkspaceSettingsForm workspace={workspace} fallbackIconUrl={fallbackIconUrl} onSave={save} onCancel={() => onOpenChange(false)} extra={policyField} showLanguage={languagePacks} disabledReason={isAdmin ? undefined : WORKSPACE_SETTINGS_ADMIN_ONLY} />}
+                {open && <WorkspaceSettingsForm workspace={workspace} fallbackIconUrl={fallbackIconUrl} onSave={save} onCancel={() => onOpenChange(false)} extra={policyField} showLanguage={languagePacks} disabledReason={isAdmin ? undefined : t('adminOnly')} />}
             </DialogContent>
         </Dialog>
     )
@@ -90,6 +85,9 @@ export function WorkspaceSettingsForm({
     showLanguage?: boolean
     disabledReason?: string
 }) {
+    const t = useTranslations('workspace.settings')
+    const tCommon = useTranslations('common')
+    const schema = useMemo(() => z.object({ name: z.string().trim().min(1, t('nameRequired')).max(WORKSPACE_NAME_MAX, t('nameTooLong', { max: WORKSPACE_NAME_MAX })) }), [t])
     const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { name: workspace.name ?? '' } })
     const {
         formState: { isSubmitting },
@@ -153,8 +151,8 @@ export function WorkspaceSettingsForm({
         <Form {...form}>
             <form onSubmit={onSubmit} className="flex max-h-full min-h-0 flex-1 flex-col">
                 <DialogHeader className="px-6 pt-6 pb-4">
-                    <DialogTitle>Workspace settings</DialogTitle>
-                    <p className="text-sm text-muted-foreground">Your workspace name and logo, as your team and your invitations see them.</p>
+                    <DialogTitle>{t('title')}</DialogTitle>
+                    <p className="text-sm text-muted-foreground">{t('description')}</p>
                 </DialogHeader>
 
                 <ScrollFade className="min-h-0 flex-1 px-6 pt-1 pb-6">
@@ -162,7 +160,7 @@ export function WorkspaceSettingsForm({
                         <div className="flex items-end gap-4">
                             <FileDropzone onFiles={files => upload(files[0])} accept={LOGO_ACCEPT} overlayLabel="" className="shrink-0">
                                 {({ inputId }) => (
-                                    <label htmlFor={inputId} aria-label="Upload a logo" className="group relative block size-16 cursor-pointer">
+                                    <label htmlFor={inputId} aria-label={t('uploadLogo')} className="group relative block size-16 cursor-pointer">
                                         {shownPreviewSrc ? <img src={shownPreviewSrc} alt="" onError={() => setBrokenPreviewSrc(previewSrc)} className="size-full rounded-2xl bg-muted object-cover" /> : <span className="block size-full rounded-2xl bg-muted" />}
                                         <span className="absolute -right-1 -bottom-1 flex size-6 items-center justify-center rounded-full border bg-background shadow-sm transition-colors group-hover:bg-muted">
                                             <UploadIcon className="size-3.5" />
@@ -176,7 +174,7 @@ export function WorkspaceSettingsForm({
                                 render={({ field }) => (
                                     <FormItem className="min-w-0 flex-1">
                                         <FormControl>
-                                            <Input label="Name" required placeholder="e.g. Acme Inc." {...field} />
+                                            <Input label={t('name')} required placeholder={t('namePlaceholder')} {...field} />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -184,7 +182,7 @@ export function WorkspaceSettingsForm({
                             />
                         </div>
 
-                        <Field label="Logo from a website or link" error={linkBroken ? NO_LOGO_FOUND : undefined}>
+                        <Field label={t('logoLink')} error={linkBroken ? t('noLogoFound') : undefined}>
                             <div className="relative">
                                 <span className="pointer-events-none absolute top-1/2 left-2.5 flex size-5 -translate-y-1/2 items-center justify-center overflow-hidden rounded">
                                     {logo.kind === 'link' && !linkBroken ? <img src={logoSrc} alt="" className="size-full object-contain" onError={() => setBrokenSrc(logoSrc)} /> : <GlobeIcon className="size-4 text-muted-foreground" />}
@@ -194,7 +192,7 @@ export function WorkspaceSettingsForm({
                         </Field>
 
                         {BLOB_ILLUSTRATIONS.length > 0 && (
-                            <Field label="Or pick an illustration">
+                            <Field label={t('pickIllustration')}>
                                 <IllustrationGrid selectedUrl={selectedBlobUrl} onPick={pickBlob} />
                             </Field>
                         )}
@@ -209,12 +207,12 @@ export function WorkspaceSettingsForm({
 
                 <DialogFooter className="m-0 shrink-0 px-6 py-4">
                     <Button type="button" variant="outline" onClick={onCancel}>
-                        Cancel
+                        {tCommon('cancel')}
                     </Button>
                     <TooltipDisabledReason reason={disabledReason}>
                         <Button type="submit" disabled={isSubmitting || !name.trim() || !!disabledReason}>
                             {isSubmitting && <Loader2Icon className="animate-spin" />}
-                            {isSubmitting ? 'Saving' : 'Save'}
+                            {isSubmitting ? tCommon('saving') : tCommon('save')}
                         </Button>
                     </TooltipDisabledReason>
                 </DialogFooter>
@@ -257,6 +255,7 @@ function logoDraftSrc(logo: LogoDraft, currentSrc: string): string {
 }
 
 function IllustrationGrid({ selectedUrl, onPick }: { selectedUrl: string | undefined; onPick: (file: string) => void }) {
+    const t = useTranslations('workspace.settings')
     const [expanded, setExpanded] = useState(false)
     const blobs = expanded ? BLOB_ILLUSTRATIONS : BLOB_ILLUSTRATIONS.slice(0, VISIBLE_ILLUSTRATIONS)
 
@@ -278,7 +277,7 @@ function IllustrationGrid({ selectedUrl, onPick }: { selectedUrl: string | undef
                 })}
             </div>
             <Button type="button" variant="ghost" size="sm" className="-ml-2 text-muted-foreground" onClick={() => setExpanded(value => !value)}>
-                {expanded ? 'Show less' : `Show all ${BLOB_ILLUSTRATIONS.length}`}
+                {expanded ? t('showLess') : t('showAll', { count: BLOB_ILLUSTRATIONS.length })}
             </Button>
         </div>
     )

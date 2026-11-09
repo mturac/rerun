@@ -1,0 +1,124 @@
+{
+    "toast": {
+        "close": "Cerrar notificación",
+        "openConversation": "Abrir conversación"
+    },
+    "inbox": {
+        "unknownCoworker": "Coworker",
+        "detail": {
+            "close": "Cerrar",
+            "seeAll": "Ver todo",
+            "seeAllCount": "Ver los {count}",
+            "markRead": "Marcar como leído",
+            "notInList": "Esta actualización todavía no está en tu lista",
+            "openConversation": "Abrir conversación",
+            "noCoworker": "Esta actualización no está vinculada a ningún coworker"
+        },
+        "markAll": {
+            "title": "¿Marcar todo como leído?",
+            "description": "{count, plural, one {# elemento saldrá} other {# elementos saldrán}} de esta lista. Las solicitudes que siguen esperando respuesta también se borran, sin responderse.",
+            "confirm": "Marcar todo como leído"
+        },
+        "rowMenu": {
+            "options": "Opciones de notificación",
+            "undo": "Deshacer",
+            "unfollow": "Dejar de seguir sus tareas programadas",
+            "unfollowed": "Ya no sigues las tareas programadas de {name}.",
+            "mute": "Silenciar a {name}",
+            "muted": "{name} está silenciado.",
+            "settings": "Ajustes de notificaciones"
+        }
+    },
+    "settings": {
+        "scopeTitle": "Notificarme sobre",
+        "recommended": "Recomendado",
+        "notificationsFor": "Notificaciones de {name}",
+        "scopes": {
+            "everything": {
+                "label": "Todo",
+                "detail": "Cada ejecución del workspace, la haya iniciado quien la haya iniciado."
+            },
+            "mine": {
+                "label": "Mis ejecuciones y lo que sigo",
+                "detail": "Ejecuciones que inicio, conversaciones en las que estoy, coworkers que sigo."
+            },
+            "needed": {
+                "label": "Solo cuando me necesiten",
+                "detail": "Preguntas, aprobaciones y errores en mis ejecuciones. Una ejecución terminada no avisa."
+            },
+            "nothing": {
+                "label": "Nada",
+                "detail": "Reviso la bandeja de entrada yo mismo."
+            }
+        },
+        "modes": {
+            "default": {
+                "label": "Predeterminado",
+                "yourSetting": "Tu ajuste: “{scope}”."
+            },
+            "everything": {
+                "label": "Toda la actividad",
+                "hint": "Cada ejecución, la haya iniciado quien la haya iniciado."
+            },
+            "muted": {
+                "label": "Silenciado",
+                "hint": "Nada. El board lo sigue mostrando."
+            }
+        },
+        "bell": {
+            "title": "Notificarme sobre {name}",
+            "follow": "Seguir sus tareas programadas",
+            "noSchedule": "{name} todavía no tiene tareas programadas",
+            "nothingScheduled": "Nada programado todavía.",
+            "scheduled": "{count} programadas, te llegan como tus propias ejecuciones.",
+            "allSettings": "Todos los ajustes de notificaciones"
+        },
+        "perCoworker": {
+            "title": "Por coworker",
+            "detail": "También se ajusta desde la campana de cada coworker.",
+            "add": "Añadir",
+            "allListed": "Todos los coworkers ya están en la lista",
+            "empty": "Cada coworker sigue la regla de arriba.",
+            "following": "Sigue sus tareas programadas",
+            "alreadyDefault": "{name} ya sigue tu ajuste",
+            "reset": "Restablecer {name}"
+        },
+        "channels": {
+            "title": "Cómo",
+            "toast": {
+                "label": "Aviso en la app",
+                "description": "Aparece sobre tu bandeja de entrada mientras Rerun está abierto."
+            },
+            "sound": {
+                "label": "Sonido",
+                "description": "Solo cuando un coworker te necesita o algo falla.",
+                "play": "Reproducir sonido de notificación"
+            },
+            "email": {
+                "label": "Email",
+                "description": "Cuando te necesita mientras no estás. Un email por incidente, nunca uno por ejecución."
+            }
+        },
+        "accountEmails": {
+            "title": "Emails de la cuenta",
+            "billing": {
+                "label": "Prueba y facturación",
+                "description": "Recordatorios de la prueba y avisos de facturación de tu suscripción."
+            },
+            "product": {
+                "label": "Novedades del producto",
+                "description": "Nuevas funciones, consejos y noticias ocasionales del producto."
+            }
+        }
+    },
+    "emailPreferences": {
+        "coworkerTitle": "Notificaciones de coworkers",
+        "email": {
+            "label": "Email",
+            "description": "Cuando un coworker te necesita o falla mientras no estás. Un email por incidente, nunca uno por ejecución."
+        },
+        "saveFailed": "No se pudieron guardar las preferencias",
+        "saving": "Guardando…",
+        "saved": "Todos los cambios guardados"
+    }
+}

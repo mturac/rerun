@@ -1,0 +1,136 @@
+{
+    "_context": {
+        "settings.scopeTitle": "Heading of the list of notification scopes (what you get notified about).",
+        "settings.modes.default.yourSetting": "Hint under the Default option of a coworker's bell menu. {scope} is the label of the user's global scope, already translated.",
+        "settings.modes.everything.label": "Per-coworker notification mode: notified of every run of this coworker.",
+        "settings.bell.title": "{name} is a coworker's name.",
+        "settings.bell.scheduled": "{count} is the number of scheduled tasks of the coworker.",
+        "settings.channels.title": "Heading of the notification channels (toast, sound, email): how you are notified.",
+        "settings.channels.toast.label": "A toast is the small popup notification in the app.",
+        "inbox.rowMenu.unfollow": "Menu item on a coworker's inbox row.",
+        "inbox.detail.seeAllCount": "Button that opens the whole inbox. {count} is how many items it holds.",
+        "inbox.markAll.description": "{count} is how many items the inbox holds."
+    },
+    "toast": {
+        "close": "Close notification",
+        "openConversation": "Open conversation"
+    },
+    "inbox": {
+        "unknownCoworker": "Coworker",
+        "detail": {
+            "close": "Close",
+            "seeAll": "See all",
+            "seeAllCount": "See all {count}",
+            "markRead": "Mark as read",
+            "notInList": "This update is not in your list yet",
+            "openConversation": "Open conversation",
+            "noCoworker": "This update is not tied to a coworker"
+        },
+        "markAll": {
+            "title": "Mark everything as read?",
+            "description": "{count, plural, one {# item} other {# items}} will leave this list. Requests still waiting on an answer are cleared too, without being answered.",
+            "confirm": "Mark all as read"
+        },
+        "rowMenu": {
+            "options": "Notification options",
+            "undo": "Undo",
+            "unfollow": "Stop following its scheduled tasks",
+            "unfollowed": "You no longer follow {name}'s scheduled tasks.",
+            "mute": "Mute {name}",
+            "muted": "{name} is muted.",
+            "settings": "Notification settings"
+        }
+    },
+    "settings": {
+        "scopeTitle": "Notify me about",
+        "recommended": "Recommended",
+        "notificationsFor": "Notifications for {name}",
+        "scopes": {
+            "everything": {
+                "label": "Everything",
+                "detail": "Every run in the workspace, whoever started it."
+            },
+            "mine": {
+                "label": "My runs and what I follow",
+                "detail": "Runs I start, conversations I am in, coworkers I follow."
+            },
+            "needed": {
+                "label": "Only when I am needed",
+                "detail": "Questions, approvals and errors in my runs. A finished run stays quiet."
+            },
+            "nothing": {
+                "label": "Nothing",
+                "detail": "I check the inbox myself."
+            }
+        },
+        "modes": {
+            "default": {
+                "label": "Default",
+                "yourSetting": "Your setting: “{scope}”."
+            },
+            "everything": {
+                "label": "All activity",
+                "hint": "Every run, whoever started it."
+            },
+            "muted": {
+                "label": "Muted",
+                "hint": "Nothing. The board still shows it."
+            }
+        },
+        "bell": {
+            "title": "Notify me about {name}",
+            "follow": "Follow its scheduled tasks",
+            "noSchedule": "{name} has no scheduled task yet",
+            "nothingScheduled": "Nothing scheduled yet.",
+            "scheduled": "{count} scheduled, they reach you like your own runs.",
+            "allSettings": "All notification settings"
+        },
+        "perCoworker": {
+            "title": "Per coworker",
+            "detail": "Also set from the bell on each coworker.",
+            "add": "Add",
+            "allListed": "Every coworker is already listed",
+            "empty": "Every coworker follows the rule above.",
+            "following": "Following its scheduled tasks",
+            "alreadyDefault": "{name} already follows your setting",
+            "reset": "Reset {name}"
+        },
+        "channels": {
+            "title": "How",
+            "toast": {
+                "label": "Toast in the app",
+                "description": "Pops up above your inbox while Rerun is open."
+            },
+            "sound": {
+                "label": "Sound",
+                "description": "Only when a coworker needs you or something breaks.",
+                "play": "Play notification sound"
+            },
+            "email": {
+                "label": "Email",
+                "description": "When it needs you while you are away. One email per incident, never one per run."
+            }
+        },
+        "accountEmails": {
+            "title": "Account emails",
+            "billing": {
+                "label": "Trial & billing",
+                "description": "Trial reminders and billing notices about your subscription."
+            },
+            "product": {
+                "label": "Product updates",
+                "description": "New features, tips and occasional product news."
+            }
+        }
+    },
+    "emailPreferences": {
+        "coworkerTitle": "Coworker notifications",
+        "email": {
+            "label": "Email",
+            "description": "When a coworker needs you or breaks while you are away. One email per incident, never one per run."
+        },
+        "saveFailed": "Could not save preferences",
+        "saving": "Saving…",
+        "saved": "All changes saved"
+    }
+}

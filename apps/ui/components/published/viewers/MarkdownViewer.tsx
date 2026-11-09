@@ -1,4 +1,4 @@
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { relativeDate } from '@/lib/data/friendly-columns'
 import { FileTextIcon } from '@/lib/icons'
 import { Markdown } from '@rerun/ui/markdown'
@@ -22,11 +22,12 @@ function updatedLabel(updatedAt: string, locale: string): string {
 }
 
 export function MarkdownViewer({ slug, name, markdown, updatedAt }: { slug: string; name: string; markdown: string; updatedAt: string }) {
+    const t = useTranslations('published.viewer')
     const locale = useLocale()
     return (
         <ViewerPage slug={slug} bar={<ViewerTopBar icon={FileTextIcon} name={name} meta="Markdown" />}>
             <article className="mx-auto flex max-w-[680px] flex-col px-6 pt-12 pb-24 max-md:px-5 max-md:pt-8">
-                <p className="mb-4 text-xs text-muted-foreground">Updated {updatedLabel(updatedAt, locale)}</p>
+                <p className="mb-4 text-xs text-muted-foreground">{t('updated', { when: updatedLabel(updatedAt, locale) })}</p>
                 <Markdown content={markdown} className={DOCUMENT_CLASS} />
             </article>
         </ViewerPage>

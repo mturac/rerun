@@ -9,7 +9,7 @@ import { useRerunCredit } from '@/hooks/useRerunCredit'
 import { useBoardStore } from '@/stores/board.store'
 import { track } from '@rerun/analytics/client'
 import { formatCredits } from '@rerun/contracts'
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { CancelFlow, type CancelInput } from './CancelFlow'
@@ -53,6 +53,7 @@ function CancelFlowLoader({
     onStepChange: (step: { phase: CancelFlowState['phase']; step: CancelStep }) => void
 }) {
     const locale = useLocale()
+    const t = useTranslations('billing')
     const [state, setState] = useState<CancelFlowState | null>(null)
     const [activity, setActivity] = useState<CancelFlowActivity | null>(null)
     const [activityLoading, setActivityLoading] = useState(true)
@@ -62,7 +63,7 @@ function CancelFlowLoader({
     const creditLeftLabel = formatCredits(Math.max(0, credit.budgetMicros - credit.usedMicros), locale)
 
     const failed = useEffectEvent((error: string) => {
-        toast.error('Could not open the cancellation', { description: error })
+        toast.error(t('cancel.toasts.openFailed'), { description: error })
         onFailed()
     })
 
@@ -103,7 +104,7 @@ function CancelFlowLoader({
         if (state.phase === 'paid') {
             const res = await requestRenewalReminderAction()
             if (!res.ok) {
-                toast.error('Could not set the reminder', { description: res.error })
+                toast.error(t('cancel.toasts.remindFailed'), { description: res.error })
                 return false
             }
         }
@@ -111,8 +112,8 @@ function CancelFlowLoader({
         return true
     }
 
-    const onClaim = async () => settle(await claimRetentionOfferAction(), 'Could not apply the offer')
-    const onCancel = async (input: CancelInput) => settle(await cancelSubscriptionAction(input), 'Could not cancel your subscription')
+    const onClaim = async () => settle(await claimRetentionOfferAction(), t('cancel.toasts.claimFailed'))
+    const onCancel = async (input: CancelInput) => settle(await cancelSubscriptionAction(input), t('cancel.toasts.cancelFailed'))
 
     const onCheckReason = async (text: string) => {
         const res = await checkCancelReasonAction(text)
@@ -120,8 +121,8 @@ function CancelFlowLoader({
     }
 
     const onResume = async () => {
-        const ok = await settle(await resumeSubscriptionAction(), 'Could not resume your subscription')
-        if (ok) toast.success(state?.phase === 'trial' ? 'Your trial is back on' : 'Your subscription is back on')
+        const ok = await settle(await resumeSubscriptionAction(), t('cancel.toasts.resumeFailed'))
+        if (ok) toast.success(state?.phase === 'trial' ? t('cancel.toasts.trialResumed') : t('cancel.toasts.subscriptionResumed'))
         return ok
     }
 
@@ -146,13 +147,14 @@ function CancelFlowLoader({
 }
 
 function CancelFlowSkeleton() {
+    const t = useTranslations('billing')
     return (
         <div className="flex min-h-0 flex-col">
             <div className="px-6 pt-6 pb-6">
                 <DialogHeader className="mb-5 gap-0">
                     <div className="flex flex-col gap-1.5 pr-6">
                         <Skeleton className="mb-2 size-8 rounded-lg" />
-                        <DialogTitle className="sr-only">Cancel subscription</DialogTitle>
+                        <DialogTitle className="sr-only">{t('cancel.buttons.cancelSubscription')}</DialogTitle>
                         <Skeleton className="h-8 w-4/5" />
                         <Skeleton className="h-4 w-full" />
                         <Skeleton className="h-4 w-3/5" />

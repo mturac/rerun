@@ -1,6 +1,6 @@
 'use client'
 
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -38,6 +38,7 @@ function leaveForTheBoard() {
 
 export function ForemanRoutines({ docked, className }: { docked: boolean; className?: string }) {
     const locale = useLocale()
+    const t = useTranslations('foreman.routines')
     const [data, setData] = useState<WorkspaceRoutines | null>(null)
     const [saving, setSaving] = useState<string[]>([])
     const [renamingKey, setRenamingKey] = useState<string | null>(null)
@@ -96,7 +97,7 @@ export function ForemanRoutines({ docked, className }: { docked: boolean; classN
             return
         }
         patch(key, { enabled: !enabled })
-        toast.error(`Couldn't ${enabled ? 'resume' : 'pause'} ${routine.name}`, { description: result.error })
+        toast.error(t(enabled ? 'resumeFailed' : 'pauseFailed', { name: routine.name }), { description: result.error })
     }
 
     const rename = async (routine: WorkspaceRoutine, name: string) => {
@@ -109,7 +110,7 @@ export function ForemanRoutines({ docked, className }: { docked: boolean; classN
             return
         }
         patch(key, { name: routine.name })
-        toast.error(`Couldn't rename ${routine.name}`, { description: result.error })
+        toast.error(t('renameFailed', { name: routine.name }), { description: result.error })
     }
 
     const openEditor = (routine: WorkspaceRoutine) => {
@@ -122,11 +123,11 @@ export function ForemanRoutines({ docked, className }: { docked: boolean; classN
     const runNow = async (routine: WorkspaceRoutine) => {
         const result = await testScheduleAction(routine.agentId, routine.slug)
         if (!result.success || !result.runId) {
-            toast.error(`Couldn't run ${routine.name}`, { description: result.error })
+            toast.error(t('runFailed', { name: routine.name }), { description: result.error })
             return
         }
         if (!result.sessionId) {
-            toast.success(`${routine.name} started`)
+            toast.success(t('started', { name: routine.name }))
             return
         }
         const sessionId = await adoptRunSession(routine.agentId, result.sessionId, routine.name)
@@ -143,7 +144,7 @@ export function ForemanRoutines({ docked, className }: { docked: boolean; classN
     if (upToDate.length === 0) {
         return (
             <div className={cn('flex flex-col', className)}>
-                <EmptyState icon={CalendarClockIcon} title="No routines yet" description="Ask a coworker to do something on a schedule (a daily report, a weekly digest) and it will show up here." />
+                <EmptyState icon={CalendarClockIcon} title={t('emptyTitle')} description={t('emptyDescription')} />
             </div>
         )
     }
@@ -152,7 +153,7 @@ export function ForemanRoutines({ docked, className }: { docked: boolean; classN
         <RoutineList
             routines={upToDate}
             now={now}
-            agentNameOf={agentId => agents.find(agent => agent.id === agentId)?.name ?? 'Unknown coworker'}
+            agentNameOf={agentId => agents.find(agent => agent.id === agentId)?.name ?? t('unknownCoworker')}
             onOpen={openEditor}
             onToggle={toggle}
             isSaving={routine => saving.includes(routineKey(routine))}
@@ -169,20 +170,21 @@ export function ForemanRoutines({ docked, className }: { docked: boolean; classN
 type RoutineMenuProps = { routine: WorkspaceRoutine; canRename: boolean; onRename: () => void; onEdit: () => void; onRunNow: () => void }
 
 function RoutineMenu({ routine, canRename, onRename, onEdit, onRunNow }: RoutineMenuProps) {
+    const t = useTranslations('foreman.routines')
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button size="icon-sm" variant="ghost" aria-label={`${routine.name} options`} className="text-muted-foreground">
+                <Button size="icon-sm" variant="ghost" aria-label={t('options', { name: routine.name })} className="text-muted-foreground">
                     <EllipsisIcon />
                 </Button>
             </DropdownMenuTrigger>
             {/* The rename field takes the focus a beat later; the menu handing it back would steal it. */}
             <DropdownMenuContent align="end" onCloseAutoFocus={event => event.preventDefault()}>
-                {canRename && <DropdownMenuItem onSelect={onRename}>Rename</DropdownMenuItem>}
-                <DropdownMenuItem onSelect={onEdit}>Edit</DropdownMenuItem>
+                {canRename && <DropdownMenuItem onSelect={onRename}>{t('rename')}</DropdownMenuItem>}
+                <DropdownMenuItem onSelect={onEdit}>{t('edit')}</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem disabled={routine.setupPending && !routine.enabled} onSelect={onRunNow}>
-                    Run now
+                    {t('runNow')}
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>

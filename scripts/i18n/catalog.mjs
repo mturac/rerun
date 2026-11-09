@@ -90,11 +90,38 @@ export function readGlossary() {
 }
 
 // `{name}`, `{count, plural, ...}` and `{when, date}` as "name", "count:plural", "when:date", and the
-// rich text tags as "<link>": what a translation must carry over unchanged.
+// rich text tags as "<link>": what a translation must carry over unchanged. A small walk over the ICU
+// syntax, so the text of a branch (`=0 {coworkers}`) is never taken for an argument.
 export function placeholdersOf(message) {
     const found = new Set()
-    // An argument is a name closed by `}` or followed by its type; `{No one}` in a branch is text.
-    for (const [, name, type] of message.matchAll(/\{\s*([A-Za-z0-9_]+)\s*(?:,\s*([a-z]+)\s*)?(?=[,}])/g)) found.add(type ? `${name}:${type}` : name)
+    const walkText = index => {
+        while (index < message.length) {
+            const char = message[index]
+            if (char === '}') return index
+            if (char === '{') {
+                index = walkArgument(index)
+                continue
+            }
+            index += 1
+        }
+        return index
+    }
+    const walkArgument = start => {
+        let index = start + 1
+        let head = ''
+        while (index < message.length && message[index] !== '}' && message[index] !== '{') head += message[index++]
+        const [name, type] = head.split(',').map(part => part.trim())
+        if (name) found.add(type ? `${name}:${type}` : name)
+        while (index < message.length && message[index] !== '}') {
+            if (message[index] === '{') {
+                index = walkText(index + 1) + 1
+                continue
+            }
+            index += 1
+        }
+        return index + 1
+    }
+    walkText(0)
     for (const [, name] of message.matchAll(/<\/?([A-Za-z0-9_]+)>/g)) found.add(`<${name}>`)
     return [...found].sort()
 }
@@ -104,8 +131,13 @@ const DASHES = /[—–]/
 export function problemsOf({ key, source, translation, locale, glossary }) {
     const problems = []
     if (typeof translation !== 'string' || !translation.trim()) return [`${key}: empty`]
-    const expected = placeholdersOf(source).join(' ')
-    const actual = placeholdersOf(translation).join(' ')
+    // Same arguments with the same types, except that a language may need a plural or a select on an
+    // argument English uses as is ("{failed} failed" becomes "{failed, plural, ...} en échec").
+    const loose = placeholder => placeholder.replace(/:(plural|select|selectordinal)$/, '')
+    const sourcePlaceholders = placeholdersOf(source)
+    const translationPlaceholders = placeholdersOf(translation).map(placeholder => (sourcePlaceholders.includes(placeholder) ? placeholder : sourcePlaceholders.includes(loose(placeholder)) ? loose(placeholder) : placeholder))
+    const expected = sourcePlaceholders.join(' ')
+    const actual = [...new Set(translationPlaceholders)].sort().join(' ')
     if (expected !== actual) problems.push(`${key}: placeholders differ (source: ${expected || 'none'}, ${locale}: ${actual || 'none'})`)
     if (/\b(plural|select|selectordinal)\b/.test(source) && !/\bother\s*\{/.test(translation)) problems.push(`${key}: plural or select without an "other" branch`)
     if (DASHES.test(translation)) problems.push(`${key}: contains an em or en dash`)

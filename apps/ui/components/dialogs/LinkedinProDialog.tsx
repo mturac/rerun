@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { formatNumber } from '@rerun/i18n/format'
+import { useLocale, useTranslations } from 'next-intl'
 import { addAppSlotAction, cancelAppConnectAction, connectLinkedinAction, disconnectAppConnectionAction, getAppsOverviewAction, resendAppCodeAction, submitAppCheckpointAction } from '@/app/api/_actions/apps.actions'
 import type { AppConnectionView, AppsOverview, ConnectOutcome } from '@/app/api/_services/apps.service'
 import { countryFromLocale } from '@/components/apps/linkedin-countries'
@@ -19,6 +21,8 @@ const SLUG = 'linkedin'
 type CheckpointResult = Awaited<ReturnType<typeof submitAppCheckpointAction>>
 
 export function LinkedinProDialog() {
+    const t = useTranslations('dialogs')
+    const locale = useLocale()
     const open = usePaidAppsStore(s => s.openSlug === SLUG)
     const reconnectId = usePaidAppsStore(s => s.reconnectId)
     const closeApp = usePaidAppsStore(s => s.closeApp)
@@ -134,14 +138,14 @@ export function LinkedinProDialog() {
         const result = await check(screen.connectionId, code)
         setPending(null)
         if (!result.ok) return fail(result.error, result.code)
-        if (result.value.status === 'checkpoint' && screen.checkpointType === 'app_approval') setError('LinkedIn has not seen the approval yet. Tap Yes in the app, then try again.')
+        if (result.value.status === 'checkpoint' && screen.checkpointType === 'app_approval') setError(t('linkedinPro.approvalNotSeen'))
         await settle(result.value)
     }
 
     const resend = async () => {
         if (screen.kind !== 'checkpoint') return
         const result = await resendAppCodeAction(SLUG, screen.connectionId)
-        if (result.ok) toast.success('A new code is on its way.')
+        if (result.ok) toast.success(t('linkedinPro.codeResent'))
         else setError(result.error)
     }
 
@@ -166,7 +170,7 @@ export function LinkedinProDialog() {
         const result = await addAppSlotAction(SLUG, randomUuid())
         setPending(null)
         if (!result.ok) return setError(result.error)
-        toast.success(result.value.trialSlot ? 'Slot added, $0 during your trial.' : 'Slot added to your plan.')
+        toast.success(result.value.trialSlot ? t('paidApp.slotAddedTrial', { price: formatNumber(0, locale, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) }) : t('paidApp.slotAdded'))
         // The webhook moves the slot count, a moment after Stripe answers.
         setTimeout(() => void load(), 1500)
         await load()

@@ -1,10 +1,11 @@
 import { Button } from '@/components/ui/button'
 import { formatBytes } from '@/lib/files/format'
 import { DownloadIcon, FileIcon } from '@/lib/icons'
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { DOWNLOAD_URL, ViewerPage } from './ViewerChrome'
 
 export function DownloadCard({ slug, name, size }: { slug: string; name: string; size: number }) {
+    const t = useTranslations('published.viewer')
     const locale = useLocale()
     return (
         <ViewerPage slug={slug} className="flex items-center justify-center p-6">
@@ -19,7 +20,7 @@ export function DownloadCard({ slug, name, size }: { slug: string; name: string;
                 <Button size="lg" className="w-full" asChild>
                     <a href={DOWNLOAD_URL} download>
                         <DownloadIcon />
-                        Download
+                        {t('download')}
                     </a>
                 </Button>
             </div>
