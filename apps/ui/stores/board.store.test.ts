@@ -50,6 +50,7 @@ const agent = (id: string, spaceId: string, col: number, row: number): IsoAgent 
 
 beforeEach(() => {
     vi.clearAllMocks()
+    actions.startKickoffAction.mockResolvedValue({ ok: true, sessionId: 'kickoff-session', runId: 'kickoff-run' })
     useBoardStore.setState(INITIAL, true)
     db.refusing.clear()
     db.readRows.clear()
