@@ -2,11 +2,11 @@ import { mkdirSync, existsSync } from 'node:fs'
 import { createClient, type Client } from '@libsql/client'
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql'
 import { agentDataDir, systemDbPath } from '../config/paths.js'
-import { sessions, messages, runs, runSteps, toolCalls, compactionCheckpoints, skillProposals } from './schema.js'
+import { sessions, sessionExecutionHeads, messages, runs, runSteps, toolCalls, compactionCheckpoints, skillProposals } from './schema.js'
 import { latestVersion, migrateSqlite, type SqliteMigration } from './ladder.js'
 import { scheduleBackfillPaidSources } from '../paid-data/backfill.js'
 
-const schema = { sessions, messages, runs, runSteps, toolCalls, compactionCheckpoints, skillProposals }
+const schema = { sessions, sessionExecutionHeads, messages, runs, runSteps, toolCalls, compactionCheckpoints, skillProposals }
 
 export type SystemDb = { client: Client; db: LibSQLDatabase<typeof schema> }
 
@@ -255,6 +255,33 @@ export const SYSTEM_DB_MIGRATIONS: SqliteMigration[] = [
         id: 'paid-sources',
         up: async client => {
             await client.executeMultiple(PAID_SOURCES_DDL)
+        },
+    },
+    {
+        version: 5,
+        id: 'session-execution-head',
+        up: async client => {
+            await client.executeMultiple(`
+                CREATE TABLE IF NOT EXISTS session_execution_heads (
+                    session_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    revision INTEGER NOT NULL CHECK (revision > 0 AND revision <= 9007199254740991),
+                    state TEXT NOT NULL CHECK (state IN ('working', 'idle', 'error')),
+                    attention_kind TEXT CHECK (attention_kind IN ('ack', 'question', 'approval', 'connector')),
+                    attention_revision INTEGER,
+                    CHECK ((attention_kind IS NULL AND attention_revision IS NULL) OR
+                        (attention_kind IS NOT NULL AND attention_revision IS NOT NULL AND attention_revision > 0 AND attention_revision <= revision))
+                );
+            `)
+            await ensureColumns(client, 'runs', ['execution_start_revision INTEGER', 'execution_terminal_intent INTEGER NOT NULL DEFAULT 0', 'execution_terminal_attention TEXT'])
+        },
+    },
+    {
+        version: 6,
+        id: 'execution-delivery',
+        up: async client => {
+            await ensureColumns(client, 'session_execution_heads', ['delivery_ack_revision INTEGER NOT NULL DEFAULT 0', 'delivery_attempts INTEGER NOT NULL DEFAULT 0', 'delivery_next_attempt_at INTEGER NOT NULL DEFAULT 0'])
+            await client.execute('CREATE INDEX IF NOT EXISTS execution_delivery_due ON session_execution_heads (delivery_next_attempt_at, session_id) WHERE delivery_ack_revision < revision')
         },
     },
 ]

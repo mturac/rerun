@@ -1,4 +1,7 @@
-type RunHandle = { controller: AbortController; agentId: string; cancel?: () => void }
+type RunHandle = { controller: AbortController; agentId: string } & (
+    | { phase: 'running'; cancel?: () => void }
+    | { phase: 'cancelling' }
+)
 
 const controllers = new Map<string, RunHandle>()
 
@@ -10,10 +13,13 @@ type SessionClaim = { runId: string; claimedAt: number; authorId?: string }
 
 const sessionClaims = new Map<string, SessionClaim>()
 const claimedSessions = new Map<string, string>()
+const pendingStops = new Set<string>()
 
 export function registerRunAbort(runId: string, agentId: string): AbortController {
     const controller = new AbortController()
-    controllers.set(runId, { controller, agentId })
+    const phase = pendingStops.has(runId) ? 'cancelling' : 'running'
+    controllers.set(runId, { phase, controller, agentId })
+    if (phase === 'cancelling') controller.abort()
     return controller
 }
 
@@ -22,7 +28,8 @@ export function registerRunAbort(runId: string, agentId: string): AbortControlle
 // The run loop registers here what it takes to really close itself down.
 export function setRunCancel(runId: string, cancel: () => void): void {
     const handle = controllers.get(runId)
-    if (handle) handle.cancel = cancel
+    if (handle?.phase === 'running') handle.cancel = cancel
+    else if (handle?.phase === 'cancelling' && pendingStops.delete(runId)) cancel()
 }
 
 export function unregisterRunAbort(runId: string): void {
@@ -43,6 +50,7 @@ export function sessionClaim(sessionId: string): SessionClaim | null {
 }
 
 export function releaseSession(runId: string): void {
+    pendingStops.delete(runId)
     const sessionId = claimedSessions.get(runId)
     if (!sessionId) return
     claimedSessions.delete(runId)
@@ -64,12 +72,24 @@ export function sessionClaimCount(): number {
 
 export function abortRun(runId: string): boolean {
     const handle = controllers.get(runId)
-    if (!handle) return false
-    controllers.delete(runId)
-    releaseSession(runId)
+    if (!handle) {
+        // Chat claims its session before awaiting the run row. A stop in that gap belongs to
+        // the upcoming loop, whose cancel hook will announce completion after registration.
+        if (!claimedSessions.has(runId)) return false
+        pendingStops.add(runId)
+        return true
+    }
+    if (handle.phase === 'cancelling') return true
+    const cancel = handle.cancel
+    if (cancel) {
+        // Settlement owns the claim until its final transcript writes and teardown finish.
+        controllers.set(runId, { phase: 'cancelling', controller: handle.controller, agentId: handle.agentId })
+    } else {
+        unregisterRunAbort(runId)
+    }
     handle.controller.abort()
     // Closes the run for good: writes its terminal row, tells the hub, and tears the provider
     // process down. Without it a provider that ignores the abort keeps the conversation "working".
-    handle.cancel?.()
+    cancel?.()
     return true
 }

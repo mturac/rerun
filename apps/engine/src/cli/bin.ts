@@ -10,6 +10,7 @@ import { doctorCommand } from './commands/doctor.js'
 import { installBrowserCommand, installDesktop, installLayoutCommand, rollbackCommand, updateCliTools, updateCommand } from './commands/update.js'
 import { serviceCommand } from './commands/service.js'
 import { restoreFinalizeCommand } from './commands/restore-finalize.js'
+import { localRunnerCommand } from './commands/local-runner.js'
 
 const HELP = `rerun-engine
 
@@ -20,6 +21,7 @@ Usage:
   rerun agent create --name <n>   Create an agent
   rerun agent list                List agents
   rerun agent delete <id>         Delete an agent
+  rerun agent import-grokbot <f>  Import a Grok Bot package (.json) or agent archive (.tar.gz)
   rerun skill list <agentId>      List an agent's skills
   rerun schedule list <agentId>   List an agent's scheduled tasks
   rerun mcp login <id> <server>   Sign in to an OAuth MCP server
@@ -37,6 +39,9 @@ Usage:
   rerun start | stop | restart    Control the systemd service
   rerun status                    Show the service status
   rerun logs [--no-follow]        Tail the service logs
+  rerun local-runner pair --engine <url>
+                                  Get a credential from an engine for this machine's runner
+  rerun local-runner start        Serve shell/file tasks on this machine (default 127.0.0.1:4700)
 `
 
 async function main() {
@@ -70,6 +75,8 @@ async function main() {
             return installDesktop()
         case 'update-cli-tools':
             return updateCliTools()
+        case 'local-runner':
+            return localRunnerCommand(rest)
         case 'start':
         case 'stop':
         case 'restart':

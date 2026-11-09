@@ -9,6 +9,7 @@ import { connectionRoutes } from './routes/connections.js'
 import { planRoutes } from './routes/plan.js'
 import { chatRoutes } from './routes/chat.js'
 import { sessionRoutes } from './routes/sessions.js'
+import { externalAgentRoutes } from './routes/external-agents.js'
 import { memoryRoutes } from './routes/memories.js'
 import { createDataRouter } from './routes/data.js'
 import { createSkillFilesRouter, skillRoutes } from './routes/skills.js'
@@ -24,6 +25,7 @@ import { doctorRoutes } from './routes/doctor.js'
 import { createFilesRouter } from './routes/files.js'
 import { brainRoutes } from './routes/brain.js'
 import { agentDesktopRoutes, desktopRoutes } from './routes/desktop.js'
+import { localRunnerAnnounceRoutes, localRunnerRoutes } from './routes/local-runner.js'
 import { HttpError, notFound } from '../lib/errors.js'
 import { agentExists, listAgentIdsOnDisk } from '../agents/loader.js'
 import { workspaceDir, sharedDir } from '../config/paths.js'
@@ -47,6 +49,7 @@ export function createServer(): Hono {
     api.route('/plan', planRoutes)
     api.route('/agents', agentRoutes)
     api.route('/agents/:id/sessions', sessionRoutes)
+    api.route('/agents/:id/external-agents', externalAgentRoutes)
     api.route('/agents/:id/memories', memoryRoutes)
     api.route(
         '/agents/:id/data',
@@ -85,8 +88,11 @@ export function createServer(): Hono {
     api.route('/shared/data', createDataRouter(() => getSharedDb(), SHARED_HIDDEN_TABLES, () => listAgentIdsOnDisk()))
     api.route('/brain', brainRoutes)
     api.route('/desktop', desktopRoutes)
+    api.route('/local-runner', localRunnerRoutes)
     api.route('/agents/:id/desktop', agentDesktopRoutes)
     api.route('/agents/:id', chatRoutes)
+    // Before the API-key middleware on purpose: runners announce with their rlr_ credential.
+    app.route('/local-runner', localRunnerAnnounceRoutes)
     app.route('/', api)
 
     app.onError((err, c) => {

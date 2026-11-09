@@ -152,7 +152,7 @@ async function run(message: string, opts: { agentId?: string; override?: Record<
     const agentId = opts.agentId ?? id
     const session = await createSession(agentId, message)
     const agent = await getAgent(agentId)
-    const started = await runAgent(agent, session.id, message, opts.override as never, undefined, undefined, opts.trigger as never)
+    const started = await runAgent(agent, session.id, message, (opts.override ?? { provider: 'rerun' }) as never, undefined, undefined, opts.trigger as never)
     const outcome = await started.settled
     // The terminal event and the curator run after `settled` resolves.
     await new Promise(r => setTimeout(r, 10))

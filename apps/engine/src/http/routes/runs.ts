@@ -6,6 +6,7 @@ import { resumeStreamResponse } from '../../runtime/stream.js'
 import { abortRun } from '../../runtime/run-control.js'
 import { abortSubRun } from '../../tools/builtin/sub-run-watch.js'
 import { emitRunTerminal, triggerFromRun } from '../../runtime/run-events.js'
+import { advanceExecution } from '../../db/repos/execution.js'
 
 const USAGE_RANGE_MS: Record<string, number> = {
     '24h': 24 * 60 * 60 * 1000,
@@ -31,12 +32,13 @@ runRoutes.post('/:rid/cancel', async c => {
     const run = await getRun(agentId, rid)
     if (!run || run.agentId !== agentId) return c.json({ error: 'run not found' }, 404)
     const aborted = abortRun(rid)
-    if (run.status === 'running') {
-        await cancelRun(agentId, rid)
+    if (!aborted) {
+        const cancelled = await cancelRun(agentId, rid)
         // When the run loop is still there it announces its own end. When it is not -- the process
         // restarted, or the row outlived its loop -- nobody would ever tell the hub, and the
         // conversation would stay "working" on the dashboard with no way back.
-        if (!aborted) {
+        if (cancelled) {
+            const execution = await advanceExecution(agentId, run.sessionId, rid, { kind: 'terminal', state: 'idle' })
             await emitRunTerminal({
                 agentId,
                 sessionId: run.sessionId,
@@ -46,6 +48,7 @@ runRoutes.post('/:rid/cancel', async c => {
                 cancelled: true,
                 provider: run.provider ?? undefined,
                 model: run.model ?? undefined,
+                execution,
             })
         }
     }

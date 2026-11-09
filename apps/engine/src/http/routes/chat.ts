@@ -11,6 +11,8 @@ import { runAgent } from '../../runtime/loop.js'
 import { claimSession, releaseSession, sessionClaim } from '../../runtime/run-control.js'
 import { mergeRunStream } from '../../runtime/run-stream-merge.js'
 import { toResumableStreamResponse } from '../../runtime/stream.js'
+import { admissionExecution } from '../../db/repos/execution.js'
+import { publishExecutionStart } from '../../runtime/execution-events.js'
 
 export const chatRoutes = new Hono()
 
@@ -50,6 +52,7 @@ chatRoutes.post('/chat', async c => {
         releaseSession(runId)
         throw err
     })
+    publishExecutionStart(run)
     const response = toResumableStreamResponse(run.id, async writer => {
         try {
             const agentRun = await runAgent(runAgentView, session.id, body.message, override, writer, run.id, { source: 'chat', author: body.author, userLanguage: claim ? body.userLanguage : undefined, callableAgentIds: body.callableAgentIds })
@@ -63,5 +66,7 @@ chatRoutes.post('/chat', async c => {
     })
     response.headers.set('x-session-id', session.id)
     response.headers.set('x-run-id', run.id)
+    const execution = admissionExecution(run)
+    if (execution) response.headers.set('x-session-execution', JSON.stringify(execution))
     return response
 })

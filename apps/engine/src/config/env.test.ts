@@ -2,7 +2,7 @@ import { homedir } from 'node:os'
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const KEYS = ['RERUN_DATA_DIR', 'RERUN_PORT', 'RERUN_HOST', 'RERUN_API_KEY', 'RERUN_HUB_BASE_URL', 'RERUN_LOG_LEVEL', 'RERUN_CODEX_PATH']
+const KEYS = ['RERUN_DATA_DIR', 'RERUN_PORT', 'RERUN_HOST', 'RERUN_API_KEY', 'RERUN_HUB_BASE_URL', 'RERUN_WEB_SEARCH_FALLBACK', 'RERUN_LOG_LEVEL', 'RERUN_CODEX_PATH']
 
 async function freshEnv(values: Record<string, string | undefined> = {}) {
     vi.resetModules()
@@ -30,6 +30,7 @@ describe('env', () => {
             RERUN_HUB_BASE_URL: 'https://hub.example.com',
             RERUN_LOG_LEVEL: 'debug',
             RERUN_CODEX_PATH: '/usr/local/bin/codex',
+            RERUN_WEB_SEARCH_FALLBACK: 'mwmbl',
         })
         expect(env()).toEqual({
             RERUN_DATA_DIR: '/data',
@@ -39,6 +40,7 @@ describe('env', () => {
             RERUN_HUB_BASE_URL: 'https://hub.example.com',
             RERUN_LOG_LEVEL: 'debug',
             RERUN_CODEX_PATH: '/usr/local/bin/codex',
+            RERUN_WEB_SEARCH_FALLBACK: 'mwmbl',
         })
     })
 
@@ -54,6 +56,7 @@ describe('env', () => {
         await expect(freshEnv({ RERUN_PORT: '-1' }).then(env => env())).rejects.toThrow(/RERUN_PORT/)
         await expect(freshEnv({ RERUN_PORT: '80.5' }).then(env => env())).rejects.toThrow(/RERUN_PORT/)
         await expect(freshEnv({ RERUN_LOG_LEVEL: 'verbose' }).then(env => env())).rejects.toThrow(/RERUN_LOG_LEVEL/)
+        await expect(freshEnv({ RERUN_WEB_SEARCH_FALLBACK: 'other' }).then(env => env())).rejects.toThrow(/RERUN_WEB_SEARCH_FALLBACK/)
     })
 
     it('reads an empty port as 0 and refuses it', async () => {

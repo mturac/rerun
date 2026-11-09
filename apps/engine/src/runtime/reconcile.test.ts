@@ -26,12 +26,13 @@ const { writeAgentConfig } = await import('../agents/config-write.js')
 const { agentDir } = await import('../config/paths.js')
 const { insertAgentIndex } = await import('../db/repos/agents.js')
 const { createSession } = await import('../db/repos/sessions.js')
-const { getRun, startRun } = await import('../db/repos/runs.js')
+const { getRun, startRun, finishRun } = await import('../db/repos/runs.js')
+const { getSessionExecution, pendingExecutions } = await import('../db/repos/execution.js')
 const { reconcileInterruptedRuns } = await import('./reconcile.js')
 const { ensureForeman } = await import('../agents/foreman.js')
 const { FOREMAN_AGENT_ID } = await import('@rerun/contracts')
 const { getSkillProposal, insertSkillProposal, transitionSkillProposal } = await import('../db/repos/skill-proposals.js')
-const { getSystemDb } = await import('../db/systemDb.js')
+const { getSystemDb, closeSystemDb } = await import('../db/systemDb.js')
 const { runs } = await import('../db/schema.js')
 const { eq } = await import('drizzle-orm')
 
@@ -67,7 +68,7 @@ describe('reconcileInterruptedRuns', () => {
         const row = await getRun(id, run.id)
         expect(row?.status).toBe('error')
         expect(row?.error).toBe('interrupted: engine restarted')
-        const completion = sent.find(n => n.runId === run.id)
+        const completion = sent.find(n => n.runId === run.id && n.event !== 'agent.execution.updated')
         expect(completion?.kind).toBe('error')
         expect((completion?.metadata as Record<string, unknown>).errorCode).toBe('engine_restarted')
     })
@@ -85,6 +86,7 @@ describe('reconcileInterruptedRuns', () => {
         expect(result.notified).toBe(0)
         expect((await getRun(id, run.id))?.status).toBe('error')
         expect(sent).toHaveLength(0)
+        expect((await pendingExecutions(id, Date.now())).find(item => item.execution.runId === run.id)).toMatchObject({ execution: { state: 'error' } })
     })
 
     // The foreman is not in the agent index, so it has to be named for its runs to be repaired.
@@ -101,6 +103,23 @@ describe('reconcileInterruptedRuns', () => {
 
     it('does nothing when no run was in flight', async () => {
         expect(await reconcileInterruptedRuns()).toMatchObject({ runs: 0, notified: 0, proposals: 0 })
+        expect(sent).toHaveLength(0)
+    })
+
+    it('repairs a committed HITL turn whose execution projection was cut off by a crash', async () => {
+        const session = await createSession(id, 'crash after terminal row')
+        const run = await startRun(id, session.id)
+        await finishRun(id, run.id, null, 1, null, undefined, 'connector')
+        closeSystemDb(id)
+        expect(await getSessionExecution(id, session.id)).toMatchObject({ state: 'working' })
+
+        expect(await reconcileInterruptedRuns()).toMatchObject({ runs: 0, notified: 0 })
+
+        expect(await getSessionExecution(id, session.id)).toMatchObject({ runId: run.id, state: 'idle', attention: { kind: 'connector' } })
+        expect(sent.filter(event => event.runId === run.id)).toHaveLength(0)
+        expect((await pendingExecutions(id, Date.now())).find(item => item.execution.runId === run.id)).toMatchObject({ execution: { state: 'idle', attention: { kind: 'connector' } } })
+        sent.length = 0
+        await reconcileInterruptedRuns()
         expect(sent).toHaveLength(0)
     })
 

@@ -7,6 +7,22 @@ process.env.RERUN_DATA_DIR = mkdtempSync(resolve(tmpdir(), 'rerun-runs-'))
 process.env.RERUN_API_KEY = ''
 
 const sent = vi.hoisted(() => [] as { event?: string; kind: string; runId?: string | null; sessionId?: string | null; message: string; metadata?: Record<string, unknown> | null }[])
+const cancellationRace = vi.hoisted(() => ({ runId: '', snapshots: 0, gate: null as Promise<void> | null }))
+
+vi.mock('../../db/repos/runs.js', async importOriginal => {
+    const actual = await importOriginal<typeof import('../../db/repos/runs.js')>()
+    return {
+        ...actual,
+        getRun: async (...args: Parameters<typeof actual.getRun>) => {
+            const row = await actual.getRun(...args)
+            if (row?.id === cancellationRace.runId) {
+                cancellationRace.snapshots += 1
+                await cancellationRace.gate
+            }
+            return row
+        },
+    }
+})
 
 vi.mock('../../runtime/notify.js', async importOriginal => ({
     ...(await importOriginal<typeof import('../../runtime/notify.js')>()),
@@ -23,11 +39,11 @@ const { agentConfigSchema } = await import('../../agents/types.js')
 const { writeAgentConfig } = await import('../../agents/config-write.js')
 const { agentDir } = await import('../../config/paths.js')
 const { createSession } = await import('../../db/repos/sessions.js')
-const { getRun, startRun } = await import('../../db/repos/runs.js')
+const { cancelRun, finishRun, getRun, startRun } = await import('../../db/repos/runs.js')
 const { appendMessage } = await import('../../db/repos/messages.js')
 const { insertRunStep, insertToolCall } = await import('../../db/repos/telemetry.js')
 const { getSystemDb } = await import('../../db/systemDb.js')
-const { registerRunAbort, unregisterRunAbort, activeRunCount } = await import('../../runtime/run-control.js')
+const { registerRunAbort, setRunCancel, unregisterRunAbort, activeRunCount } = await import('../../runtime/run-control.js')
 const { registerRun } = await import('../../runtime/stream.js')
 const { registerSubRunStop } = await import('../../tools/builtin/sub-run-watch.js')
 
@@ -71,6 +87,9 @@ beforeAll(async () => {
 
 beforeEach(() => {
     sent.length = 0
+    cancellationRace.runId = ''
+    cancellationRace.snapshots = 0
+    cancellationRace.gate = null
 })
 
 describe('GET /agents/:id/usage', () => {
@@ -238,12 +257,21 @@ describe('POST /agents/:id/runs/:rid/cancel', () => {
     it('aborts a live run and lets its loop announce the end', async () => {
         const rid = await seedRun(id, sessionId)
         const controller = registerRunAbort(rid, 'agent-1')
-        const res = await cancel(rid)
-        expect(await res.json()).toEqual({ ok: true, aborted: true })
-        expect(controller.signal.aborted).toBe(true)
-        expect(activeRunCount()).toBe(0)
+        const settle = vi.fn()
+        setRunCancel(rid, settle)
+        try {
+            const res = await cancel(rid)
+            expect(await res.json()).toEqual({ ok: true, aborted: true })
+            expect(controller.signal.aborted).toBe(true)
+            expect(activeRunCount()).toBe(1)
+            expect(settle).toHaveBeenCalledTimes(1)
+            expect((await getRun(id, rid))?.status).toBe('running')
+            expect(sent).toEqual([])
+            await cancelRun(id, rid)
+        } finally {
+            unregisterRunAbort(rid)
+        }
         expect((await getRun(id, rid))?.status).toBe('cancelled')
-        expect(sent).toEqual([])
     })
 
     it('closes an orphaned run and tells the hub itself', async () => {
@@ -268,6 +296,46 @@ describe('POST /agents/:id/runs/:rid/cancel', () => {
         expect(await res.json()).toEqual({ ok: true, aborted: false })
         expect((await getRun(id, rid))?.status).toBe('done')
         expect(sent).toEqual([])
+    })
+
+    it('preserves a run that finishes after the cancel request reads its row', async () => {
+        const rid = await seedRun(id, sessionId)
+        let release!: () => void
+        cancellationRace.runId = rid
+        cancellationRace.gate = new Promise<void>(resolve => { release = resolve })
+        const pending = cancel(rid)
+        try {
+            await vi.waitFor(() => expect(cancellationRace.snapshots).toBe(1))
+            await finishRun(id, rid, { totalTokens: 5 }, 1)
+        } finally {
+            cancellationRace.runId = ''
+            release()
+        }
+
+        expect(await (await pending).json()).toEqual({ ok: true, aborted: false })
+        expect((await getRun(id, rid))?.status).toBe('done')
+        expect(sent).toEqual([])
+    })
+
+    it('announces an orphan cancellation once when two requests read the same running row', async () => {
+        const rid = await seedRun(id, sessionId)
+        let release!: () => void
+        cancellationRace.runId = rid
+        cancellationRace.gate = new Promise<void>(resolve => { release = resolve })
+        const pending = [cancel(rid), cancel(rid)]
+        try {
+            await vi.waitFor(() => expect(cancellationRace.snapshots).toBe(2))
+        } finally {
+            cancellationRace.runId = ''
+            release()
+        }
+
+        for (const response of await Promise.all(pending)) {
+            expect(await response.json()).toEqual({ ok: true, aborted: false })
+        }
+        expect((await getRun(id, rid))?.status).toBe('cancelled')
+        expect(sent).toHaveLength(1)
+        expect(sent[0]).toMatchObject({ event: 'agent.message.completed', runId: rid, metadata: expect.objectContaining({ status: 'cancelled' }) })
     })
 
     it('still aborts a live loop whose row is already settled', async () => {

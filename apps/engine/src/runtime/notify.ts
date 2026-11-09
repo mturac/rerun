@@ -2,6 +2,7 @@ import type { MessageAuthor } from '@rerun/contracts'
 import { env } from '../config/env.js'
 import { nowIso } from '../lib/ids.js'
 import { logger } from '../lib/logger.js'
+import { advanceExecution, getSessionExecution, type ExecutionSnapshot } from '../db/repos/execution.js'
 
 export type NotificationKind = 'info' | 'question' | 'approval' | 'connector' | 'done' | 'error'
 
@@ -17,6 +18,7 @@ export type NotificationEvent =
     | 'agent.schedule.created'
     | 'agent.trigger.created'
     | 'box.connection.connected'
+    | 'agent.execution.updated'
 
 export type NotificationPayload = {
     event: NotificationEvent
@@ -31,6 +33,7 @@ export type NotificationPayload = {
     source: string | null
     originAgentId: string | null
     timestamp: string
+    execution?: ExecutionSnapshot | null
 }
 
 export type NotificationInput = {
@@ -44,6 +47,7 @@ export type NotificationInput = {
     title?: string | null
     source?: string | null
     originAgentId?: string | null
+    execution?: ExecutionSnapshot | null
 }
 
 // The member whose chat message started the run, so the hub can route the event to them.
@@ -53,7 +57,27 @@ export function authorMetadata(author: MessageAuthor | undefined): { authorId?: 
 
 const TIMEOUT_MS = 5000
 
+// Mirrors the hub's notificationPayloadSchema bounds (message 1..16_000, title <= 200): an
+// over-long session or schedule name must degrade to a truncated title, not a rejected webhook.
+const MAX_MESSAGE_LENGTH = 16_000
+const MAX_TITLE_LENGTH = 200
+
+function clampText(value: string, max: number): string {
+    const chars = [...value]
+    return chars.length > max ? chars.slice(0, max).join('') : value
+}
+
 export async function sendNotification(input: NotificationInput): Promise<{ delivered: boolean; reason?: string }> {
+    let execution = input.execution
+    if (input.agentId && input.sessionId && input.runId && input.event !== 'agent.session.created') {
+        const current = await getSessionExecution(input.agentId, input.sessionId)
+        if (current && current.runId !== input.runId) return { delivered: false, reason: 'superseded' }
+    }
+    if (execution === undefined && (input.event === undefined || input.event === 'agent.notification') && input.agentId && input.sessionId && input.runId) {
+        const attention = input.kind === 'question' || input.kind === 'approval' || input.kind === 'connector' ? input.kind : 'ack'
+        execution = await advanceExecution(input.agentId, input.sessionId, input.runId, { kind: 'attention', attention })
+        if (!execution && await getSessionExecution(input.agentId, input.sessionId)) return { delivered: false, reason: 'superseded' }
+    }
     const { RERUN_HUB_BASE_URL: hub, RERUN_API_KEY: token } = env()
     if (!hub || !token) {
         logger.debug({ agent: input.agentId }, 'notification skipped: webhook not configured')
@@ -67,12 +91,13 @@ export async function sendNotification(input: NotificationInput): Promise<{ deli
         agentId: input.agentId,
         sessionId: input.sessionId ?? null,
         runId: input.runId ?? null,
-        message: input.message,
+        message: clampText(input.message, MAX_MESSAGE_LENGTH) || 'Notification',
         metadata: input.metadata ?? null,
-        title: input.title ?? null,
+        title: input.title == null ? null : clampText(input.title, MAX_TITLE_LENGTH),
         source: input.source ?? null,
         originAgentId: input.originAgentId ?? null,
         timestamp: nowIso(),
+        ...(execution !== undefined ? { execution } : {}),
     }
 
     const controller = new AbortController()

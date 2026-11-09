@@ -66,6 +66,19 @@ describe('sendNotification', () => {
         expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toMatchObject({ event: 'agent.session.created', kind: 'done', agentId: 'a', sessionId: 's', runId: 'r', metadata: { x: 1 }, title: 't', source: 'schedule', originAgentId: 'o' })
     })
 
+    it('clamps title and message to the hub schema bounds instead of failing validation', async () => {
+        const fetchMock = mockFetch(async () => new Response(null, { status: 200 }))
+
+        await sendNotification({ kind: 'info', agentId: 'a', message: 'x'.repeat(20_000), title: 't'.repeat(500) })
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+        expect(body.title).toHaveLength(200)
+        expect(body.message).toHaveLength(16_000)
+
+        await sendNotification({ kind: 'info', agentId: 'a', message: '' })
+        expect(JSON.parse(fetchMock.mock.calls[1][1].body as string).message).toBe('Notification')
+    })
+
     it('reports the status of a refused delivery', async () => {
         mockFetch(async () => new Response('nope', { status: 503 }))
 

@@ -25,6 +25,8 @@ export const agentsDir = () => resolve(dataDir(), 'agents')
 
 export const sharedDir = () => resolve(dataDir(), 'shared')
 
+export const localRunnerDir = () => resolve(dataDir(), 'local-runner')
+
 // Deliberately a sibling of `shared/` rather than a file inside it: shared_write and the
 // /shared/files router would otherwise be able to truncate the database, and the Files tab
 // would show the user a binary blob next to its -wal and -shm siblings.

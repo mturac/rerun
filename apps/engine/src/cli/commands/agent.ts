@@ -1,7 +1,11 @@
 import { FOREMAN_AGENT_ID } from '@rerun/contracts'
-import { rm } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { readFile, rm } from 'node:fs/promises'
+import { Readable } from 'node:stream'
 import { prepareDataDir } from '../../datadir/ladder.js'
 import { createAgent } from '../../agents/factory.js'
+import { importAgent } from '../../agents/import.js'
+import { importGrokBotPackage, grokBotPackageSchema } from '../../agents/grokbot-import.js'
 import { listAgentIndex, deleteAgentIndex } from '../../db/repos/agents.js'
 import { agentExists } from '../../agents/loader.js'
 import { agentDir } from '../../config/paths.js'
@@ -52,5 +56,26 @@ export async function agentCommand(args: string[]): Promise<void> {
         return
     }
 
-    throw new Error('Usage: rerun agent <create|list|delete>')
+    if (sub === 'import-grokbot') {
+        const file = args[1]
+        if (!file) throw new Error('Usage: rerun agent import-grokbot <package.json|archive.tar.gz> [--name <n>] [--display-name <n>]')
+        const displayName = flags['display-name'] === 'true' ? undefined : flags['display-name']
+
+        if (file.endsWith('.json')) {
+            const pkg = grokBotPackageSchema.parse(JSON.parse(await readFile(file, 'utf8')))
+            const result = await importGrokBotPackage(pkg, { name: flags.name === 'true' ? undefined : flags.name, displayName })
+            for (const warning of result.warnings) process.stdout.write(`warning: ${warning}\n`)
+            process.stdout.write(`Imported agent ${result.id} (${result.name})\n`)
+            return
+        }
+
+        const name = flags.name === 'true' ? undefined : flags.name
+        if (!name) throw new Error('Usage: rerun agent import-grokbot <archive.tar.gz> --name <n> [--display-name <n>]')
+        const body = Readable.toWeb(createReadStream(file)) as ReadableStream<Uint8Array>
+        const result = await importAgent({ body, name, displayName })
+        process.stdout.write(`Imported agent ${result.id} (${result.name})\n`)
+        return
+    }
+
+    throw new Error('Usage: rerun agent <create|list|delete|import-grokbot>')
 }

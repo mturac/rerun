@@ -1,6 +1,7 @@
 import { sendNotification, type NotificationEvent, type NotificationKind } from './notify.js'
 import type { RunErrorCode } from './provider-errors.js'
 import type { RunTrigger } from './context.js'
+import type { ExecutionSnapshot } from '../db/repos/execution.js'
 
 const FINAL_TEXT_MAX = 2000
 
@@ -23,6 +24,7 @@ export type RunTerminal = {
     provider?: string
     model?: string
     costMicros?: number | null
+    execution?: ExecutionSnapshot | null
 }
 
 // A stored run only keeps the trigger's slug, not its display name; the slug is the best label
@@ -84,5 +86,5 @@ export async function emitRunTerminal(terminal: RunTerminal): Promise<void> {
     // `session_source` on the hub side, and sending it would fail validation of the whole payload,
     // so an interactive run stays null.
     const source = trigger.source === 'chat' ? null : trigger.source
-    await sendNotification({ event, kind: terminal.kind, agentId: terminal.agentId, sessionId: terminal.sessionId, runId: terminal.runId, message, source, metadata }).catch(() => {})
+    await sendNotification({ event, kind: terminal.kind, agentId: terminal.agentId, sessionId: terminal.sessionId, runId: terminal.runId, message, source, metadata, ...(terminal.execution !== undefined ? { execution: terminal.execution } : {}) }).catch(() => {})
 }

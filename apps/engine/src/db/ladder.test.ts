@@ -104,6 +104,14 @@ describe('sqlite ladders', () => {
               4,
               "paid-sources",
             ],
+            [
+              5,
+              "session-execution-head",
+            ],
+            [
+              6,
+              "execution-delivery",
+            ],
           ]
         `)
         expect(SHARED_DB_MIGRATIONS.map(s => [s.version, s.id])).toMatchInlineSnapshot(`
@@ -267,5 +275,18 @@ describe('brain.db v1 to v2', () => {
         expect(await columns(client, 'brain_proposals')).toEqual(expect.arrayContaining(['headline', 'highlights_json']))
         const waiting = await client.execute("SELECT title, headline, highlights_json FROM brain_proposals WHERE id = 'p1'")
         expect(waiting.rows[0]).toMatchObject({ title: 'Pricing', headline: null, highlights_json: null })
+    })
+})
+
+describe('system.db v5 to v6', () => {
+    it('retains existing head revisions and schedules them for replay on upgrade', async () => {
+        const client = freshFile('v5-delivery')
+        await migrateSqlite(client, SYSTEM_DB_MIGRATIONS.slice(0, 5), 'v5-delivery.db')
+        await client.execute("INSERT INTO session_execution_heads (session_id, run_id, revision, state, attention_kind, attention_revision) VALUES ('s1', 'r1', 9, 'idle', 'ack', 8)")
+        await migrateSystemDb(client, 'v5-delivery.db')
+        await SYSTEM_DB_MIGRATIONS[5].up(client)
+        expect(await sqliteVersion(client)).toBe(6)
+        expect((await client.execute('SELECT * FROM session_execution_heads')).rows[0]).toMatchObject({ session_id: 's1', run_id: 'r1', revision: 9, attention_revision: 8, delivery_ack_revision: 0, delivery_attempts: 0, delivery_next_attempt_at: 0 })
+        expect((await client.execute("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'execution_delivery_due'")).rows).toHaveLength(1)
     })
 })

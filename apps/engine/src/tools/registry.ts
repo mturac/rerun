@@ -23,6 +23,9 @@ import { hubTools } from './builtin/hub.js'
 import { paidDataTools } from './builtin/paid-data.js'
 import { paidDataOffered } from '../paid-data/price.js'
 import { cardTools, foremanCardTools } from './builtin/cards.js'
+import { externalAgentTools } from './builtin/external-agents.js'
+import { voiceTools } from './builtin/voice.js'
+import { localRunnerTools } from './builtin/local-runner.js'
 import { askUserTool, offersTakeover, requestApprovalTool, requestSecretTool, requestTakeoverTool, suggestServiceTool } from './builtin/hitl.js'
 import { installTools } from './builtin/install.js'
 import { foremanTools } from './builtin/foreman.js'
@@ -64,6 +67,9 @@ export async function buildTools(ctx: RunContext): Promise<{ tools: ToolSet; clo
     if (cfg.hub) Object.assign(tools, hubTools(ctx))
     if (cfg.paidData && (await paidDataOffered())) Object.assign(tools, paidDataTools(ctx))
     if (cfg.cards) Object.assign(tools, ctx.agent.config.kind === 'foreman' ? foremanCardTools(ctx) : cardTools(ctx))
+    if (cfg.externalAgents) Object.assign(tools, externalAgentTools(ctx))
+    if (cfg.voice) Object.assign(tools, voiceTools(ctx))
+    if (cfg.localRunner) Object.assign(tools, localRunnerTools(ctx))
     if (cfg.askUser) Object.assign(tools, askUserTool(ctx))
     if (cfg.requestApproval) Object.assign(tools, requestApprovalTool(ctx))
     if (cfg.suggestService) Object.assign(tools, suggestServiceTool(ctx))

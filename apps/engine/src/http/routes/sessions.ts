@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { getSession, listSessions, sessionBelongsToAgent } from '../../db/repos/sessions.js'
 import { listMessages } from '../../db/repos/messages.js'
+import { getSessionExecution } from '../../db/repos/execution.js'
 
 export const sessionRoutes = new Hono()
 
@@ -21,4 +22,11 @@ sessionRoutes.get('/:sid/messages', async c => {
     const sid = c.req.param('sid')
     if (!(await sessionBelongsToAgent(sid, agentId))) return c.json({ error: 'session not found' }, 404)
     return c.json({ messages: await listMessages(agentId, sid) })
+})
+
+sessionRoutes.get('/:sid/execution', async c => {
+    const agentId = c.req.param('id')!
+    const sid = c.req.param('sid')
+    if (!(await sessionBelongsToAgent(sid, agentId))) return c.json({ error: 'session not found' }, 404)
+    return c.json({ execution: await getSessionExecution(agentId, sid) })
 })

@@ -147,6 +147,58 @@ the data-dir migrates itself on start.
 Docker: `docker build -f apps/engine/Dockerfile .` from the repository root builds an image with
 Chromium, the desktop packages and the Codex CLI. Its data-dir is `/data`.
 
+## Local runner
+
+`rerun local-runner` runs a small HTTP daemon on the machine that owns the files/shell a remote
+engine may drive. Pair once, then start:
+
+```bash
+rerun local-runner pair --engine https://engine.example.com
+rerun local-runner start --port 4700            # add --root <dir> to confine file tasks
+```
+
+`start` accepts `--mode never|ask|always` (default `ask`), `--allow <list>` and
+`--announce-url <url>`.
+
+### Permission model and `--allow`
+
+Modes: `never` denies everything, `always` allows everything, `ask` parks each task as a
+pending approval the caller resolves via `POST /approvals/:id`. Grants and per-task denials are
+persisted in `<data-dir>/local-runner/grants.json` (versioned JSON, atomic writes, mode 0600).
+
+`--allow` is a comma-separated subject allowlist; when non-empty, tasks whose `subject` does not
+match are denied before grants or modes apply. Subjects and entries may be namespaced:
+
+- `repo:<ref>` — repository identity. `https://`, `ssh://`, `git@host:owner/repo` and bare
+  `owner/repo` spellings canonicalize to the same key, so `repo:https://github.com/team/app.git`
+  matches subject `repo:git@github.com:team/app.git`.
+- `path:<pattern>` / `cmd:<pattern>` — exact match, or prefix match with a trailing `*`; they
+  only match subjects carrying the same prefix.
+- Bare strings (e.g. `--allow team/app`) keep the legacy repo-subject semantics.
+
+`repo:` entries are verified at startup against the runner root's actual git remotes
+(`git remote get-url`, `git rev-parse --show-toplevel`): an entry that does not correspond to a
+real remote — or, for path-like refs such as `repo:.`, to the root's real path — is dropped with
+a warning. If every entry is rejected the allowlist becomes deny-all rather than allow-all.
+Bare entries are *not* verified; prefix them with `repo:` to opt into verification.
+
+### Announce URL
+
+On start the runner announces `http://<host>:<port>` to the paired engine so it can dispatch
+tasks. Wildcard binds (`0.0.0.0`, `::`) announce as `127.0.0.1`. For LAN or tunnel deployments
+pass `--announce-url https://runner.example.com` (or `http://192.168.1.5:4700`) to override what
+is announced; it must be a valid `http(s)` URL with a host.
+
+### Security notes / accepted gaps
+
+- **No TLS.** The runner speaks plain HTTP with a bearer token. Fine for loopback and paired
+  LAN use; for anything routable, terminate TLS in a reverse proxy or tunnel and announce the
+  `https://` URL. The runner warns (does not block) when announcing a non-loopback `http://`
+  address.
+- The `subject` on a task is a caller-supplied identity claim; `repo:` verification binds
+  *allowlist entries* to the runner's real git remote, it does not authenticate the caller's
+  claim. Shell/file tasks remain confined to `--root`.
+
 ## Configuration
 
 | Variable | Default | Purpose |

@@ -1,8 +1,9 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, lt, sql } from 'drizzle-orm'
 import type { ContextOccupancy } from '@rerun/contracts'
 import { getSystemDb } from '../systemDb.js'
-import { runs, type RunRow } from '../schema.js'
+import { runs, sessionExecutionHeads, type RunRow } from '../schema.js'
 import { newId, nowIso } from '../../lib/ids.js'
+import type { AttentionKind } from './execution.js'
 
 export type UsageBucket = {
     day: string
@@ -81,10 +82,23 @@ export async function startRun(agentId: string, sessionId: string, id: string = 
         startedAt: nowIso(),
         finishedAt: null,
         error: null,
+        executionStartRevision: null,
+        executionTerminalIntent: false,
+        executionTerminalAttention: null,
     }
     const { db } = await getSystemDb(agentId)
-    await db.insert(runs).values(row)
-    return row
+    return db.transaction(async tx => {
+        await tx.insert(runs).values(row)
+        const [head] = await tx.insert(sessionExecutionHeads).values({ sessionId, runId: id, revision: 1, state: 'working', attentionKind: null, attentionRevision: null })
+            .onConflictDoUpdate({
+                target: sessionExecutionHeads.sessionId,
+                set: { runId: id, revision: sql`${sessionExecutionHeads.revision} + 1`, state: 'working', attentionKind: null, attentionRevision: null, deliveryAttempts: 0, deliveryNextAttemptAt: 0 },
+                setWhere: lt(sessionExecutionHeads.revision, Number.MAX_SAFE_INTEGER),
+            }).returning({ revision: sessionExecutionHeads.revision })
+        if (!head) throw new Error('session execution revision exhausted')
+        await tx.update(runs).set({ executionStartRevision: head.revision }).where(eq(runs.id, id))
+        return { ...row, executionStartRevision: head.revision }
+    })
 }
 
 export type RunContextPatch = { provider: string; model: string; triggerSource: string; triggerSlug: string | null }
@@ -101,9 +115,9 @@ export async function bumpRunStep(agentId: string, id: string, stepCount: number
 
 type UsageTokens = { inputTokens?: number; outputTokens?: number; totalTokens?: number; reasoningTokens?: number; cachedInputTokens?: number }
 
-export async function finishRun(agentId: string, id: string, usage: UsageTokens | null | undefined, stepCount: number, costMicros: number | null = null, context?: ContextOccupancy): Promise<void> {
+export async function finishRun(agentId: string, id: string, usage: UsageTokens | null | undefined, stepCount: number, costMicros: number | null = null, context?: ContextOccupancy, attention?: AttentionKind): Promise<boolean> {
     const { db } = await getSystemDb(agentId)
-    await db.update(runs).set({
+    const finished = await db.update(runs).set({
         status: 'done',
         finishedAt: nowIso(),
         usageJson: JSON.stringify(context ? { ...usage, context } : (usage ?? null)),
@@ -114,17 +128,27 @@ export async function finishRun(agentId: string, id: string, usage: UsageTokens 
         cachedInputTokens: usage?.cachedInputTokens ?? null,
         reasoningTokens: usage?.reasoningTokens ?? null,
         totalTokens: usage?.totalTokens ?? null,
-    }).where(eq(runs.id, id))
+        executionTerminalIntent: true,
+        executionTerminalAttention: attention ?? null,
+    }).where(and(eq(runs.id, id), eq(runs.agentId, agentId), eq(runs.status, 'running'))).returning({ id: runs.id })
+    return finished.length > 0
 }
 
-export async function failRun(agentId: string, id: string, error: string): Promise<void> {
+export async function failRun(agentId: string, id: string, error: string): Promise<boolean> {
     const { db } = await getSystemDb(agentId)
-    await db.update(runs).set({ status: 'error', finishedAt: nowIso(), error }).where(eq(runs.id, id))
+    const failed = await db.update(runs).set({ status: 'error', finishedAt: nowIso(), error, executionTerminalIntent: true, executionTerminalAttention: null })
+        .where(and(eq(runs.id, id), eq(runs.agentId, agentId), eq(runs.status, 'running')))
+        .returning({ id: runs.id })
+    return failed.length > 0
 }
 
-export async function cancelRun(agentId: string, id: string): Promise<void> {
+export async function cancelRun(agentId: string, id: string): Promise<boolean> {
     const { db } = await getSystemDb(agentId)
-    await db.update(runs).set({ status: 'cancelled', finishedAt: nowIso() }).where(eq(runs.id, id))
+    const cancelled = await db.update(runs)
+        .set({ status: 'cancelled', finishedAt: nowIso(), executionTerminalIntent: true, executionTerminalAttention: null })
+        .where(and(eq(runs.id, id), eq(runs.agentId, agentId), eq(runs.status, 'running')))
+        .returning({ id: runs.id })
+    return cancelled.length > 0
 }
 
 export type InterruptedRun = { id: string; sessionId: string; triggerSource: string | null; triggerSlug: string | null; startedAt: string }
@@ -138,6 +162,6 @@ export async function failInterruptedRuns(agentId: string): Promise<InterruptedR
         .from(runs)
         .where(eq(runs.status, 'running'))
     if (stale.length === 0) return []
-    await db.update(runs).set({ status: 'error', finishedAt: nowIso(), error: 'interrupted: engine restarted' }).where(eq(runs.status, 'running'))
+    await db.update(runs).set({ status: 'error', finishedAt: nowIso(), error: 'interrupted: engine restarted', executionTerminalIntent: true, executionTerminalAttention: null }).where(eq(runs.status, 'running'))
     return stale
 }

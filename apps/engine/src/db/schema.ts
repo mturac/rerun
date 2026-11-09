@@ -20,6 +20,18 @@ export const sessions = sqliteTable('sessions', {
     updatedAt: text('updated_at').notNull(),
 })
 
+export const sessionExecutionHeads = sqliteTable('session_execution_heads', {
+    sessionId: text('session_id').primaryKey(),
+    runId: text('run_id').notNull(),
+    revision: integer('revision').notNull(),
+    state: text('state').notNull().$type<'working' | 'idle' | 'error'>(),
+    attentionKind: text('attention_kind').$type<'ack' | 'question' | 'approval' | 'connector'>(),
+    attentionRevision: integer('attention_revision'),
+    deliveryAckRevision: integer('delivery_ack_revision').notNull().default(0),
+    deliveryAttempts: integer('delivery_attempts').notNull().default(0),
+    deliveryNextAttemptAt: integer('delivery_next_attempt_at').notNull().default(0),
+})
+
 export const messages = sqliteTable('messages', {
     id: text('id').primaryKey(),
     sessionId: text('session_id').notNull(),
@@ -51,6 +63,9 @@ export const runs = sqliteTable('runs', {
     startedAt: text('started_at').notNull(),
     finishedAt: text('finished_at'),
     error: text('error'),
+    executionStartRevision: integer('execution_start_revision'),
+    executionTerminalIntent: integer('execution_terminal_intent', { mode: 'boolean' }).notNull().default(false),
+    executionTerminalAttention: text('execution_terminal_attention').$type<'ack' | 'question' | 'approval' | 'connector'>(),
 })
 
 export const runSteps = sqliteTable('run_steps', {

@@ -6,6 +6,8 @@ import { systemDbExists } from '../db/systemDb.js'
 import { logger } from '../lib/logger.js'
 import { emitRunTerminal, triggerFromRun } from './run-events.js'
 import { RUN_ERROR_CODES } from './provider-errors.js'
+import { recoverSessionExecutions } from './execution-recovery.js'
+import { getSessionExecution } from '../db/repos/execution.js'
 
 // A restart after a long outage would otherwise announce every run it ever interrupted, one
 // notification and one email per conversation.
@@ -23,6 +25,7 @@ export async function reconcileInterruptedRuns(now = Date.now()): Promise<Reconc
     for (const agentId of agentIds) {
         if (!systemDbExists(agentId)) continue
         for (const run of await failInterruptedRuns(agentId)) interrupted.push({ ...run, agentId })
+        await recoverSessionExecutions(agentId)
         proposals += await failInterruptedSkillProposals(agentId)
     }
     const agents = await resetBusyAgents()
@@ -34,6 +37,7 @@ export async function reconcileInterruptedRuns(now = Date.now()): Promise<Reconc
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
         .slice(0, NOTIFY_LIMIT)
     for (const run of recent) {
+        const execution = await getSessionExecution(run.agentId, run.sessionId)
         await emitRunTerminal({
             agentId: run.agentId,
             sessionId: run.sessionId,
@@ -42,6 +46,7 @@ export async function reconcileInterruptedRuns(now = Date.now()): Promise<Reconc
             kind: 'error',
             error: 'interrupted: engine restarted',
             errorCode: RUN_ERROR_CODES.engineRestarted,
+            execution: execution?.runId === run.id ? execution : null,
         })
     }
 

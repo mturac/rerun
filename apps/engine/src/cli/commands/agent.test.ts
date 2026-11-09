@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
     events: [] as unknown[][],
     existing: new Set<string>(),
     index: [] as { id: string; status: string; name: string }[],
+    grokbotImports: [] as { pkg: unknown; options: { name?: string; displayName?: string } }[],
+    archiveImports: [] as { name: string; displayName?: string }[],
 }))
 
 vi.mock('../../datadir/ladder.js', () => ({ prepareDataDir: async () => void state.events.push(['prepareDataDir']) }))
@@ -25,6 +27,19 @@ vi.mock('../../db/repos/agents.js', () => ({
 }))
 vi.mock('../../agents/loader.js', () => ({ agentExists: (id: string) => state.existing.has(id) }))
 vi.mock('../../agents/registry.js', () => ({ unloadAgent: (id: string) => void state.events.push(['unloadAgent', id]) }))
+vi.mock('../../agents/import.js', () => ({
+    importAgent: async (input: { name: string; displayName?: string }) => {
+        state.archiveImports.push({ name: input.name, displayName: input.displayName })
+        return { id: 'archived', name: input.name, displayName: input.displayName ?? '' }
+    },
+}))
+vi.mock('../../agents/grokbot-import.js', () => ({
+    grokBotPackageSchema: { parse: (value: unknown) => value },
+    importGrokBotPackage: async (pkg: unknown, options: { name?: string; displayName?: string }) => {
+        state.grokbotImports.push({ pkg, options })
+        return { id: 'grokid', name: 'grok-bot', displayName: 'Grok Bot', warnings: ['avatar was dropped'] }
+    },
+}))
 
 const { afterEach, beforeEach, describe, expect, it } = await import('vitest')
 const { existsSync } = await import('node:fs')
@@ -42,6 +57,8 @@ beforeEach(() => {
     state.events = []
     state.existing = new Set()
     state.index = []
+    state.grokbotImports = []
+    state.archiveImports = []
     out = ''
     vi.spyOn(process.stdout, 'write').mockImplementation(chunk => {
         out += String(chunk)
@@ -134,9 +151,58 @@ describe('rerun agent delete', () => {
     })
 })
 
+describe('rerun agent import-grokbot', () => {
+    it('imports a Grok Bot package JSON through the package path', async () => {
+        const dir = mkdtempSync(resolve(tmpdir(), 'rerun-cli-import-'))
+        const file = resolve(dir, 'package.json')
+        await writeFile(file, JSON.stringify({ name: 'support-bot', skills: [] }))
+
+        await agentCommand(['import-grokbot', file, '--display-name', 'Support Bot'])
+
+        expect(state.grokbotImports).toEqual([
+            { pkg: { name: 'support-bot', skills: [] }, options: { name: undefined, displayName: 'Support Bot' } },
+        ])
+        expect(state.archiveImports).toEqual([])
+        expect(out).toBe('warning: avatar was dropped\nImported agent grokid (grok-bot)\n')
+    })
+
+    it('passes --name through to the package path', async () => {
+        const dir = mkdtempSync(resolve(tmpdir(), 'rerun-cli-import-'))
+        const file = resolve(dir, 'package.json')
+        await writeFile(file, JSON.stringify({ name: 'support-bot' }))
+
+        await agentCommand(['import-grokbot', file, '--name', 'renamed'])
+
+        expect(state.grokbotImports[0].options.name).toBe('renamed')
+    })
+
+    it('streams a tar.gz archive into the archive importer', async () => {
+        const dir = mkdtempSync(resolve(tmpdir(), 'rerun-cli-import-'))
+        const file = resolve(dir, 'archive.tar.gz')
+        await writeFile(file, 'not really gzip')
+
+        await agentCommand(['import-grokbot', file, '--name', 'copy', '--display-name', 'The Copy'])
+
+        expect(state.archiveImports).toEqual([{ name: 'copy', displayName: 'The Copy' }])
+        expect(state.grokbotImports).toEqual([])
+        expect(out).toBe('Imported agent archived (copy)\n')
+    })
+
+    it('requires --name for an archive and a file argument at all', async () => {
+        const dir = mkdtempSync(resolve(tmpdir(), 'rerun-cli-import-'))
+        const file = resolve(dir, 'archive.tar.gz')
+        await writeFile(file, 'x')
+
+        await expect(agentCommand(['import-grokbot', file])).rejects.toThrow('--name <n>')
+        await expect(agentCommand(['import-grokbot'])).rejects.toThrow('Usage: rerun agent import-grokbot')
+        expect(state.archiveImports).toEqual([])
+        expect(state.grokbotImports).toEqual([])
+    })
+})
+
 describe('rerun agent', () => {
     it('prints the usage for an unknown or missing subcommand', async () => {
-        await expect(agentCommand([])).rejects.toThrow('Usage: rerun agent <create|list|delete>')
-        await expect(agentCommand(['rename'])).rejects.toThrow('Usage: rerun agent <create|list|delete>')
+        await expect(agentCommand([])).rejects.toThrow('Usage: rerun agent <create|list|delete|import-grokbot>')
+        await expect(agentCommand(['rename'])).rejects.toThrow('Usage: rerun agent <create|list|delete|import-grokbot>')
     })
 })

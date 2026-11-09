@@ -100,6 +100,46 @@ describe('agent import', () => {
         expect(res.status).toBe(400)
         expect(await res.json()).toEqual({ error: 'Expected a gzipped agent archive as the request body' })
     })
+
+    it('round-trips a real archive from the export path', async () => {
+        const id = await createAgent('Exported')
+        const archive = await app.request(`/agents/${id}/archive`)
+        expect(archive.status).toBe(200)
+        const bytes = await archive.arrayBuffer()
+        const res = await app.request(`/agents/import?name=Imported&displayName=The%20Copy`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/gzip' },
+            body: bytes,
+        })
+        expect(res.status).toBe(201)
+        const imported = (await res.json()) as { id: string; name: string }
+        expect(imported.name).toBe('Imported')
+        expect(imported.id).not.toBe(id)
+        expect((await listAgentIndex()).some(row => row.id === imported.id)).toBe(true)
+    })
+})
+
+describe('agent import-grokbot', () => {
+    it('imports a Grok Bot package end to end', async () => {
+        const res = await send('POST', '/agents/import-grokbot?name=grok-copy', {
+            name: 'grok-bot',
+            displayName: 'Grok Bot',
+            description: 'Imported from Grok Bot.',
+            skills: [{ name: 'Triage', description: 'Triage tickets', content: 'Read the queue first.' }],
+            memories: [{ content: 'Mondays are busy.', created_at: '2026-01-05T00:00:00.000Z' }],
+            plugins: [{ name: 'stripe', description: 'Payments' }],
+        })
+        expect(res.status).toBe(201)
+        const imported = (await res.json()) as { id: string; name: string; warnings: string[] }
+        expect(imported.name).toBe('grok-copy')
+        expect(imported.warnings.length).toBeGreaterThan(0)
+        expect(existsSync(resolve(agentDir(imported.id), 'SOUL.md'))).toBe(true)
+    })
+
+    it('rejects a package without a name', async () => {
+        const res = await send('POST', '/agents/import-grokbot', { skills: [] })
+        expect(res.status).toBe(400)
+    })
 })
 
 describe('agent archive', () => {

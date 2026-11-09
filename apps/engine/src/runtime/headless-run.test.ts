@@ -8,13 +8,18 @@ process.env.RERUN_API_KEY = ''
 
 const state = vi.hoisted(() => ({
     started: 0,
+    runIds: [] as string[],
     prepError: null as Error | null,
     calls: [] as unknown[][],
     merges: [] as Array<{ agentRun: unknown; meta: unknown }>,
 }))
 
 vi.mock('../db/repos/runs.js', () => ({
-    startRun: async () => ({ id: `headless-run-${++state.started}` }),
+    startRun: async (_agentId: string, _sessionId: string, id: string) => {
+        state.started += 1
+        state.runIds.push(id)
+        return { id }
+    },
 }))
 vi.mock('./loop.js', () => ({
     runAgent: async (...args: unknown[]) => {
@@ -33,6 +38,7 @@ vi.mock('./run-stream-merge.js', () => ({
 const { afterEach, describe, expect, it } = await import('vitest')
 const { startHeadlessRun } = await import('./headless-run.js')
 const { subscribeRunStream } = await import('./run-streams.js')
+const { releaseSession } = await import('./run-control.js')
 
 const agent = { id: 'headless-agent', resolved: { provider: 'openai', model: 'gpt-default' } } as never
 const trigger = { source: 'schedule', slug: 'daily', name: 'Daily' } as const
@@ -49,6 +55,8 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<string> {
 }
 
 afterEach(() => {
+    for (const runId of state.runIds) releaseSession(runId)
+    state.runIds = []
     state.prepError = null
     state.calls = []
     state.merges = []
@@ -58,7 +66,7 @@ describe('startHeadlessRun', () => {
     it('resolves with the run once it has started and hands the run loop its row id', async () => {
         const run = await startHeadlessRun(agent, 'sess-1', 'do it', undefined, trigger)
 
-        expect(run.runId).toBe(`headless-run-${state.started}`)
+        expect(run.runId).toBe(state.runIds.at(-1))
         expect(state.calls[0]).toEqual([agent, 'sess-1', 'do it', undefined, expect.anything(), run.runId, trigger])
     })
 
@@ -93,7 +101,7 @@ describe('startHeadlessRun', () => {
         await expect(startHeadlessRun(agent, 'sess-6', 'do it', undefined, trigger)).rejects.toThrow('no connection for provider')
         expect(state.merges).toHaveLength(0)
 
-        const replay = await readAll(subscribeRunStream(`headless-run-${state.started}`)!)
+        const replay = await readAll(subscribeRunStream(state.runIds.at(-1)!)!)
         expect(replay).toContain('no connection for provider')
     })
 })

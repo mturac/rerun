@@ -113,6 +113,7 @@ describe('POST /agents/:id/chat', () => {
         expect(res.status).toBe(200)
         const sessionId = res.headers.get('x-session-id')!
         const runId = res.headers.get('x-run-id')!
+        expect(JSON.parse(res.headers.get('x-session-execution')!)).toEqual({ agentId: id, sessionId, runId, revision: 1, state: 'working', attention: null })
         expect(await res.text()).toContain('hello from the mock')
 
         expect((await getSession(id, sessionId))?.source).toBe('dashboard')

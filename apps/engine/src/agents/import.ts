@@ -244,6 +244,7 @@ export type ImportAgentInput = {
     body: ReadableStream<Uint8Array>
     name: string
     displayName?: string
+    keepAutomationsDisabled?: boolean
 }
 
 export async function importAgent(input: ImportAgentInput): Promise<AgentImportResult> {
@@ -278,7 +279,7 @@ export async function importAgent(input: ImportAgentInput): Promise<AgentImportR
         const agent = await loadAgentFromDisk(id)
         // An agent with nothing to install is already as configured as it will ever be, so its
         // automations start now rather than waiting for a setup conversation that never happens.
-        if (!hasPendingSetup(agent)) await activateAutomations(agent)
+        if (!hasPendingSetup(agent) && !input.keepAutomationsDisabled) await activateAutomations(agent)
 
         const registry = await readRegistry(id)
         const result = agentImportResultSchema.parse({

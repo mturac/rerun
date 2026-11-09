@@ -12,6 +12,7 @@ import type { RunContext } from '../../runtime/context.js'
 import { hubCallerHeaders, type HubCaller } from '../../runtime/hub.js'
 import { pageFacts, stripHtml } from './page-facts.js'
 import { savePage, textExtension } from './page-file.js'
+import { searchMwmbl, type SearchResult } from './mwmbl-search.js'
 
 export const FETCH_TIMEOUT_MS = 30_000
 const SEARCH_TIMEOUT_MS = 15_000
@@ -39,9 +40,9 @@ function isHtml(res: Response): boolean {
     return (res.headers.get('content-type') ?? '').toLowerCase().includes('html')
 }
 
-type SearchResult = { title: string; url: string; snippet: string }
+class SearchNotConfigured extends Error {}
 
-async function searchHub(caller: HubCaller, query: string, maxResults: number): Promise<SearchResult[]> {
+async function searchHub(caller: HubCaller, query: string, maxResults: number, runSignal?: AbortSignal): Promise<SearchResult[]> {
     const { RERUN_HUB_BASE_URL: hub, RERUN_API_KEY: token } = env()
     if (!hub || !token) throw new Error('web search is unavailable: the engine is not linked to a Rerun hub')
 
@@ -49,10 +50,12 @@ async function searchHub(caller: HubCaller, query: string, maxResults: number): 
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...hubCallerHeaders(caller) },
         body: JSON.stringify({ query, maxResults }),
-        signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+        redirect: 'error',
+        signal: deadlineSignal(SEARCH_TIMEOUT_MS, runSignal),
     })
     if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null
+        if (res.status === 503 && body?.error === 'Web search is not configured') throw new SearchNotConfigured(body.error)
         throw new Error(body?.error ?? `the Rerun hub answered ${res.status}`)
     }
     const data = (await res.json()) as { results?: SearchResult[] }
@@ -154,11 +157,22 @@ export function webTools(ctx: RunContext, fetchTimeoutMs = FETCH_TIMEOUT_MS): To
         web_search: tool({
             description: webSearchDescription(ctx.agent.config.tools.paidData),
             inputSchema: z.object({ query: z.string(), maxResults: z.number().int().positive().max(20).default(5) }),
-            execute: async ({ query, maxResults }) => {
+            execute: async ({ query, maxResults }, { abortSignal }) => {
+                const runSignal = ctx.abortSignal && abortSignal ? AbortSignal.any([ctx.abortSignal, abortSignal]) : ctx.abortSignal ?? abortSignal
                 try {
-                    const results = await searchHub(ctx.agent, query, maxResults)
-                    if (results.length === 0) return 'No results.'
-                    return results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ''}`).join('\n\n')
+                    runSignal?.throwIfAborted()
+                    let results: SearchResult[]
+                    let note = ''
+                    try {
+                        results = await searchHub(ctx.agent, query, maxResults, runSignal)
+                    } catch (e) {
+                        if (!(e instanceof SearchNotConfigured) || env().RERUN_WEB_SEARCH_FALLBACK !== 'mwmbl') throw e
+                        runSignal?.throwIfAborted()
+                        results = await searchMwmbl(query, maxResults, runSignal)
+                        note = 'Mwmbl search uses a limited independent index. Results can be unrelated and snippets can be stale. Verify relevance and fetch sources.\n\n'
+                    }
+                    if (results.length === 0) return `${note}No results.`
+                    return note + results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ''}`).join('\n\n')
                 } catch (e) {
                     return `Search failed: ${(e as Error).message}`
                 }

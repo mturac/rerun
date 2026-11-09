@@ -8,6 +8,7 @@ const schema = z.object({
     RERUN_HOST: z.string().default('0.0.0.0'),
     RERUN_API_KEY: z.string().optional(),
     RERUN_HUB_BASE_URL: z.preprocess(v => (v === '' ? undefined : v), z.string().url().optional()),
+    RERUN_WEB_SEARCH_FALLBACK: z.enum(['mwmbl']).optional(),
     RERUN_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
     // Absolute path to the Codex CLI. Set it when the binary is not on the service user's PATH,
     // or to keep the provider's bundled @openai/codex in node_modules/.bin from shadowing it.

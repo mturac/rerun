@@ -23,6 +23,9 @@ import { hubTools } from './builtin/hub.js'
 import { paidDataTools } from './builtin/paid-data.js'
 import { paidDataOfferedSoFar } from '../paid-data/price.js'
 import { cardTools } from './builtin/cards.js'
+import { externalAgentTools } from './builtin/external-agents.js'
+import { voiceTools } from './builtin/voice.js'
+import { localRunnerTools } from './builtin/local-runner.js'
 import { askUserTool, requestApprovalTool, requestSecretTool, requestTakeoverTool, suggestServiceTool } from './builtin/hitl.js'
 import { agentConfigSchema, type AgentConfig } from '../agents/types.js'
 import type { RunContext } from '../runtime/context.js'
@@ -61,6 +64,9 @@ const FAMILIES: FamilyDef[] = [
     { family: 'hub', description: 'Search, install and manage ready-made services from the Rerun catalog, and publish files to public URLs.', build: hubTools, enabled: c => c.tools.hub },
     { family: 'paidData', description: 'Buy live data from a catalog: leads and companies, SEO metrics, Google results and Maps, and public profiles and posts on LinkedIn, TikTok, Instagram, X, YouTube, Facebook and Reddit, billed on the workspace Rerun credit.', build: paidDataTools, enabled: c => c.tools.paidData, hidden: () => !paidDataOfferedSoFar() },
     { family: 'cards', description: 'Show a table or a workspace file to the user as a rich card in the conversation.', build: cardTools, enabled: c => c.tools.cards },
+    { family: 'externalAgents', description: 'Delegate self-contained coding tasks to external cloud coding agents (Cursor Cloud Agents) that work on their own VM and can open pull requests.', build: externalAgentTools, enabled: c => c.tools.externalAgents },
+    { family: 'voice', description: 'Speak text aloud on the host machine and listen through its microphone, transcribing speech locally with whisper.cpp.', build: voiceTools, enabled: c => c.tools.voice },
+    { family: 'localRunner', description: "Run shell commands and read or write files on a paired local runner, a daemon on the user's own machine.", build: localRunnerTools, enabled: c => c.tools.localRunner },
     { family: 'quickReplies', description: 'Lets the coworker end a message with up to three short replies shown as buttons under it, sent in one click.', build: () => ({}), enabled: c => c.tools.quickReplies },
     { family: 'askUser', description: 'Ask the user a question with suggested answers and pause the run until they reply.', build: askUserTool, enabled: c => c.tools.askUser },
     { family: 'requestApproval', description: 'Request approval before a consequential action and pause the run until the user approves or declines.', build: requestApprovalTool, enabled: c => c.tools.requestApproval },

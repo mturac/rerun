@@ -88,6 +88,43 @@ describe('run lifecycle', () => {
         expect((await getRun('life', 'r-cancel'))?.finishedAt).not.toBeNull()
     })
 
+    it('awards only one cancellation when callers race for a running row', async () => {
+        await startRun('life', 's1', 'r-cancel-race')
+
+        const results = await Promise.all([
+            cancelRun('life', 'r-cancel-race'),
+            cancelRun('life', 'r-cancel-race'),
+        ])
+
+        expect(results.sort()).toEqual([false, true])
+        expect((await getRun('life', 'r-cancel-race'))?.status).toBe('cancelled')
+    })
+
+    it('does not cancel or rewrite a row that already finished or failed', async () => {
+        await startRun('life', 's1', 'r-before-cancel-done')
+        await finishRun('life', 'r-before-cancel-done', { totalTokens: 7 }, 2, 123)
+        await startRun('life', 's1', 'r-before-cancel-error')
+        await failRun('life', 'r-before-cancel-error', 'provider failed')
+
+        for (const runId of ['r-before-cancel-done', 'r-before-cancel-error']) {
+            const before = await getRun('life', runId)
+            expect(await cancelRun('life', runId)).toBe(false)
+            expect(await getRun('life', runId)).toEqual(before)
+        }
+        expect(await cancelRun('life', 'unknown-cancellation')).toBe(false)
+    })
+
+    it('keeps cancellation terminal when a late finish or failure arrives', async () => {
+        await startRun('life', 's1', 'r-cancel-before-finish')
+        await cancelRun('life', 'r-cancel-before-finish')
+        const cancelled = await getRun('life', 'r-cancel-before-finish')
+
+        expect(await finishRun('life', 'r-cancel-before-finish', { totalTokens: 4 }, 1)).toBe(false)
+        expect(await getRun('life', 'r-cancel-before-finish')).toEqual(cancelled)
+        await failRun('life', 'r-cancel-before-finish', 'late provider failure')
+        expect(await getRun('life', 'r-cancel-before-finish')).toEqual(cancelled)
+    })
+
     it('returns undefined for an unknown run', async () => {
         expect(await getRun('life', 'ghost')).toBeUndefined()
     })

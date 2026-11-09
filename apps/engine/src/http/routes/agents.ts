@@ -14,6 +14,8 @@ import { agentExists, loadAgentFromDisk, loadAgentView, readAgentConfig } from '
 import { withAgentLock } from '../../agents/lock.js'
 import { buildArchive, planArchive } from '../../agents/archive.js'
 import { importAgent } from '../../agents/import.js'
+import { importGrokBotPackage } from '../../agents/grokbot-import.js'
+import { grokBotPackageSchema } from '../../agents/grokbot-import.js'
 import { duplicateAgent } from '../../agents/duplicate.js'
 import { activateAutomations } from '../../agents/automations.js'
 import { replaceDisplayName, rewriteRenamedAgentReferences } from '../../agents/rename-references.js'
@@ -53,6 +55,13 @@ agentRoutes.post('/import', async c => {
     const body = c.req.raw.body
     if (!body) throw badRequest('Expected a gzipped agent archive as the request body')
     return c.json(await importAgent({ body, name, displayName: c.req.query('displayName') }), 201)
+})
+
+// A Grok Bot agent package arrives as JSON rather than a tarball: the engine builds the archive
+// itself, so there is no untrusted extraction step on this path.
+agentRoutes.post('/import-grokbot', async c => {
+    const pkg = grokBotPackageSchema.parse(await c.req.json())
+    return c.json(await importGrokBotPackage(pkg, { name: c.req.query('name'), displayName: c.req.query('displayName') }), 201)
 })
 
 agentRoutes.get('/:id', async c => {

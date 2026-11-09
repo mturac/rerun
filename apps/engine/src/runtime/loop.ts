@@ -26,10 +26,13 @@ import { listAgentIndex, setAgentStatus } from '../db/repos/agents.js'
 import { appendMessage, lastMessageId, listSessionAuthorIds, setMessageToolCalls } from '../db/repos/messages.js'
 import type { MessageRow } from '../db/schema.js'
 import { isSharedConversation, signText } from './message-authors.js'
-import { bumpRunStep, cancelRun, failRun, finishRun, setRunContext, startRun } from '../db/repos/runs.js'
+import { bumpRunStep, cancelRun, failRun, finishRun, getRun, setRunContext, startRun } from '../db/repos/runs.js'
+import { advanceExecution, type ExecutionSnapshot } from '../db/repos/execution.js'
+import { publishExecutionStart } from './execution-events.js'
 import { insertRunStep, insertToolCall } from '../db/repos/telemetry.js'
 import { touchSession } from '../db/repos/sessions.js'
 import { logger } from '../lib/logger.js'
+import { HttpError } from '../lib/errors.js'
 import { newId, nowIso } from '../lib/ids.js'
 import { buildTools } from '../tools/registry.js'
 import { callTargetsOf } from '../tools/builtin/call-agent.js'
@@ -39,7 +42,7 @@ import { withPooledRelays } from '../tools/mcp-relay.js'
 import { HostBreaker } from '../tools/host-breaker.js'
 import type { PartialResult, RunContext, RunTrigger, SkillProposalNotice } from './context.js'
 import { partialResultsNote } from './partial-results.js'
-import { registerRunAbort, setRunCancel, unregisterRunAbort } from './run-control.js'
+import { claimSession, releaseSession, registerRunAbort, setRunCancel, unregisterRunAbort } from './run-control.js'
 import { runCurator } from './curator.js'
 import { repairToolCall } from './tool-repair.js'
 import { stepWithScreenshots } from './screenshots.js'
@@ -53,8 +56,8 @@ export type RunOutcome = { kind: 'done' | 'error' | 'cancelled'; error?: string;
 export type AgentRun = {
     result: StreamTextResult<ToolSet, never>
     runId: string
-    // Always resolves, exactly once, whatever the provider does. Callers that need to know a run is
-    // over must await this rather than `result.finishReason`, which never settles when a stream hangs.
+    // Resolves once owned work and cleanup finish. A hung preparation or close keeps ownership;
+    // `result.finishReason` alone cannot say that the conversation is ready for its next run.
     settled: Promise<RunOutcome>
     contextUsage?: () => ContextOccupancy | undefined
     quickReplies?: () => QuickRepliesCapture | undefined
@@ -62,9 +65,8 @@ export type AgentRun = {
 
 export type { RunTrigger }
 
-// A provider teardown that hangs must not hold the run open: the row, the hub event and the session
-// claim all matter more than a clean CLI exit.
-const CLOSE_TIMEOUT_MS = 15_000
+// Warn about a stalled teardown without releasing ownership while it can still affect the run.
+const CLOSE_WARN_MS = 15_000
 
 function canonicalizeHitlNames(messages: ModelMessage[]): ModelMessage[] {
     return messages.map(m => {
@@ -125,11 +127,11 @@ function hitlMessage(toolName: string, input: Record<string, unknown> | undefine
     return approvalSummary(input)
 }
 
-async function emitHitlEvent(agent: LoadedAgent, sessionId: string, runId: string, pending: PendingHitl, author: MessageAuthor | undefined): Promise<void> {
+async function emitHitlEvent(agent: LoadedAgent, sessionId: string, runId: string, pending: PendingHitl, author: MessageAuthor | undefined, execution: ExecutionSnapshot | null): Promise<void> {
     const kind = hitlKind(pending.toolName)
     const input = pending.input as Record<string, unknown> | undefined
     const message = hitlMessage(pending.toolName, input)
-    await sendNotification({ event: 'agent.notification', kind, agentId: agent.id, sessionId, runId, message, metadata: { toolCallId: pending.toolCallId, toolName: pending.toolName, input: pending.input, ...authorMetadata(author) } }).catch(() => {})
+    await sendNotification({ event: 'agent.notification', kind, agentId: agent.id, sessionId, runId, message, execution, metadata: { toolCallId: pending.toolCallId, toolName: pending.toolName, input: pending.input, ...authorMetadata(author) } }).catch(() => {})
 }
 
 // The proposal never pauses the run, so it is announced after the terminal event: sent first, the
@@ -218,11 +220,48 @@ type Settlement =
     | { kind: 'error'; error: unknown; errorCode?: RunErrorCode | null; messages?: ModelMessage[] }
     | { kind: 'cancelled' }
 
+type TerminalDecision = { owner: 'loop' | 'other'; outcome: RunOutcome }
+
+class RunAlreadyEndedError extends Error {
+    constructor() {
+        super('run is no longer running')
+    }
+}
+
 async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: string, override: ModelOverride | undefined, writer: UIMessageStreamWriter | undefined, runId: string | undefined, trigger: RunTrigger): Promise<AgentRun> {
     // The run row and its abort controller exist before any preparation step can throw: for chat
     // and headless callers the row was already inserted, and a throw in `resolveRunModel` or the
     // tool/MCP setup would otherwise leave it `running` forever with no terminal event for the hub.
-    const run = runId ? { id: runId } : await startRun(baseAgent.id, sessionId)
+    const claimedRunId = runId ?? newId()
+    const holder = claimSession(sessionId, claimedRunId)
+    if (holder && holder !== claimedRunId) throw new HttpError(409, 'a run is already in flight on this session', 'run_in_flight')
+    const run = await (async () => {
+        if (!runId) {
+            const started = await startRun(baseAgent.id, sessionId, claimedRunId)
+            publishExecutionStart(started)
+            return started
+        }
+        const stored = await getRun(baseAgent.id, runId)
+        if (!stored || stored.status !== 'running') throw new RunAlreadyEndedError()
+        return { id: runId }
+    })().catch(async error => {
+        try {
+            if (runId && !(error instanceof RunAlreadyEndedError)) {
+                const message = errorMessageOf(error)
+                const failed = await failRun(baseAgent.id, runId, message).catch(writeError => {
+                    logger.error({ err: String(writeError), agent: baseAgent.id, run: runId }, 'startup failure could not be saved')
+                    return undefined
+                })
+                if (failed !== false) {
+                    const execution = await advanceExecution(baseAgent.id, sessionId, runId, { kind: 'terminal', state: 'error' }).catch(() => null)
+                    await emitRunTerminal({ agentId: baseAgent.id, sessionId, runId, trigger, kind: 'error', error: message, provider: override?.provider ?? baseAgent.resolved.provider, model: override?.model ?? baseAgent.resolved.model, execution })
+                }
+            }
+        } finally {
+            releaseSession(claimedRunId)
+        }
+        throw error
+    })
     const controller = registerRunAbort(run.id, baseAgent.id)
     const author = trigger.source === 'chat' ? trigger.author : undefined
 
@@ -237,6 +276,16 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
     let spawnToken: string | undefined
     let codexThreadId: string | undefined
     let steps = 0
+    let finishPreparation!: () => void
+    const preparationDone = new Promise<void>(resolve => { finishPreparation = resolve })
+    const preparationTasks: Promise<unknown>[] = []
+    const stepTasks = new Set<Promise<void>>()
+    let completedMessages: ModelMessage[] = []
+    const trackPreparation = <T>(task: Promise<T>): Promise<T> => {
+        preparationTasks.push(task)
+        void task.catch(() => {})
+        return task
+    }
     const partialResults: PartialResult[] = []
     const skillProposals: SkillProposalNotice[] = []
 
@@ -244,8 +293,16 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
     // first. Codex's own token refresh only lands in auth.json once it has exited, hence the sync
     // last. Every teardown path below funnels through this.
     const close = async (): Promise<void> => {
-        await closeModel().catch(err => logger.warn({ err: String(err), agent: agent.id }, 'close model failed'))
-        await closeTools().catch(err => logger.warn({ err: String(err), agent: agent.id }, 'close tools failed'))
+        try {
+            await closeModel()
+        } catch (err) {
+            logger.warn({ err: String(err), agent: agent.id }, 'close model failed')
+        }
+        try {
+            await closeTools()
+        } catch (err) {
+            logger.warn({ err: String(err), agent: agent.id }, 'close tools failed')
+        }
         if (provider === 'codex') {
             await syncCodexAuth(connection).catch(() => {})
             void refreshCodexPlanLimits(connection)
@@ -254,15 +311,14 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
     }
 
     const closeSafely = async (): Promise<void> => {
-        let timer: ReturnType<typeof setTimeout> | undefined
-        const guard = new Promise<void>(resolve => {
-            timer = setTimeout(() => {
-                logger.warn({ agent: agent.id, run: run.id, provider }, 'run teardown timed out')
-                resolve()
-            }, CLOSE_TIMEOUT_MS)
-        })
-        await Promise.race([close().catch(() => {}), guard])
-        if (timer) clearTimeout(timer)
+        const timer = setTimeout(() => {
+            logger.warn({ agent: agent.id, run: run.id, provider }, 'run teardown still pending; conversation remains busy')
+        }, CLOSE_WARN_MS)
+        try {
+            await close()
+        } finally {
+            clearTimeout(timer)
+        }
     }
 
     let settled = false
@@ -279,85 +335,142 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
         if (settled) return settledPromise
         settled = true
 
-        await appendP.catch(() => {})
+        // Preparation can still acquire tools or a credential lease after Stop. Keep ownership
+        // until those acquisitions finish, so cleanup sees them and no late write follows release.
+        await preparationDone
+        await Promise.allSettled(preparationTasks)
+        await Promise.allSettled(stepTasks)
 
-        let outcome: RunOutcome
+        let outcome: RunOutcome = { kind: 'error', error: 'run settlement failed' }
         let pending: PendingHitl | null = null
-        let text: string | undefined
+        let text: string | undefined = settlement.kind === 'done' ? settlement.text : undefined
         let usage: LanguageModelUsage | undefined
         let costMicros: number | null = null
-
-        if (settlement.kind === 'done') {
-            const messages = canonicalizeHitlNames(settlement.messages)
-            let answerRow: MessageRow | undefined
-            for (const message of messages) {
-                const row = await appendMessage(agent.id, sessionId, message).catch(() => undefined)
-                if (row?.role === 'assistant') answerRow = row
-            }
-            pending = findPendingHitl(messages)
-            // A turn that ends on a card ignores the replies: the card already says how to answer.
-            const replies = quickReplies?.()
-            if (replies && answerRow && !pending) await setMessageToolCalls(agent.id, answerRow.id, [quickRepliesCall(replies)]).catch(() => {})
-            if (provider === 'rerun') clearBudgetLatch()
-            if (provider === 'codex') await keepCodexThread().catch(() => forgetCodexThread(agent.id, sessionId))
-            await finishRun(agent.id, run.id, settlement.usage, steps, settlement.costMicros, contextUsage?.()).catch(() => {})
-            await touchSession(agent.id, sessionId).catch(() => {})
-            text = settlement.text
-            usage = settlement.usage
-            costMicros = settlement.costMicros
-            if (connection) {
-                forgetCredentialRejected(connection.id)
-                clearPlanLimitLatch(connection.id)
-            }
-            outcome = { kind: 'done' }
-        } else if (settlement.kind === 'cancelled') {
-            forgetCodexThread(agent.id, sessionId)
-            if (partialResults.length) await appendMessage(agent.id, sessionId, { role: 'assistant', content: partialResultsNote(partialResults) }).catch(() => {})
-            await cancelRun(agent.id, run.id).catch(() => {})
-            outcome = { kind: 'cancelled' }
-        } else {
-            const renewed = settlement.errorCode === RUN_ERROR_CODES.unauthorized && provider === 'claude' && claudeTokenOutlived(connection, spawnToken)
-            if (renewed) settlement = { ...settlement, error: new ClaudeSignInRenewedError(), errorCode: RUN_ERROR_CODES.authRenewed }
-            if (settlement.errorCode === RUN_ERROR_CODES.refused) settlement = { ...settlement, error: new ProviderRefusedError(refusalReason(settlement.error)) }
-            const unreachable = provider === 'custom' ? unreachableEndpointError(connection?.config.baseUrl, settlement.error) : null
-            if (unreachable) settlement = { ...settlement, error: unreachable }
-            const errorCode = settlement.errorCode ?? null
-            const errorMessage = errorMessageOf(settlement.error)
-            forgetCodexThread(agent.id, sessionId)
-            logger.error({ err: errorMessage, errorCode, agent: agent.id, run: run.id }, 'run error')
-            if (errorCode === RERUN_BUDGET_ERROR_CODE) armBudgetLatch()
-            if (errorCode === RUN_ERROR_CODES.usageLimit && connection && connection.id !== RERUN_CONNECTION_ID) armPlanLimitLatch(connection.id)
-            // The token is still on file, so the connection would keep reading "Ready" while every
-            // run on it fails. The keyless Rerun connection answers for the hub's key, not the user's.
-            if (errorCode === RUN_ERROR_CODES.unauthorized && connection && connection.id !== RERUN_CONNECTION_ID) recordCredentialRejected(connection.id)
-            // Codex's answer to a real request outranks the list it gave: the model is greyed out from now
-            // on, and a box default naming it moves to one the account serves.
-            if (errorCode === RUN_ERROR_CODES.modelNotInPlan && provider === 'codex' && connection) {
-                const refusedOn = connection
-                recordRefusedModel(refusedOn.id, model)
-                await repairBoxDefault(refusedOn).catch(err => logger.warn({ err: String(err), connection: refusedOn.id }, 'box default repair failed'))
-            }
-            // A turn that failed mid-flight still said things worth keeping; without this the user
-            // loses everything the agent had already produced.
-            if (settlement.messages) for (const message of canonicalizeHitlNames(settlement.messages)) await appendMessage(agent.id, sessionId, message).catch(() => {})
-            await failRun(agent.id, run.id, errorMessage).catch(() => {})
-            outcome = { kind: 'error', error: errorMessage, errorCode }
+        let terminalDecision: TerminalDecision | undefined
+        let execution: ExecutionSnapshot | null = null
+        const decideTerminal = async (written: boolean, proposed: RunOutcome): Promise<TerminalDecision> => {
+            if (written) return { owner: 'loop', outcome: proposed }
+            const stored = await getRun(agent.id, run.id)
+            let existing: RunOutcome
+            if (stored?.status === 'done') existing = { kind: 'done' }
+            else if (stored?.status === 'cancelled') existing = { kind: 'cancelled' }
+            else if (stored?.status === 'error') existing = { kind: 'error', error: stored.error ?? 'run failed', errorCode: null }
+            else throw new Error('terminal transition did not leave a terminal row')
+            return { owner: 'other', outcome: existing }
         }
 
-        await setAgentStatus(agent.id, 'idle').catch(() => {})
-        // Codex only writes its rotated token to auth.json once the CLI has exited, so the next run
-        // must not be able to start before this returns. Capped rather than awaited outright: a
-        // teardown that hangs used to be enough to keep the whole conversation busy forever.
-        await closeSafely()
-        void cliAuthP?.then(release => release(), () => {})
-        // Last, not first: freeing the session claim before the transcript is written and before
-        // the provider is down let a second send in on a history missing this turn.
-        unregisterRunAbort(run.id)
-        resolveSettled(outcome)
+        try {
+            await appendP
+            if (settlement.kind === 'done') {
+                const messages = canonicalizeHitlNames(settlement.messages)
+                let answerRow: MessageRow | undefined
+                for (const message of messages) {
+                    const row = await appendMessage(agent.id, sessionId, message)
+                    if (row?.role === 'assistant') answerRow = row
+                }
+                pending = findPendingHitl(messages)
+                // A turn that ends on a card ignores the replies: the card already says how to answer.
+                const replies = quickReplies?.()
+                if (replies && answerRow && !pending) await setMessageToolCalls(agent.id, answerRow.id, [quickRepliesCall(replies)]).catch(() => {})
+                if (provider === 'rerun') clearBudgetLatch()
+                if (provider === 'codex') await keepCodexThread().catch(() => forgetCodexThread(agent.id, sessionId))
+                const pendingKind = pending ? hitlKind(pending.toolName) : undefined
+                terminalDecision = await decideTerminal(await finishRun(agent.id, run.id, settlement.usage, steps, settlement.costMicros, contextUsage?.(), pendingKind === 'question' || pendingKind === 'approval' || pendingKind === 'connector' ? pendingKind : undefined), { kind: 'done' })
+                outcome = terminalDecision.outcome
+                await touchSession(agent.id, sessionId).catch(() => {})
+                text = settlement.text
+                usage = settlement.usage
+                costMicros = settlement.costMicros
+                if (connection) {
+                    forgetCredentialRejected(connection.id)
+                    clearPlanLimitLatch(connection.id)
+                }
+            } else if (settlement.kind === 'cancelled') {
+                forgetCodexThread(agent.id, sessionId)
+                for (const message of canonicalizeHitlNames(completedMessages)) await appendMessage(agent.id, sessionId, message)
+                if (partialResults.length || completedMessages.length) await appendMessage(agent.id, sessionId, { role: 'assistant', content: partialResults.length ? partialResultsNote(partialResults) : 'Run stopped by the user.' })
+                terminalDecision = await decideTerminal(await cancelRun(agent.id, run.id), { kind: 'cancelled' })
+                outcome = terminalDecision.outcome
+            } else {
+                const renewed = settlement.errorCode === RUN_ERROR_CODES.unauthorized && provider === 'claude' && claudeTokenOutlived(connection, spawnToken)
+                if (renewed) settlement = { ...settlement, error: new ClaudeSignInRenewedError(), errorCode: RUN_ERROR_CODES.authRenewed }
+                if (settlement.errorCode === RUN_ERROR_CODES.refused) settlement = { ...settlement, error: new ProviderRefusedError(refusalReason(settlement.error)) }
+                const unreachable = provider === 'custom' ? unreachableEndpointError(connection?.config.baseUrl, settlement.error) : null
+                if (unreachable) settlement = { ...settlement, error: unreachable }
+                const errorCode = settlement.errorCode ?? null
+                const errorMessage = errorMessageOf(settlement.error)
+                forgetCodexThread(agent.id, sessionId)
+                logger.error({ err: errorMessage, errorCode, agent: agent.id, run: run.id }, 'run error')
+                if (errorCode === RERUN_BUDGET_ERROR_CODE) armBudgetLatch()
+                if (errorCode === RUN_ERROR_CODES.usageLimit && connection && connection.id !== RERUN_CONNECTION_ID) armPlanLimitLatch(connection.id)
+                // The token is still on file, so the connection would keep reading "Ready" while every
+                // run on it fails. The keyless Rerun connection answers for the hub's key, not the user's.
+                if (errorCode === RUN_ERROR_CODES.unauthorized && connection && connection.id !== RERUN_CONNECTION_ID) recordCredentialRejected(connection.id)
+                // Codex's answer to a real request outranks the list it gave: the model is greyed out from now
+                // on, and a box default naming it moves to one the account serves.
+                if (errorCode === RUN_ERROR_CODES.modelNotInPlan && provider === 'codex' && connection) {
+                    const refusedOn = connection
+                    recordRefusedModel(refusedOn.id, model)
+                    await repairBoxDefault(refusedOn).catch(err => logger.warn({ err: String(err), connection: refusedOn.id }, 'box default repair failed'))
+                }
+                // A turn that failed mid-flight still said things worth keeping; without this the user
+                // loses everything the agent had already produced.
+                for (const message of canonicalizeHitlNames(settlement.messages ?? completedMessages)) await appendMessage(agent.id, sessionId, message)
+                terminalDecision = await decideTerminal(await failRun(agent.id, run.id, errorMessage), { kind: 'error', error: errorMessage, errorCode })
+                outcome = terminalDecision.outcome
+            }
+        } catch (error) {
+            const message = errorMessageOf(error)
+            if (terminalDecision) {
+                outcome = terminalDecision.outcome
+                logger.warn({ err: message, agent: agent.id, run: run.id }, 'post-terminal bookkeeping failed')
+            } else {
+                pending = null
+                outcome = { kind: 'error', error: message, errorCode: null }
+                logger.error({ err: message, agent: agent.id, run: run.id }, 'run settlement failed')
+                try {
+                    terminalDecision = await decideTerminal(await failRun(agent.id, run.id, message), outcome)
+                    outcome = terminalDecision.outcome
+                } catch (writeError) {
+                    const writeMessage = errorMessageOf(writeError)
+                    outcome = { kind: 'error', error: `${message}; failed to save terminal state: ${writeMessage}`, errorCode: null }
+                    logger.error({ err: writeMessage, agent: agent.id, run: run.id }, 'terminal failure could not be saved')
+                }
+            }
+        } finally {
+            try {
+                await closeSafely()
+            } catch (error) {
+                logger.warn({ err: String(error), agent: agent.id, run: run.id }, 'run cleanup failed')
+            } finally {
+                try {
+                    await cliAuthP?.then(release => release(), () => {}).catch(err => logger.warn({ err: String(err), agent: agent.id }, 'release cli auth failed'))
+                    try {
+                        await setAgentStatus(agent.id, 'idle')
+                    } catch (error) {
+                        logger.warn({ err: String(error), agent: agent.id }, 'setAgentStatus idle failed')
+                    }
+                } finally {
+                    try {
+                        if (terminalDecision?.owner !== 'other') {
+                            const attention = pending ? hitlKind(pending.toolName) : undefined
+                            execution = await advanceExecution(agent.id, sessionId, run.id, { kind: 'terminal', state: outcome.kind === 'error' ? 'error' : 'idle', ...(attention === 'question' || attention === 'approval' || attention === 'connector' ? { attention } : {}) })
+                        }
+                    } catch (error) {
+                        logger.error({ err: String(error), agent: agent.id, run: run.id }, 'execution terminal state could not be saved')
+                    } finally {
+                        unregisterRunAbort(run.id)
+                        resolveSettled(outcome)
+                    }
+                }
+            }
+        }
+
+        if (terminalDecision?.owner === 'other') return outcome
 
         if (pending) {
             // A run waiting on a human stays "awaiting" only because no terminal event is sent.
-            await emitHitlEvent(agent, sessionId, run.id, pending, author)
+            await emitHitlEvent(agent, sessionId, run.id, pending, author, execution)
         } else {
             await emitRunTerminal({
                 agentId: agent.id,
@@ -374,6 +487,7 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
                 provider,
                 model,
                 costMicros,
+                execution,
             })
             const proposed = skillProposals.at(-1)
             if (outcome.kind === 'done' && proposed) await emitSkillProposalEvent(agent, sessionId, run.id, proposed, author)
@@ -401,56 +515,71 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
     })
 
     try {
+        controller.signal.throwIfAborted()
         // The recall waits on the hub's embedding: it runs alongside the whole preparation rather
         // than after it. It never rejects, a failed search only means no memories this turn.
-        const memoriesP = recallMemories(baseAgent, userText)
+        const memoriesP = trackPreparation(recallMemories(baseAgent, userText))
         // An override can name a different box connection than the agent's default, so the run works
         // off a view of the agent bound to the connection it will actually bill. The connection object
         // itself stays the shared instance, so a token refreshed here is refreshed for everyone.
         const resolved = await resolveRunModel(baseAgent, override)
+        controller.signal.throwIfAborted()
         agent = resolved === baseAgent.resolved ? baseAgent : { ...baseAgent, resolved }
         ;({ connection, provider, model } = resolved)
         const t0 = Date.now()
         const order = turnOrder(provider, await answeringModel(provider, model))
+        controller.signal.throwIfAborted()
         const callableAgentIds = trigger.source === 'chat' ? trigger.callableAgentIds : undefined
         const ctx: RunContext = { agent, sessionId, logger, provider, model, turnOrder: order, author, writer, abortSignal: controller.signal, callTargets: [], callableAgentIds, hostBreaker: new HostBreaker(), partialResults, skillProposals }
 
         ctx.runId = run.id
         const triggerSlug = 'slug' in trigger ? trigger.slug : null
-        void setRunContext(agent.id, run.id, { provider, model, triggerSource: trigger.source, triggerSlug }).catch(() => {})
+        trackPreparation(setRunContext(agent.id, run.id, { provider, model, triggerSource: trigger.source, triggerSlug }).catch(() => {}))
 
         const callTargetsP = agent.config.tools.callAgent ? listAgentIndex().then(idx => callTargetsOf(idx, agent.id, callableAgentIds)) : Promise.resolve([])
-        const toolsP = callTargetsP.then(callTargets => {
+        const toolsP = trackPreparation(callTargetsP.then(callTargets => {
+            controller.signal.throwIfAborted()
             ctx.callTargets = callTargets
             return buildTools(ctx)
-        })
-        const preparedP = CLI_PROVIDERS.has(provider) ? Promise.all(agent.config.mcpServers.map(s => prepareMcpServer(agent.id, s, agent.env))) : Promise.resolve([])
+        }).then(built => {
+            closeTools = built.close
+            return built
+        }))
+        const preparedP = trackPreparation(CLI_PROVIDERS.has(provider) ? Promise.all(agent.config.mcpServers.map(s => trackPreparation(prepareMcpServer(agent.id, s, agent.env)))) : Promise.resolve([]))
         // Claude reaches its servers through the engine's connections; Codex starts its own without
         // holding up the model, so it keeps dialing them as declared.
-        const mcpServersP = provider === 'claude' ? preparedP.then(servers => withPooledRelays(agent, servers)) : preparedP
-        cliAuthP = ensureCliAuth(provider, connection)
+        const mcpServersP = trackPreparation(provider === 'claude' ? preparedP.then(servers => {
+            controller.signal.throwIfAborted()
+            return withPooledRelays(agent, servers)
+        }) : preparedP)
+        cliAuthP = trackPreparation(ensureCliAuth(provider, connection))
 
-        void setAgentStatus(agent.id, 'busy').catch(err => logger.warn({ err: String(err), agent: agent.id }, 'setAgentStatus busy failed'))
+        trackPreparation(setAgentStatus(agent.id, 'busy').catch(err => logger.warn({ err: String(err), agent: agent.id }, 'setAgentStatus busy failed')))
 
         const system = await buildSystemPrompt(agent, trigger, provider, order)
+        controller.signal.throwIfAborted()
         const systemText = systemPromptText(system)
 
         const pastAuthorIds = await listSessionAuthorIds(agent.id, sessionId).catch(() => [])
+        controller.signal.throwIfAborted()
         const shared = isSharedConversation(author ? [...pastAuthorIds, author.id] : pastAuthorIds)
 
         // The tools come first: their schemas ride along on every step, so the compaction threshold
         // has to count them with the history.
         const built = await toolsP
-        closeTools = built.close
+        controller.signal.throwIfAborted()
         const { tools } = built
         const history = repairToolPairs(await prepareRunHistory(ctx, systemText, override, shared, toolPayloadChars(tools)))
+        controller.signal.throwIfAborted()
 
         const [memories, mcpServers] = await Promise.all([memoriesP, mcpServersP, cliAuthP])
+        controller.signal.throwIfAborted()
         const recall = recallSection(memories, history)
 
         // Read before the turn is stored: a resumed thread only gets this turn, so the session must
         // hold nothing the thread has not seen.
         const resumeThreadId = provider === 'codex' ? codexThreadToResume(agent.id, sessionId, connection?.id ?? RERUN_CONNECTION_ID, await lastMessageId(agent.id, sessionId)) : undefined
+        controller.signal.throwIfAborted()
 
         // The turn is stored as it is sent, its context part included: the history the next turn
         // replays is then byte for byte the prompt the provider already cached. Only the signature
@@ -474,6 +603,7 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
         // Cut out of the text whoever wrote it; only a coworker that offers replies gets the buttons.
         if (offersQuickReplies(agent.config)) quickReplies = resolvedModel.quickReplies
         const languageModel = resolvedModel.model
+        controller.signal.throwIfAborted()
 
         let lastStepAt = Date.now()
         let runCostMicros: number | null = null
@@ -498,14 +628,27 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
                 }
             },
             onStepFinish: async step => {
-                steps += 1
-                const now = Date.now()
-                const durationMs = now - lastStepAt
-                lastStepAt = now
-                const stepCostMicros = costMicrosFrom(step.providerMetadata)
-                if (stepCostMicros !== null) runCostMicros = (runCostMicros ?? 0) + stepCostMicros
-                await bumpRunStep(agent.id, run.id, steps).catch(() => {})
-                await recordStepTelemetry(agent.id, sessionId, run.id, provider, model, steps, durationMs, step, stepCostMicros).catch(err => logger.warn({ err: String(err), agent: agent.id }, 'record step telemetry failed'))
+                if (settled || controller.signal.aborted) return
+                // The SDK snapshot is cumulative; replacing it preserves completed tool results
+                // without duplicating earlier steps if a later step is interrupted.
+                completedMessages = step.response.messages
+                const task = (async () => {
+                    steps += 1
+                    const now = Date.now()
+                    const durationMs = now - lastStepAt
+                    lastStepAt = now
+                    const stepCostMicros = costMicrosFrom(step.providerMetadata)
+                    if (stepCostMicros !== null) runCostMicros = (runCostMicros ?? 0) + stepCostMicros
+                    await bumpRunStep(agent.id, run.id, steps).catch(() => {})
+                    if (settled || controller.signal.aborted) return
+                    await recordStepTelemetry(agent.id, sessionId, run.id, provider, model, steps, durationMs, step, stepCostMicros).catch(err => logger.warn({ err: String(err), agent: agent.id }, 'record step telemetry failed'))
+                })()
+                stepTasks.add(task)
+                try {
+                    await task
+                } finally {
+                    stepTasks.delete(task)
+                }
             },
             onError: async ({ error }) => {
                 if (controller.signal.aborted) {
@@ -545,6 +688,7 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
                 await settle({ kind: 'done', text, usage: totalUsage, costMicros: runCostMicros ?? costMicrosFrom(providerMetadata), messages: response.messages })
             },
         })
+        finishPreparation()
 
         // Drains the stream so the run advances with no HTTP consumer attached, and closes the run
         // when the provider ends the turn without ever reaching a callback. `teeStream` hands out a
@@ -569,6 +713,7 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
 
         return { result, runId: run.id, settled: settledPromise, contextUsage, quickReplies }
     } catch (err) {
+        finishPreparation()
         // Everything past `streamText` is handled by its own callbacks: the `return` above makes
         // this catch unreachable once the stream has started, so a run is closed exactly once.
         if (controller.signal.aborted) {

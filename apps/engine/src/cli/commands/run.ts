@@ -18,6 +18,7 @@ import { logger } from '../../lib/logger.js'
 import { closeAllMcp } from '../../tools/mcp-pool.js'
 import { loadPairingIdentity, pairWithHub } from '../../pairing/pairing.js'
 import { settleLastUpdateOnBoot } from '../../runtime/last-update.js'
+import { startExecutionDelivery } from '../../runtime/execution-delivery.js'
 
 export async function runCommand(): Promise<void> {
     loadPairingIdentity()
@@ -26,6 +27,7 @@ export async function runCommand(): Promise<void> {
     if (lastUpdate?.status === 'error') logger.warn({ error: lastUpdate.error, commit: lastUpdate.commit }, 'last update did not land')
     await ensureForeman()
     await reconcileInterruptedRuns()
+    const stopExecutionDelivery = startExecutionDelivery()
     if (await installBrowserInBackground()) logger.info('chromium missing: installing it in the background')
     if (installDesktopInBackground()) logger.info('desktop missing: installing it in the background')
     const cliTools = updateCliToolsInBackground()
@@ -53,6 +55,7 @@ export async function runCommand(): Promise<void> {
     // The pooled MCP servers are closed before the process goes, within a short grace: one that does
     // not answer its close is left to systemd, which stops the whole cgroup.
     const shutdown = () => {
+        stopExecutionDelivery()
         stopScheduler()
         const grace = new Promise<void>(resolve => setTimeout(resolve, 2_000).unref())
         void Promise.race([closeAllMcp(), grace]).finally(() => process.exit(0))
