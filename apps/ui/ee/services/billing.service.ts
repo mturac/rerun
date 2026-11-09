@@ -1,3 +1,5 @@
+import { requestLocale } from '@/lib/i18n/request-locale'
+import { DEFAULT_LOCALE, PSEUDO_LOCALE } from '@rerun/i18n'
 import { realEmail } from '@/lib/auth/placeholder-email'
 import { requireWorkspaceId } from '@/app/api/_auth/ownership'
 import { Database } from '@/app/api/database.types'
@@ -104,10 +106,14 @@ export async function ensureStripeCustomer(): Promise<{ workspaceId: number; cus
     const { data: workspace } = await selectSingle(supabase, 'workspaces', ['id', 'name', 'stripe_customer_id'] as const, { id: workspaceId })
     if (workspace?.stripe_customer_id) return { workspaceId, customerId: workspace.stripe_customer_id }
 
+    // Outside a request (a job) there is no browser to ask: English.
+    const locale = await requestLocale().catch(() => DEFAULT_LOCALE)
     const customer = await stripe.customers.create({
         email: realEmail(session?.email) ?? undefined,
         name: workspace?.name ?? undefined,
         metadata: { workspace_id: String(workspaceId) },
+        // Stripe writes the invoices and the receipts it emails in this language. Prices stay in USD.
+        preferred_locales: [locale === PSEUDO_LOCALE ? DEFAULT_LOCALE : locale],
     })
 
     const { error } = await supabase.from('workspaces').update<WorkspaceUpdate>({ stripe_customer_id: customer.id }).eq('id', workspaceId)

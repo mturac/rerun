@@ -68,11 +68,12 @@ export async function updateMyLocaleAction(params: { locale: Locale | typeof PSE
         if (locale !== null && !pseudo && !isStableLocale(locale)) return { ok: false, error: 'Unknown language.' }
 
         if (!pseudo) {
-            const { error } = await createServiceRoleClient()
-                .from('users')
-                .update<Database['public']['Tables']['users']['Update']>({ locale })
-                .eq('id', account.id)
+            const service = createServiceRoleClient()
+            const { error } = await service.from('users').update<Database['public']['Tables']['users']['Update']>({ locale }).eq('id', account.id)
             if (error) throw new Error(error.message)
+            // The sign-in code emails are Supabase's own templates, which can only read the metadata.
+            const { error: metadataError } = await service.auth.admin.updateUserById(account.id, { user_metadata: { locale } })
+            if (metadataError) throw new Error(metadataError.message)
         }
 
         const cookieStore = await cookies()
