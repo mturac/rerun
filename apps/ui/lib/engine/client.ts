@@ -511,6 +511,32 @@ export async function getSessionMessages(conn: EngineConnection, agentId: string
     return engineMessagesListSchema.parse(await res.json()).messages
 }
 
+// Local whisper.cpp on the engine: a 30 s dictation can take tens of seconds to transcribe,
+// well past the fail-fast budget every other call runs on.
+const TRANSCRIBE_TIMEOUT_MS = 120_000
+
+// Dictation for the composer: raw audio in, transcript out. `format` is the recorder's
+// extension (webm, m4a, ogg, wav); the engine's ffmpeg reads whatever arrives.
+export async function transcribeAgentVoice(conn: EngineConnection, agentId: string, audio: ArrayBuffer | Blob, format: string, language?: string): Promise<string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream' }
+    if (conn.apiKey) headers['Authorization'] = `Bearer ${conn.apiKey}`
+    const query = new URLSearchParams({ format })
+    if (language) query.set('language', language)
+    const res = await fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/voice/transcribe?${query}`, {
+        method: 'POST',
+        headers,
+        body: audio,
+        signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
+    })
+    const data: unknown = await res.json().catch(() => null)
+    const payload = (data ?? {}) as { ok?: unknown; text?: unknown; error?: unknown }
+    if (!res.ok || payload.ok !== true) {
+        const message = typeof payload.error === 'string' && payload.error ? payload.error : `rerun-engine POST /agents/${agentId}/voice/transcribe failed: ${res.status}`
+        throw new EngineRequestError(message, res.status)
+    }
+    return typeof payload.text === 'string' ? payload.text.trim() : ''
+}
+
 // The live read behind an external-agent card: the tool output it was drawn from is a snapshot.
 export async function getExternalAgentTask(conn: EngineConnection, agentId: string, provider: string, taskId: string): Promise<EngineExternalAgentTask | null> {
     return request(conn, `/agents/${encodeURIComponent(agentId)}/external-agents/${encodeURIComponent(provider)}/${encodeURIComponent(taskId)}`, { method: 'GET' }, d => {

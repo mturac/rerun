@@ -10,6 +10,7 @@ import { planRoutes } from './routes/plan.js'
 import { chatRoutes } from './routes/chat.js'
 import { sessionRoutes } from './routes/sessions.js'
 import { externalAgentRoutes } from './routes/external-agents.js'
+import { voiceRoutes } from './routes/voice.js'
 import { memoryRoutes } from './routes/memories.js'
 import { createDataRouter } from './routes/data.js'
 import { createSkillFilesRouter, skillRoutes } from './routes/skills.js'
@@ -50,6 +51,7 @@ export function createServer(): Hono {
     api.route('/agents', agentRoutes)
     api.route('/agents/:id/sessions', sessionRoutes)
     api.route('/agents/:id/external-agents', externalAgentRoutes)
+    api.route('/agents/:id/voice', voiceRoutes)
     api.route('/agents/:id/memories', memoryRoutes)
     api.route(
         '/agents/:id/data',

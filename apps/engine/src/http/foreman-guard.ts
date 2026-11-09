@@ -16,6 +16,7 @@ const FOREMAN_OPEN_ROUTES: Array<{ method: string; path: RegExp }> = [
     { method: 'GET', path: /^\/agents\/foreman\/runs\/[^/]+$/ },
     { method: 'GET', path: /^\/agents\/foreman\/runs\/[^/]+\/steps$/ },
     { method: 'GET', path: /^\/agents\/foreman\/external-agents\/[^/]+\/[^/]+$/ },
+    { method: 'POST', path: /^\/agents\/foreman\/voice\/transcribe$/ },
     { method: 'POST', path: /^\/agents\/foreman\/runs\/[^/]+\/tasks\/[^/]+\/cancel$/ },
     { method: 'GET', path: /^\/agents\/foreman\/files\/raw$/ },
     { method: 'PUT', path: /^\/agents\/foreman\/files\/raw$/ },

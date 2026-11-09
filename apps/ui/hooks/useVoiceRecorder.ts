@@ -48,8 +48,10 @@ export type VoiceLiveState = { durationMs: number }
 
 type Options = {
     onError: (message: string) => void
-    /** Fired once when the recording hits MAX_RECORDING_MS, so the caller can finish it as if the user had. */
+    /** Fired once when the recording hits the length cap, so the caller can finish it as if the user had. */
     onLimitReached: () => void
+    /** Defaults to MAX_RECORDING_MS; dictation caps much lower. */
+    maxMs?: number
 }
 
 /**
@@ -57,7 +59,7 @@ type Options = {
  * feeding the live waveform, and hands back the finished blob together with the amplitudes
  * captured along the way (they become the waveform stored in the message).
  */
-export function useVoiceRecorder({ onError, onLimitReached }: Options) {
+export function useVoiceRecorder({ onError, onLimitReached, maxMs }: Options) {
     const [status, setStatus] = useState<VoiceRecorderStatus>('idle')
     // Handed to the waveform so it draws off the microphone we already hold instead of opening
     // a second capture of the same voice.
@@ -65,9 +67,11 @@ export function useVoiceRecorder({ onError, onLimitReached }: Options) {
 
     const onErrorRef = useRef(onError)
     const onLimitReachedRef = useRef(onLimitReached)
+    const maxMsRef = useRef(maxMs ?? MAX_RECORDING_MS)
     useEffect(() => {
         onErrorRef.current = onError
         onLimitReachedRef.current = onLimitReached
+        maxMsRef.current = maxMs ?? MAX_RECORDING_MS
     })
 
     // The primary take is AAC where the browser offers it, so the iOS app can play the message.
@@ -116,7 +120,7 @@ export function useVoiceRecorder({ onError, onLimitReached }: Options) {
             allLevelsRef.current.push(Math.min(1, Math.sqrt(sum / buffer.length) * 3))
         }
 
-        if (Date.now() - startedAtRef.current >= MAX_RECORDING_MS && !limitFiredRef.current) {
+        if (Date.now() - startedAtRef.current >= maxMsRef.current && !limitFiredRef.current) {
             limitFiredRef.current = true
             onLimitReachedRef.current()
         }

@@ -11,16 +11,19 @@ import { deleteForemanFileAction } from '@/app/api/_actions/foreman-file.actions
 import { PromptInput, PromptInputButton, PromptInputDropOverlay, PromptInputFooter, PromptInputSubmit, PromptInputTextarea, usePromptInputAttachments } from '@/components/ai-elements/prompt-input'
 import { AttachButton, ChatAttachments } from '@/components/chat/ChatAttachments'
 import { ComposerLinkMirror } from '@/components/chat/ComposerLinkMirror'
+import { DictationControls } from '@/components/chat/DictationControls'
 import { QueuedMessagePill } from '@/components/chat/QueuedMessagePill'
 import { VoiceComposerControls } from '@/components/chat/VoiceComposerControls'
 import { VoiceRecorderBar } from '@/components/chat/VoiceRecorderBar'
 import { MarkdownEditorDialog } from '@/components/ui/markdown-editor-dialog'
 import { useComposerDraft } from '@/hooks/useComposerDraft'
 import { useComposerLinks } from '@/hooks/useComposerLinks'
+import { useDictation } from '@/hooks/useDictation'
 import { useFileUploads, type UploadItem, type UploadTarget } from '@/hooks/useFileUploads'
 import { useVoiceMessage } from '@/hooks/useVoiceMessage'
 import { appendAttachmentsRef, buildAttachmentsRef, CHAT_ATTACHMENTS_DIR, uniqueAttachmentName } from '@/lib/chat/attachments-marker'
 import type { ComposerMention } from '@/lib/chat/composer-links'
+import { insertTranscript } from '@/lib/chat/dictation'
 import { isLongMessage } from '@/lib/composer'
 import type { UploadEntry } from '@/lib/files/upload'
 import { Maximize2Icon, SendIcon, SquareIcon } from '@/lib/icons'
@@ -84,6 +87,8 @@ export type ChatComposerProps = {
     gate?: ComposerGate
     /** The microphone. Off for a surface that cannot take a recording. */
     voiceEnabled?: boolean
+    /** Dictation into the draft, transcribed on the engine. Off where no engine agent answers. */
+    dictationEnabled?: boolean
     /** The paperclip, the drop and the paste. Off for a surface that has no way to read a file. */
     attachmentsEnabled?: boolean
     /** Footer, left cell: the model picker. */
@@ -120,6 +125,7 @@ export function ChatComposer({
     queue,
     gate,
     voiceEnabled = true,
+    dictationEnabled = true,
     attachmentsEnabled = true,
     modelSlot,
     contextSlot,
@@ -380,21 +386,42 @@ export function ChatComposer({
     const voice = useVoiceMessage({ target: uploadTarget, dir: CHAT_ATTACHMENTS_DIR, onSend: sendVoiceMessage })
     const { start: startVoice, finish: finishVoice, retry: retryVoice, discard: discardVoice } = voice
 
+    // Dictation only exists where an engine agent answers the transcribe route; the foreman hub
+    // without an engine behind it and the shared folder have none.
+    const dictationAgentId = dictationEnabled && uploadTarget.kind === 'agent' ? uploadTarget.agentId : undefined
+    const insertDictation = useCallback(
+        (text: string) => {
+            const el = inputRef.current
+            if (!el) return
+            const start = el.selectionStart ?? el.value.length
+            const end = el.selectionEnd ?? start
+            const next = insertTranscript(el.value, text, start, end)
+            el.value = next.text
+            el.setSelectionRange(next.caret, next.caret)
+            applyComposerText(next.text)
+            el.focus({ preventScroll: true })
+        },
+        [inputRef, applyComposerText]
+    )
+    const dictation = useDictation({ agentId: dictationAgentId, onTranscript: insertDictation, onError: message => toast.error(message) })
+    const dictating = dictation.status !== 'idle'
+
     const startVoiceMessage = useCallback(() => {
+        if (dictating) return
         if (gate && !gate.ready) {
             gate.onBlocked()
             return
         }
         void startVoice()
-    }, [gate, startVoice])
+    }, [gate, startVoice, dictating])
 
     // The microphone shows whenever nothing is typed, and a run in flight keeps its Stop button. It
     // takes the send button's place only when there is genuinely nothing to send: attachments alone
     // are a valid message, so with them it sits next to Send and the recording carries them along.
     const composerHasContent = !composerEmpty || Object.keys(attachmentUploads).length > 0
     const recording = voice.status !== 'idle'
-    const voiceControlsVisible = voiceEnabled && (recording || (composerEmpty && status === 'ready' && !uploading && !busy))
-    const submitVisible = !recording && !(voiceControlsVisible && !composerHasContent)
+    const voiceControlsVisible = voiceEnabled && !dictating && (recording || (composerEmpty && status === 'ready' && !uploading && !busy))
+    const submitVisible = !recording && !dictating && !(voiceControlsVisible && !composerHasContent)
 
     // The submit button reads the conversation, not this tab's stream. After a reload `status` is
     // `ready` while the conversation is still busy, and the composer used to offer Send (or the
@@ -405,7 +432,19 @@ export function ChatComposer({
     const submitStatus: ChatStatus = uploading ? 'submitted' : canQueue ? 'ready' : busy && status === 'ready' ? 'streaming' : status
     // A Stop of its own only when the send button cannot take that shape, which is when there is
     // something to send over the run in flight.
-    const showStop = Boolean(onStop) && busy && !uploading && canQueue
+    const showStop = Boolean(onStop) && busy && !uploading && canQueue && !dictating
+
+    // The recorder bar stands in for the textarea for either capture: a voice message being sent,
+    // or a dictation being recorded or transcribed.
+    const recorderBar = recording
+        ? { status: voice.status as 'starting' | 'recording' | 'processing' | 'failed', stream: voice.stream, getLiveState: voice.getLiveState }
+        : dictating
+          ? {
+                status: dictation.status === 'transcribing' ? ('processing' as const) : (dictation.status as 'starting' | 'recording'),
+                stream: dictation.stream,
+                getLiveState: dictation.getLiveState,
+            }
+          : null
 
     return (
         <>
@@ -427,9 +466,12 @@ export function ChatComposer({
                 {attachmentsEnabled && <PromptInputDropOverlay />}
                 <AttachmentChipsClearer clearRef={clearAttachmentChipsRef} />
                 <ChatAttachments uploads={uploadsByAttachment} onRetry={retryAttachment} />
-                {voice.status === 'idle' ? (
-                    <>
-                        <div className="relative w-full">
+                {/* The bar covers the composer while either capture runs, but the textarea stays
+                    mounted and hidden: unmounting it would drop the draft a dictation is about to
+                    insert back into. */}
+                {recorderBar && <VoiceRecorderBar status={recorderBar.status} stream={recorderBar.stream} getLiveState={recorderBar.getLiveState} />}
+                <div className={recorderBar ? 'hidden' : 'contents'}>
+                    <div className="relative w-full">
                             <PromptInputTextarea
                                 ref={inputRef}
                                 placeholder={placeholder}
@@ -485,24 +527,30 @@ export function ChatComposer({
                                 </motion.button>
                             )}
                         </AnimatePresence>
-                    </>
-                ) : (
-                    <VoiceRecorderBar status={voice.status} stream={voice.stream} getLiveState={voice.getLiveState} />
-                )}
+                </div>
                 <PromptInputFooter>
                     <div className="flex min-w-0 items-center gap-1">{modelSlot}</div>
                     <div className="flex items-center gap-1">
-                        {!recording && contextSlot}
-                        {!recording && attachmentsEnabled && <AttachButton />}
-                        {voiceControlsVisible && (
-                            <VoiceComposerControls
-                                status={voice.status}
-                                besideSend={submitVisible}
-                                onStart={startVoiceMessage}
-                                onFinish={() => void finishVoice()}
-                                onRetry={retryVoice}
-                                onDiscard={discardVoice}
-                            />
+                        {dictating ? (
+                            <DictationControls status={dictation.status} onStart={dictation.start} onFinish={() => void dictation.finish()} onCancel={dictation.cancel} />
+                        ) : (
+                            <>
+                                {!recording && contextSlot}
+                                {!recording && attachmentsEnabled && <AttachButton />}
+                                {dictation.supported && !recording && (
+                                    <DictationControls status="idle" onStart={dictation.start} onFinish={() => void dictation.finish()} onCancel={dictation.cancel} />
+                                )}
+                                {voiceControlsVisible && (
+                                    <VoiceComposerControls
+                                        status={voice.status}
+                                        besideSend={submitVisible}
+                                        onStart={startVoiceMessage}
+                                        onFinish={() => void finishVoice()}
+                                        onRetry={retryVoice}
+                                        onDiscard={discardVoice}
+                                    />
+                                )}
+                            </>
                         )}
                         {showStop && (
                             <PromptInputButton tooltip="Stop the current run" aria-label="Stop the current run" onClick={onStop}>
