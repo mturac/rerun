@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Notification, shell } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, Notification, shell } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { EngineClient } from './engine-client.js'
@@ -18,6 +18,7 @@ let tray: TrayController
 let poller: DesktopPoller
 let quitting = false
 let pendingDeepLink: string | null = null
+let pendingDictation = false
 
 function log(message: string): void {
     console.log(`[desktop-app] ${message}`)
@@ -128,6 +129,10 @@ function createWindow(): void {
 
     mainWindow.webContents.on('did-finish-load', () => {
         log(`window loaded ${mainWindow?.webContents.getURL() ?? 'unknown'}`)
+        if (pendingDictation) {
+            pendingDictation = false
+            mainWindow?.webContents.send('desktop:dictation')
+        }
     })
     mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
         log(`window failed to load: ${code} ${description}`)
@@ -169,6 +174,18 @@ async function bootstrap(): Promise<void> {
     tray = new TrayController(() => showWindow())
     createWindow()
 
+    if (config.pttAccelerator) {
+        const registered = globalShortcut.register(config.pttAccelerator, () => {
+            showWindow()
+            if (!mainWindow || mainWindow.webContents.isLoading()) {
+                pendingDictation = true
+                return
+            }
+            mainWindow.webContents.send('desktop:dictation')
+        })
+        log(`push-to-talk ${registered ? `registered on ${config.pttAccelerator}` : `FAILED to register ${config.pttAccelerator}`}`)
+    }
+
     const client = new EngineClient(baseUrl, config.engineApiKey)
     poller = new DesktopPoller({
         client,
@@ -195,6 +212,7 @@ async function bootstrap(): Promise<void> {
         quitting = true
         event.preventDefault()
         log('quitting: stopping poller and engine sidecar')
+        globalShortcut.unregisterAll()
         poller?.stop()
         void sidecar.stop().finally(() => app.quit())
     })

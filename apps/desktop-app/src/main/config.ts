@@ -9,6 +9,7 @@ export interface DesktopConfig {
     engineApiKey: string
     engineDataDir: string
     pollIntervalMs: number
+    pttAccelerator: string | null
 }
 
 const CONFIG_FILE = 'desktop-config.json'
@@ -38,6 +39,12 @@ export function defaultPollIntervalMs(): number {
     return Number.isInteger(ms) && ms >= 2_000 ? ms : 15_000
 }
 
+export function defaultPttAccelerator(): string | null {
+    const raw = process.env.DESKTOP_PTT_ACCELERATOR
+    if (raw !== undefined) return raw === 'off' || raw === '' ? null : raw
+    return 'CommandOrControl+Shift+M'
+}
+
 export function loadConfig(userDataDir: string): DesktopConfig {
     const file = join(userDataDir, CONFIG_FILE)
     let stored: Partial<DesktopConfig> = {}
@@ -58,6 +65,11 @@ export function loadConfig(userDataDir: string): DesktopConfig {
         engineApiKey: stored.engineApiKey ?? randomBytes(24).toString('base64url'),
         engineDataDir: envDataDir || stored.engineDataDir || join(homedir(), '.rerun'),
         pollIntervalMs: envPoll ? defaultPollIntervalMs() : (stored.pollIntervalMs ?? defaultPollIntervalMs()),
+        pttAccelerator: (() => {
+            if (process.env.DESKTOP_PTT_ACCELERATOR !== undefined) return defaultPttAccelerator()
+            if (stored.pttAccelerator === undefined) return defaultPttAccelerator()
+            return stored.pttAccelerator === 'off' || stored.pttAccelerator === '' ? null : stored.pttAccelerator
+        })(),
     }
     mkdirSync(userDataDir, { recursive: true })
     writeFileSync(file, JSON.stringify(config, null, 4))

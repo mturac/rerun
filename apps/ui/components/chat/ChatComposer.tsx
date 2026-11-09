@@ -24,6 +24,7 @@ import { useVoiceMessage } from '@/hooks/useVoiceMessage'
 import { appendAttachmentsRef, buildAttachmentsRef, CHAT_ATTACHMENTS_DIR, uniqueAttachmentName } from '@/lib/chat/attachments-marker'
 import type { ComposerMention } from '@/lib/chat/composer-links'
 import { insertTranscript } from '@/lib/chat/dictation'
+import { onDesktopDictation } from '@/lib/desktop-shell'
 import { isLongMessage } from '@/lib/composer'
 import type { UploadEntry } from '@/lib/files/upload'
 import { Maximize2Icon, SendIcon, SquareIcon } from '@/lib/icons'
@@ -405,6 +406,19 @@ export function ChatComposer({
     )
     const dictation = useDictation({ agentId: dictationAgentId, onTranscript: insertDictation, onError: message => toast.error(message) })
     const dictating = dictation.status !== 'idle'
+
+    const dictationStatus = dictation.status
+    const dictationStart = dictation.start
+    const dictationFinish = dictation.finish
+    useEffect(() => {
+        return (
+            onDesktopDictation(() => {
+                if (!dictationAgentId || !dictation.supported) return
+                if (dictationStatus === 'idle') dictationStart()
+                else if (dictationStatus === 'recording' || dictationStatus === 'starting') void dictationFinish()
+            }) ?? undefined
+        )
+    }, [dictationAgentId, dictation.supported, dictationStatus, dictationStart, dictationFinish])
 
     const startVoiceMessage = useCallback(() => {
         if (dictating) return

@@ -9,7 +9,13 @@ const api = {
         ipcRenderer.on('desktop:navigate', listener)
         return () => ipcRenderer.removeListener('desktop:navigate', listener)
     },
+    onDictation: (callback: () => void): (() => void) => {
+        const listener = () => callback()
+        ipcRenderer.on('desktop:dictation', listener)
+        return () => ipcRenderer.removeListener('desktop:dictation', listener)
+    },
     platform: process.platform as string,
 }
 
 contextBridge.exposeInMainWorld('rerunDesktop', api)
+contextBridge.exposeInMainWorld('rerunDesktopShell', api)
