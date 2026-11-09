@@ -45,8 +45,10 @@ function engineEnv(config: DesktopConfig): NodeJS.ProcessEnv {
         RERUN_API_KEY: config.engineApiKey,
         RERUN_DATA_DIR: config.engineDataDir,
         RERUN_LOG_LEVEL: process.env.RERUN_LOG_LEVEL ?? 'info',
+        RERUN_HUB_BASE_URL: process.env.RERUN_HUB_BASE_URL ?? config.uiUrl,
     }
-    if (process.env.RERUN_HUB_BASE_URL) env.RERUN_HUB_BASE_URL = process.env.RERUN_HUB_BASE_URL
+    if (process.env.RERUN_PAIR_TOKEN) env.RERUN_PAIR_TOKEN = process.env.RERUN_PAIR_TOKEN
+    if (process.env.RERUN_HUB_URL) env.RERUN_HUB_URL = process.env.RERUN_HUB_URL
     if (process.env.RERUN_DESKTOP) env.RERUN_DESKTOP = process.env.RERUN_DESKTOP
     return env
 }
