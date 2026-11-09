@@ -151,11 +151,25 @@ describe('codexProvider (Codex Cloud)', () => {
 
     it('status fetches task details and maps turn status', async () => {
         const fetchImpl = vi.fn(async (url: any) => {
-            expect(String(url)).toBe('https://chatgpt.com/backend-api/codex/tasks/task_e_123')
+            const u = String(url)
+            if (u.endsWith('/turns')) return jsonResponse({ turn_mapping: {} })
+            expect(u).toBe('https://chatgpt.com/backend-api/codex/tasks/task_e_123')
             return jsonResponse({ task: cloudTask({ task_status_display: { latest_turn_status_display: { turn_status: 'failed' } } }) })
         }) as unknown as typeof fetch
         const task = await providerWith(fetchImpl).status('task_e_123')
         expect(task.status).toBe('failed')
+    })
+
+    it('status surfaces the turn error message on failure', async () => {
+        const fetchImpl = vi.fn(async (url: any) => {
+            const u = String(url)
+            if (u.endsWith('/turns')) {
+                return jsonResponse({ turn_mapping: { t1: { turn: { error: { code: 'invalid_git_ref', message: 'Provided git ref main does not exist' } } } } })
+            }
+            return jsonResponse({ task: cloudTask({ task_status_display: { latest_turn_status_display: { turn_status: 'failed' } } }) })
+        }) as unknown as typeof fetch
+        const task = await providerWith(fetchImpl).status('task_e_123')
+        expect(task.error).toBe('Provided git ref main does not exist')
     })
 
     it('launch resolves the environment and posts a new_task payload', async () => {
@@ -198,6 +212,24 @@ describe('codexProvider (Codex Cloud)', () => {
         await provider.launch({ prompt: 'x', repository: 'https://github.com/mturac/RightStack.git' })
         expect(bodies[0].new_task.environment_id).toBe('env-b')
         expect(bodies[0].new_task.branch).toBe('main')
+    })
+
+    it('launch defaults the branch to the repository default_branch from repo_map', async () => {
+        const bodies: any[] = []
+        const fetchImpl = vi.fn(async (url: any, init: any) => {
+            if (String(url).endsWith('/environments')) {
+                return jsonResponse([{
+                    id: 'env-1',
+                    label: 'mturac/goldmark',
+                    repo_map: { 'github-1': { name: 'goldmark', full_name: 'mturac/goldmark', default_branch: 'master' } },
+                }])
+            }
+            bodies.push(JSON.parse(String(init.body)))
+            return jsonResponse({ task: { id: 'task_e_new' } })
+        }) as unknown as typeof fetch
+        const provider = codexProvider({ agentEnv: envCreds, env: {} as NodeJS.ProcessEnv, fetchImpl })
+        await provider.launch({ prompt: 'x', repository: 'mturac/goldmark' })
+        expect(bodies[0].new_task.branch).toBe('master')
     })
 
     it('followup posts a follow_up payload with the task current turn', async () => {

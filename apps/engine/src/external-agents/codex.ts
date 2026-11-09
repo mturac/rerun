@@ -46,7 +46,7 @@ type CloudTask = {
 type CloudEnvironment = {
     id?: string
     label?: string
-    repo_map?: Record<string, { name?: string; full_name?: string }>
+    repo_map?: Record<string, { name?: string; full_name?: string; default_branch?: string; owner?: { login?: string } }>
     [key: string]: unknown
 }
 
@@ -217,32 +217,52 @@ export function codexProvider(opts: CodexCloudProviderOptions = {}): ExternalAge
         return creds
     }
 
+    async function turnError(creds: CloudCredentials, id: string): Promise<string | undefined> {
+        const body = await call<{ turn_mapping?: Record<string, { turn?: { error?: { message?: string } } }> }>(creds, 'GET', `/tasks/${encodeURIComponent(id)}/turns`)
+        for (const entry of Object.values(body.turn_mapping ?? {})) {
+            const message = entry?.turn?.error?.message
+            if (message) return message
+        }
+        return undefined
+    }
+
     async function taskDetails(creds: CloudCredentials, id: string): Promise<CloudTask> {
         const body = await call<{ task?: CloudTask } & CloudTask>(creds, 'GET', `/tasks/${encodeURIComponent(id)}`)
         return body.task ?? body
     }
 
-    async function resolveEnvironmentId(creds: CloudCredentials, input: ExternalAgentLaunch): Promise<string> {
+    async function resolveEnvironment(creds: CloudCredentials, input: ExternalAgentLaunch): Promise<CloudEnvironment> {
         const override = agentEnv.RERUN_CODEX_CLOUD_ENV_ID || env.RERUN_CODEX_CLOUD_ENV_ID || agentEnv.CODEX_CLOUD_ENV_ID || env.CODEX_CLOUD_ENV_ID
         const environments = await call<CloudEnvironment[]>(creds, 'GET', '/environments')
         const usable = environments.filter(e => e.id)
         if (override) {
             const byId = usable.find(e => e.id === override)
-            if (byId) return byId.id!
+            if (byId) return byId
             const byLabel = usable.find(e => (e.label ?? '').toLowerCase() === override.toLowerCase())
-            if (byLabel) return byLabel.id!
+            if (byLabel) return byLabel
             throw new Error(`Codex Cloud environment "${override}" not found. Available: ${usable.map(e => e.label ?? e.id).join(', ')}`)
         }
         const candidates = repoCandidates(input.repository)
         const matched = usable.find(e => environmentMatches(e, candidates))
-        if (matched) return matched.id!
-        if (usable.length === 1) return usable[0].id!
+        if (matched) return matched
+        if (usable.length === 1) return usable[0]
         const labels = usable.map(e => e.label ?? e.id).join(', ')
         throw new Error(
             candidates.length > 0
                 ? `No Codex Cloud environment matches repository "${input.repository}". Available: ${labels}. Set RERUN_CODEX_CLOUD_ENV_ID to pick one explicitly.`
                 : `Codex Cloud launch needs an environment. Set RERUN_CODEX_CLOUD_ENV_ID or pass a repository that matches one. Available: ${labels}`,
         )
+    }
+
+    function defaultBranch(environment: CloudEnvironment, input: ExternalAgentLaunch): string {
+        const explicit = input.branchName || input.ref
+        if (explicit) return explicit
+        const repos = Object.values(environment.repo_map ?? {})
+        const candidates = repoCandidates(input.repository)
+        const repo = candidates.length > 0
+            ? repos.find(r => repoCandidates(r?.full_name || `${r?.owner?.login ?? ''}/${r?.name ?? ''}`).some(c => candidates.includes(c)))
+            : repos[0]
+        return repo?.default_branch || 'main'
     }
 
     return {
@@ -257,12 +277,12 @@ export function codexProvider(opts: CodexCloudProviderOptions = {}): ExternalAge
 
         async launch(input: ExternalAgentLaunch) {
             const creds = await requireCredentials()
-            const environmentId = await resolveEnvironmentId(creds, input)
+            const environment = await resolveEnvironment(creds, input)
             const body = await call<{ task?: CloudTask } & CloudTask>(creds, 'POST', '/tasks', {
                 input_items: [userMessageItem(input.prompt)],
                 new_task: {
-                    environment_id: environmentId,
-                    branch: input.branchName || input.ref || 'main',
+                    environment_id: environment.id!,
+                    branch: defaultBranch(environment, input),
                 },
             })
             const task = body.task ?? body
@@ -272,7 +292,11 @@ export function codexProvider(opts: CodexCloudProviderOptions = {}): ExternalAge
 
         async status(id: string) {
             const creds = await requireCredentials()
-            return toTask(await taskDetails(creds, id))
+            const task = toTask(await taskDetails(creds, id))
+            if (task.status === 'failed') {
+                task.error = (await turnError(creds, id).catch(() => undefined)) ?? task.error
+            }
+            return task
         },
 
         async followup(id: string, prompt: string) {
