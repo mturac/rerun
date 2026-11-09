@@ -15,6 +15,7 @@ export const externalAgentTaskSchema = z.object({
     summary: z.string().optional().catch(undefined),
     branch: z.string().optional().catch(undefined),
     error: z.string().optional().catch(undefined),
+    events: z.array(z.unknown()).optional().catch(undefined),
 })
 export type ExternalAgentTask = z.infer<typeof externalAgentTaskSchema>
 
@@ -30,6 +31,7 @@ const PROVIDER_LABELS: Record<string, string> = {
     codex: 'Codex',
     'codex-cli': 'Codex CLI',
     'claude-cli': 'Claude',
+    'cursor-cli': 'Cursor CLI',
 }
 
 const CARD_TOOLS = {

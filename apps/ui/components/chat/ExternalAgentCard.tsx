@@ -9,7 +9,7 @@ import type { ExternalAgentCard as ExternalAgentCardData, ExternalAgentStatus, E
 import { Icon } from '@/components/ui/icon'
 import { useVisibleInterval } from '@/hooks/useVisibleInterval'
 import { CloudIcon, ExternalLinkIcon, GitPullRequest } from '@/lib/icons'
-import { externalAgentTaskLive, externalAgentTaskSchema } from '@/lib/chat/external-agent-card'
+import { externalAgentEventLines, externalAgentTaskLive, externalAgentTaskSchema } from '@/lib/chat/external-agent-card'
 import { cn } from '@/lib/utils'
 
 const STATUS_TONES: Record<ExternalAgentStatus, BadgeTone> = {
@@ -86,6 +86,18 @@ function ExternalAgentCardView({ card, task }: { card: ExternalAgentCardData; ta
                 {task.branch ? ` · ${task.branch}` : ''}
             </p>
             {task.summary && <p className="line-clamp-3 text-sm text-foreground/90">{task.summary}</p>}
+            {(() => {
+                const lines = externalAgentEventLines(task.events)
+                return lines.length > 0 ? (
+                    <ul className="flex flex-col gap-0.5 border-t border-border/60 pt-2">
+                        {lines.map((line, i) => (
+                            <li key={i} className="truncate text-xs text-muted-foreground">
+                                {line}
+                            </li>
+                        ))}
+                    </ul>
+                ) : null
+            })()}
             {task.error && <p className="line-clamp-2 text-xs text-destructive">{task.error}</p>}
             {links.length > 0 && (
                 <div className="flex flex-wrap gap-2">

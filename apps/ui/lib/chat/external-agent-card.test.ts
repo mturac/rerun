@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { externalAgentCardOf, externalAgentTaskLive, EXTERNAL_AGENT_STATUSES } from './external-agent-card'
+import { externalAgentCardOf, externalAgentEventLine, externalAgentEventLines, externalAgentTaskLive, EXTERNAL_AGENT_STATUSES } from './external-agent-card'
 
 const task = { provider: 'cursor', id: 'bc-123', name: 'Fix the flaky test', status: 'running', url: 'https://cursor.com/agents/bc-123' }
 const output = { ok: true, provider: 'cursor', task }
@@ -50,5 +50,36 @@ describe('externalAgentTaskLive', () => {
 
     it('covers every declared status', () => {
         for (const status of EXTERNAL_AGENT_STATUSES) expect(typeof externalAgentTaskLive(status)).toBe('boolean')
+    })
+})
+
+describe('externalAgentEventLine', () => {
+    it('reads codex item.completed agent_message and error items', () => {
+        expect(externalAgentEventLine({ type: 'item.completed', item: { type: 'agent_message', text: 'RERUN_EVENTS_OK' } })).toBe('RERUN_EVENTS_OK')
+        expect(externalAgentEventLine({ type: 'item.completed', item: { type: 'error', message: 'boom' } })).toBe('Error: boom')
+    })
+
+    it('reads claude/cursor assistant message content and result events', () => {
+        expect(externalAgentEventLine({ type: 'assistant', message: { content: [{ type: 'text', text: 'hello there' }] } })).toBe('hello there')
+        expect(externalAgentEventLine({ type: 'result', result: 'done' })).toBe('done')
+    })
+
+    it('maps lifecycle types and skips unknown shapes', () => {
+        expect(externalAgentEventLine({ type: 'turn.started' })).toBe('Working')
+        expect(externalAgentEventLine({ type: 'mystery' })).toBeNull()
+        expect(externalAgentEventLine(null)).toBeNull()
+    })
+})
+
+describe('externalAgentEventLines', () => {
+    it('keeps the newest lines in order', () => {
+        const events = [
+            { type: 'thread.started' },
+            { type: 'item.completed', item: { type: 'agent_message', text: 'one' } },
+            { type: 'mystery' },
+            { type: 'item.completed', item: { type: 'agent_message', text: 'two' } },
+        ]
+        expect(externalAgentEventLines(events)).toEqual(['Started', 'one', 'two'])
+        expect(externalAgentEventLines(undefined)).toEqual([])
     })
 })
