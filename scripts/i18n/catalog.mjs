@@ -93,7 +93,8 @@ export function readGlossary() {
 // rich text tags as "<link>": what a translation must carry over unchanged.
 export function placeholdersOf(message) {
     const found = new Set()
-    for (const [, name, type] of message.matchAll(/\{\s*([A-Za-z0-9_]+)\s*(?:,\s*([a-z]+))?/g)) found.add(type ? `${name}:${type}` : name)
+    // An argument is a name closed by `}` or followed by its type; `{No one}` in a branch is text.
+    for (const [, name, type] of message.matchAll(/\{\s*([A-Za-z0-9_]+)\s*(?:,\s*([a-z]+)\s*)?(?=[,}])/g)) found.add(type ? `${name}:${type}` : name)
     for (const [, name] of message.matchAll(/<\/?([A-Za-z0-9_]+)>/g)) found.add(`<${name}>`)
     return [...found].sort()
 }
