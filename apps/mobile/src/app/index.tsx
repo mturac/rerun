@@ -15,7 +15,7 @@ import { HomeBottomBar } from '@/components/home/HomeBottomBar'
 import { HomeHeader } from '@/components/home/HomeHeader'
 import { HomeSkeleton } from '@/components/home/HomeSkeleton'
 import { NewCoworkerRow } from '@/components/home/NewCoworkerRow'
-import { PinnedAvatar, PinnedGrid, PINNED_COLUMNS, usePinnedCell } from '@/components/home/PinnedGrid'
+import { PinnedAvatar, PinnedGrid, usePinnedCell } from '@/components/home/PinnedGrid'
 import { SectionHeader } from '@/components/home/SectionHeader'
 import { SortableGrid } from '@/components/home/SortableGrid'
 import { useForemanLast } from '@/components/home/useForemanLast'
@@ -117,7 +117,7 @@ export default function Home() {
                             )}
                             {reordering ? (
                                 <View style={{ paddingHorizontal: spacing.xl }}>
-                                    <SortableGrid items={pinned} columns={PINNED_COLUMNS} cellWidth={cell.width} renderCell={coworker => <PinnedAvatar coworker={coworker} cell={cell} animated={false} />} onReorder={pins.reorder} />
+                                    <SortableGrid items={pinned} columns={cell.columns} cellWidth={cell.width} renderCell={coworker => <PinnedAvatar coworker={coworker} cell={cell} animated={false} />} onReorder={pins.reorder} />
                                 </View>
                             ) : (
                                 <PinnedGrid coworkers={pinned} onOpen={open} onUnpin={coworker => pins.unpin(coworker.id)} onDetails={coworker => router.push({ pathname: '/coworker/[id]', params: { id: coworker.id, name: coworker.name } })} onEdit={pinned.length > 1 ? () => setReordering(true) : undefined} />

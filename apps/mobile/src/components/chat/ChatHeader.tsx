@@ -3,11 +3,12 @@ import { disabled } from '@expo/ui/swift-ui/modifiers'
 import type { SessionStatus } from '@rerun/contracts'
 import { GlassView } from 'expo-glass-effect'
 import { SymbolView } from 'expo-symbols'
-import { useWindowDimensions, View } from 'react-native'
+import { View } from 'react-native'
 import Animated, { Extrapolation, FadeIn, interpolate, useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { conversationSections, glyphOf, stateOf } from '@/components/chat/conversation-sections'
+import { usePaneSize } from '@/components/layout/PaneSize'
 import { AppText } from '@/components/ui/AppText'
 import { CoworkerAvatar } from '@/components/ui/CoworkerAvatar'
 import { EdgeFade } from '@/components/ui/EdgeFade'
@@ -146,8 +147,8 @@ export function ChatHeader({ coworker, tabs, activeId, progress, allSessions, on
     const theme = useTheme()
     const glass = useGlassStyle()
     const insets = useSafeAreaInsets()
-    const { width: screenWidth } = useWindowDimensions()
-    const chipWidth = Math.min(CHIP_MAX_WIDTH, screenWidth - 2 * (spacing.lg + GLASS_BUTTON_SIZE + spacing.sm))
+    const { width: paneWidth } = usePaneSize()
+    const chipWidth = Math.min(CHIP_MAX_WIDTH, paneWidth - 2 * (spacing.lg + GLASS_BUTTON_SIZE + spacing.sm))
     const hasConversations = tabs.length > 0
     const pages = [...tabs, DRAFT_TAB]
     const activeIndex = hasConversations && activeId ? tabs.findIndex(session => session.id === activeId) : tabs.length

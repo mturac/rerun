@@ -38,8 +38,13 @@ export function MediaViewerHost() {
         setIndex(state.index)
         setZoomed(false)
         setDrag(0)
-        requestAnimationFrame(() => pager.current?.scrollTo({ x: state.index * width, animated: false }))
-    }, [state, width])
+    }, [state])
+
+    // A window that resizes (an iPad in Split View, an iPhone Duo folding) keeps the item on screen.
+    useEffect(() => {
+        if (!state) return
+        requestAnimationFrame(() => pager.current?.scrollTo({ x: index * width, animated: false }))
+    }, [state, index, width])
 
     const headersFor = (url: string) => fileHeadersFor(caller, url)
 
