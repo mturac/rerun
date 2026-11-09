@@ -99,7 +99,7 @@ export async function recordNotification(token: string, payload: NotificationPay
     if (!engine.isSandbox && !NOTIFICATION_EMAILS_PAUSED) await emailIncidents(supabase, { workspaceId: engine.workspaceId, notificationId: stored.id, agentId: agent?.id ?? null, agentName: agent?.name ?? 'your coworker', notification, recipients, members: audience.members })
     if (!engine.isSandbox) {
         const sourceKey = incidentKeyFor({ event: notification.event, kind: notification.kind, agentId: notification.agentId, source: notification.source, metadata: notification.metadata, sessionId: notification.sessionId })
-        await pushNotification(supabase, { agentId: agent?.id ?? null, agentName: agent?.name ?? 'your coworker', conversationId: audience.conversationId, sourceKey, notification, recipients, members: audience.members })
+        await pushNotification(supabase, { workspaceId: engine.workspaceId, agentId: agent?.id ?? null, agentName: agent?.name ?? 'your coworker', conversationId: audience.conversationId, sourceKey, notification, recipients, members: audience.members })
     }
 
     return { ok: true }

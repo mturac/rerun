@@ -1,7 +1,12 @@
+import { loadMessages } from '@rerun/i18n/messages'
+import { createTranslator } from 'use-intl'
 import { describe, expect, it } from 'vitest'
 
 import type { StoredNotification } from './inbound'
 import { pushCopyOf } from './push-copy'
+
+const english = createTranslator({ locale: 'en', messages: await loadMessages('en'), namespace: 'push' })
+const french = createTranslator({ locale: 'fr', messages: await loadMessages('fr'), namespace: 'push' })
 
 const notification = (patch: Partial<StoredNotification>): StoredNotification => ({
     event: 'agent.notification',
@@ -12,11 +17,16 @@ const notification = (patch: Partial<StoredNotification>): StoredNotification =>
     ...patch,
 })
 
-const copyOf = (patch: Partial<StoredNotification>) => pushCopyOf({ agentName: 'Prospect Research', notification: notification(patch) })
+const copyOf = (patch: Partial<StoredNotification>, t = english) => pushCopyOf({ agentName: 'Prospect Research', notification: notification(patch), t })
 
 const CODEX_REFUSAL = `Error: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account."}}`
 
 describe('pushCopyOf', () => {
+    it('reads the routine name the engine sends on its own, and writes in the reader\'s language', () => {
+        const copy = copyOf({ event: 'agent.schedule.completed', kind: 'done', message: 'Schedule "daily" completed', metadata: { scheduleSlug: 'daily', sourceName: 'Morning brief' } }, french)
+        expect(copy.subtitle).toBe('Morning brief · Terminé')
+    })
+
     it('names the trigger and says what broke in words, not the provider JSON', () => {
         const copy = copyOf({
             event: 'agent.trigger.completed',

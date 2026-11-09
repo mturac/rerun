@@ -1,5 +1,7 @@
 import type { Database } from '@/app/api/database.types'
 import type { StoredNotification } from '@/lib/notifications/inbound'
+import { recipientLocale } from '@/lib/i18n/recipient-locale'
+import { translatorFor } from '@/lib/i18n/server-translator'
 import { pushCopyOf } from '@/lib/notifications/push-copy'
 import { pushAllowed, pushWindowStart } from '@/lib/notifications/push-limits'
 import { wantsPush, type NotificationRecipients, type RoutedMember } from '@/lib/notifications/routing'
@@ -17,6 +19,7 @@ const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send'
 type ExpoMessage = { to: string; title: string; subtitle: string; body?: string; sound?: 'default'; data: PushData }
 
 export type PushContext = {
+    workspaceId: number
     agentId: string | null
     agentName: string
     // The hub's conversation the notification is about, which the app opens on a tap.
@@ -55,7 +58,8 @@ async function pushToUser(supabase: SupabaseClient<Database>, userId: string, no
     if (!devices?.length) return
 
     const { notification } = context
-    const { silent, ...copy } = pushCopyOf({ agentName: context.agentName, notification })
+    const t = await translatorFor(await recipientLocale(supabase, userId, context.workspaceId), 'push')
+    const { silent, ...copy } = pushCopyOf({ agentName: context.agentName, notification, t })
     const message = {
         ...copy,
         ...(silent ? {} : { sound: 'default' as const }),

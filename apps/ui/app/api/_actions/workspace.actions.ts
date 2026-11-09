@@ -16,6 +16,7 @@ import { LOGO_MAX_BYTES, LOGO_TOO_LARGE, logoLinkImageUrl, NO_LOGO_FOUND, readLo
 import { getServerSession } from '@/supabase/session/getServerSession'
 import { selectSingle } from '@/supabase/supabase-helpers'
 
+import { applyCoworkerLanguage } from '@/app/api/_services/coworker-language.service'
 import { isStableLocale } from '@rerun/i18n'
 import type { ActionResult } from './space.actions'
 
@@ -69,6 +70,7 @@ export async function updateWorkspaceAction(formData: FormData): Promise<ActionR
         .update<Database['public']['Tables']['workspaces']['Update']>({ name, ...(logo.iconUrl ? { icon_url: logo.iconUrl } : {}), ...(locale ? { locale } : {}) })
         .eq('id', workspace.id)
     if (error) return { ok: false, error: error.message }
+    if (locale) await applyCoworkerLanguage(createServiceRoleClient(), workspace.id, locale)
     return { ok: true }
 }
 

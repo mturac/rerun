@@ -13,6 +13,7 @@ import {
 import type { EngineAgentConfigPatch } from '@/lib/engine/types'
 import { AGENT_SPAN, UNPLACED_COL, agentsOverlap, isPlaced } from '@/lib/board/iso'
 import type { GridPosition } from '@/lib/board/types'
+import { coworkerLanguageFor } from '@/app/api/_services/coworker-language.service'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { selectMany, selectSingle } from '@/supabase/supabase-helpers'
 import { sanitizeIdentifier } from '@/lib/utils'
@@ -161,8 +162,9 @@ export async function createAgent(params: CreateAgentParams) {
     // returns its canonical id. We mirror only what the grid UI needs. The engine
     // stores the handle as config.name (mention/resolution key); the free display
     // name goes to displayName (used in the SOUL prompt).
+    const language = config?.language ?? (await coworkerLanguageFor(supabase, workspaceId))
     const detail = await engineCreateAgent(conn, {
-        config: { ...config, name: handle, displayName: name, description: description || undefined, enabled },
+        config: { ...config, name: handle, displayName: name, description: description || undefined, enabled, ...(language ? { language } : {}) },
         soul: soulMd || undefined,
         install: installMd || undefined,
     })
@@ -224,7 +226,8 @@ export async function importAgent(params: ImportAgentParams) {
     const imported = await importAgentArchive(conn, archive, handle, name)
     // The archive carries its own config, so unlike createAgent the flag has to be applied after
     // the unpack rather than passed into it.
-    if (!enabled) await enginePatchAgent(conn, imported.id, { enabled: false })
+    // The archive may carry the language of the workspace it was captured in: this one's replaces it.
+    await enginePatchAgent(conn, imported.id, { ...(enabled ? {} : { enabled: false }), language: await coworkerLanguageFor(supabase, workspaceId) })
 
     const cell = position ?? (await findFreeCellInSpace(supabase, spaceId))
     const { data: agent, error } = await supabase

@@ -15,7 +15,7 @@ import { actorFromContext, isAdminActor, spaceAccessMap } from '@/app/api/_auth/
 import { AGENT_COLUMNS, SPACE_COLUMNS } from './board-map'
 import { foremanHubApiKey } from './hub-api-key'
 import type { KickoffIntent } from './kickoff-marker'
-import { preferredLanguage } from './language'
+import { accountLanguage, preferredLanguage } from './language'
 import { stampWorkspaceOnboarded } from './profile'
 import { foremanPhase, isNamedReadyMade, type ArrivingIntent, type ForemanAnswers, type ForemanState } from './phase'
 
@@ -98,7 +98,7 @@ export async function loadForemanState(ctx: WorkspaceContext, acceptLanguage: st
         foreman,
         onboardingCompletedAt,
         firstName: readFirstName(ctx.authUser.user_metadata),
-        language: foreman.language ?? preferredLanguage(acceptLanguage),
+        language: accountLanguage((await selectMaybeSingle(ctx.supabase, 'users', ['locale'] as const, { id: ctx.userId })).data?.locale) ?? foreman.language ?? preferredLanguage(acceptLanguage),
         entitled,
         trialing,
         trialSpent: !!ctx.workspace.trial_ends_at,

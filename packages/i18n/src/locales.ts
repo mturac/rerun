@@ -81,3 +81,12 @@ export function localeNativeName(locale: Locale): string {
     const name = new Intl.DisplayNames([locale], { type: 'language' }).of(locale) ?? locale
     return name.charAt(0).toLocaleUpperCase(locale) + name.slice(1)
 }
+
+// The language as the prompts of a model name it ("French"), whatever the language of the reader.
+export function languageName(locale: string): string {
+    try {
+        return new Intl.DisplayNames(['en'], { type: 'language' }).of(locale) ?? locale
+    } catch {
+        return locale
+    }
+}
