@@ -1,6 +1,6 @@
 'use client'
 
-import { BillingAddressElement, CheckoutElementsProvider, PaymentElement, useCheckout } from '@stripe/react-stripe-js/checkout'
+import { BillingAddressElement, CheckoutElementsProvider, PaymentElement, TaxIdElement, useCheckout } from '@stripe/react-stripe-js/checkout'
 import type { Appearance } from '@stripe/stripe-js'
 import { useTheme } from 'next-themes'
 import { useState, type ReactNode } from 'react'
@@ -9,6 +9,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { stripeBrowser } from '@/ee/lib/billing/stripe-client'
 
 import { Notice, PromoCodeField, usd } from './parts'
+
+// No `verification` option: the element refuses to load with it on an account without Stripe Tax
+// Complete. The number is still checked against VIES once it lands on the customer.
+const TAX_ID_OPTIONS = { visibility: 'auto' } as const
 
 function appearanceFor(theme: string | undefined): Appearance {
     return {
@@ -45,11 +49,14 @@ export function StripePaymentFieldsSkeleton() {
             </div>
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-5 w-48" />
         </div>
     )
 }
 
 // The card and the billing address. The address is not optional: the tax is computed from it.
+// The tax ID sits behind Stripe's own "purchasing as a business" box: in this mode
+// `tax_id_collection` on the session draws nothing by itself.
 export function StripePaymentFields() {
     const checkout = useCheckout()
     if (checkout.type === 'loading') return <StripePaymentFieldsSkeleton />
@@ -59,6 +66,7 @@ export function StripePaymentFields() {
         <div className="flex flex-col gap-4">
             <PaymentElement options={{ layout: 'tabs' }} />
             <BillingAddressElement />
+            <TaxIdElement options={TAX_ID_OPTIONS} />
         </div>
     )
 }
