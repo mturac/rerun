@@ -11,6 +11,7 @@
         "./messages": "./src/messages.ts",
         "./messages/en": "./src/english.ts",
         "./messages/en/*": "./messages/en/*",
+        "./messages/*": "./messages/*",
         "./pseudo": "./src/pseudo.ts"
     },
     "scripts": {

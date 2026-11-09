@@ -13,6 +13,7 @@ import connections from './connections.json'
 import data from './data.json'
 import desktop from './desktop.json'
 import dialogs from './dialogs.json'
+import emails from './emails.json'
 import errors from './errors.json'
 import files from './files.json'
 import foreman from './foreman.json'
@@ -28,4 +29,4 @@ import templates from './templates.json'
 import ui from './ui.json'
 import workspace from './workspace.json'
 
-export default { account, agent, apps, auth, billing, brain, builder, changelog, chat, common, connections, data, desktop, dialogs, errors, files, foreman, kit, layout, notifications, publicPages, published, push, rewind, services, templates, ui, workspace }
+export default { account, agent, apps, auth, billing, brain, builder, changelog, chat, common, connections, data, desktop, dialogs, emails, errors, files, foreman, kit, layout, notifications, publicPages, published, push, rewind, services, templates, ui, workspace }

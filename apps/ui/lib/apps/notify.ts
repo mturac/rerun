@@ -2,11 +2,13 @@
 import * as React from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { AgentNotification, renderEmail } from '@rerun/emails'
+import { emailTranslator } from '@rerun/emails/i18n'
 import type { Database } from '@/app/api/database.types'
 import { APP_URL, REPLY_TO, TRANSACTIONAL_FROM, getResendClient, redirectDelivery } from '@/lib/email/client'
 import { sendThrottled } from '@/lib/email/throttle'
 import { buildUnsubscribeUrl, listUnsubscribeHeaders } from '@/lib/email/unsubscribeToken'
 import { loadRecipient } from '@/ee/lib/lifecycle/recipient'
+import { recipientLocale } from '@/lib/i18n/recipient-locale'
 import { wantsCategoryEmail } from '@/lib/notifications/prefs'
 import { selectMany } from '@/supabase/supabase-helpers'
 
@@ -59,9 +61,10 @@ async function emailMembers(supabase: Client, workspaceId: number, notice: AppNo
         recipients.map(async user => {
             const recipient = await loadRecipient(supabase, user.id)
             if (!recipient) return
+            const locale = await recipientLocale(supabase, user.id, workspaceId)
             const unsubscribeUrl = buildUnsubscribeUrl(user.id)
-            const subject = `${notice.appName}: action needed`
-            const { html, text } = await renderEmail(React.createElement(AgentNotification, { agentName: notice.appName, kind: 'connector', message: notice.message, appUrl: APP_URL, unsubscribeUrl }))
+            const subject = emailTranslator(locale)('subjects.appNotice', { appName: notice.appName })
+            const { html, text } = await renderEmail(React.createElement(AgentNotification, { agentName: notice.appName, kind: 'connector', message: notice.message, appUrl: APP_URL, unsubscribeUrl, locale }))
             const delivery = redirectDelivery(recipient.email, subject)
             await sendThrottled(() => resend.emails.send({ from: TRANSACTIONAL_FROM, replyTo: REPLY_TO, to: delivery.to, subject: delivery.subject, html, text, headers: listUnsubscribeHeaders(unsubscribeUrl) }))
         }),

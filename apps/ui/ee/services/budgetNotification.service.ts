@@ -3,6 +3,7 @@ import { realEmail } from '@/lib/auth/placeholder-email'
 import type { Database } from '@/app/api/database.types'
 import { BANNER_WARM_BACKGROUND_MS, emailBoardBanner } from '@/lib/email/board-banner'
 import { buildUnsubscribeUrl } from '@/lib/email/unsubscribeToken'
+import { recipientLocale } from '@/lib/i18n/recipient-locale'
 import { BUDGET_EXHAUSTED_EVENT, BUDGET_NOTICE_WINDOW_MS, RERUN_BUDGET_ERROR_CODE, decideBudgetNotice } from '@/lib/notifications/budget-notice'
 import { NOTIFICATION_EMAILS_PAUSED, wantsCategoryEmail } from '@/lib/notifications/prefs'
 import type { NotificationReason } from '@/lib/notifications/routing'
@@ -81,7 +82,8 @@ async function emailWorkspaceMembers(supabase: ReturnType<typeof createServiceRo
             const to = realEmail(data.user?.email)
             if (!to) return
             // Scope-less token: this is an account-category email, not a run notification.
-            await sendBudgetExhaustedEmail({ to, workspaceName, boardUrl, unsubscribeUrl: buildUnsubscribeUrl(member.id) })
+            const locale = await recipientLocale(supabase, member.id, workspaceId)
+            await sendBudgetExhaustedEmail({ to, workspaceName, boardUrl, unsubscribeUrl: buildUnsubscribeUrl(member.id), locale })
         }),
     )
 }

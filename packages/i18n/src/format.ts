@@ -99,6 +99,16 @@ export function shortDate(date: Date | string, locale: string = DEFAULT_LOCALE):
     return new Date(date).toLocaleDateString(tag(locale, 'en-US'), { month: 'short', day: 'numeric' })
 }
 
+/** "12 March": the day of a deadline, in UTC, as an email states it. */
+export function dayAndMonth(date: Date | string, locale: string = DEFAULT_LOCALE): string {
+    return new Date(date).toLocaleDateString(tag(locale, 'en-GB'), { day: 'numeric', month: 'long', timeZone: 'UTC' })
+}
+
+/** "16:00": a time of day in UTC, on the 24-hour clock whatever the reader's. */
+export function utcClockTime(date: Date | string, locale: string = DEFAULT_LOCALE): string {
+    return new Date(date).toLocaleTimeString(tag(locale, 'en-GB'), { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
+}
+
 /** "Mar 5, 2026" */
 export function longDate(date: Date | string, locale: string = DEFAULT_LOCALE): string {
     return new Date(date).toLocaleDateString(tag(locale, 'en-US'), { month: 'short', day: 'numeric', year: 'numeric' })

@@ -5,7 +5,9 @@ import { requireAdminContext, requireWorkspaceContext, toBoxScope, type BoxScope
 import type { Database } from '@/app/api/database.types'
 import { demoteKeepingAnAdmin, isLastAdmin, LAST_ADMIN, listMemberProfiles, resolveMemberIdentities, setMemberRole } from '@/app/api/_services/members.service'
 import { BANNER_WARM_BACKGROUND_MS, EMAIL_DELIVERY, emailBoardBanner, sendWorkspaceInviteEmail } from '@rerun/cloud/email'
+import { workspaceLocale } from '@/lib/i18n/recipient-locale'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
+import { emailTranslator } from '@rerun/emails/i18n'
 import { getServerSession } from '@/supabase/session/getServerSession'
 import { selectAll, selectCount, selectMaybeSingle } from '@/supabase/supabase-helpers'
 import type { MemberProfile } from '@rerun/contracts'
@@ -100,8 +102,11 @@ export async function inviteToWorkspaceAction(rawEmail: string, rawBoxScope: Box
         // cold capture without holding the dialog.
         const inviteUrl = `${APP_URL}/invite/${token}`
         after(async () => {
-            const boardUrl = await emailBoardBanner(createServiceRoleClient(), workspace.id, 'working', BANNER_WARM_BACKGROUND_MS)
-            await sendWorkspaceInviteEmail({ to: email, workspaceName: workspace.name ?? 'your workspace', inviteUrl, invitedByEmail: userEmail ?? undefined, boardUrl })
+            const serviceRole = createServiceRoleClient()
+            const boardUrl = await emailBoardBanner(serviceRole, workspace.id, 'working', BANNER_WARM_BACKGROUND_MS)
+            const locale = await workspaceLocale(serviceRole, workspace.id)
+            const workspaceName = workspace.name ?? emailTranslator(locale)('common.yourWorkspace')
+            await sendWorkspaceInviteEmail({ to: email, workspaceName, inviteUrl, invitedByEmail: userEmail ?? undefined, boardUrl, locale })
         })
 
         return EMAIL_DELIVERY ? { ok: true } : { ok: true, inviteUrl }
