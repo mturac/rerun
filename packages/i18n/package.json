@@ -10,6 +10,7 @@
         "./format": "./src/format.ts",
         "./messages": "./src/messages.ts",
         "./messages/en": "./src/english.ts",
+        "./messages/en/*": "./messages/en/*",
         "./pseudo": "./src/pseudo.ts"
     },
     "scripts": {

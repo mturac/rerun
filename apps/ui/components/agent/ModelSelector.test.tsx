@@ -23,7 +23,6 @@ vi.mock('@/supabase/session/SessionProvider', () => ({
     useOptionalSession: () => null,
 }))
 vi.mock('@rerun/analytics/client', () => ({ track: vi.fn() }))
-vi.mock('next-intl', () => ({ useLocale: () => 'en' }))
 vi.mock('@/hooks/useBoxAccess', () => ({ useCanManageAgent: () => mocks.canManage }))
 vi.mock('@/stores/board.store', () => ({ useBoardStore: (select: (state: { agents: { id: string }[] }) => unknown) => select({ agents: mocks.boardAgentIds.map(id => ({ id })) }) }))
 

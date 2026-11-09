@@ -80,6 +80,7 @@
     },
     "dependencies": {
         "@rerun/contracts": "workspace:*",
+        "@rerun/i18n": "workspace:*",
         "@tiptap/pm": "^3.32.2",
         "@tiptap/react": "^3.32.2",
         "@tiptap/starter-kit": "^3.32.2",
@@ -88,6 +89,6 @@
         "react-markdown": "^10.1.0",
         "remark-gfm": "^4.0.0",
         "tiptap-markdown": "^0.9.0",
-        "@rerun/i18n": "workspace:*"
+        "use-intl": "^4.14.9"
     }
 }

@@ -11,7 +11,6 @@ import type { EngineDbTable } from '@/lib/engine/types'
 
 const mocks = vi.hoisted(() => ({ toastError: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, success: vi.fn() } }))
-vi.mock('next-intl', () => ({ useLocale: () => 'en' }))
 
 const { DataBrowser } = await import('./DataBrowser')
 

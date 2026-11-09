@@ -13,7 +13,7 @@ import { DomMutationGuard } from "@rerun/ui/dom-guard";
 import { RegisterSW } from "@/components/pwa/RegisterSW";
 import { ThemeCookieBootstrap, ThemeProvider } from "@rerun/ui/theme";
 import { NextIntlClientProvider } from "next-intl";
-import { getLocale } from "next-intl/server";
+import { getLocale, getMessages } from "next-intl/server";
 import { TimeZoneCookie } from "@/components/layout/TimeZoneCookie";
 import { UiLocaleProvider } from "@rerun/ui/locale";
 
@@ -82,7 +82,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const locale = await getLocale();
+  const [locale, messages] = await Promise.all([getLocale(), getMessages()]);
   return (
     <html
       lang={locale}
@@ -98,7 +98,7 @@ export default async function RootLayout({
           }}
         />
         <NextIntlClientProvider>
-          <UiLocaleProvider locale={locale}>
+          <UiLocaleProvider locale={locale} messages={{ kit: messages.kit }}>
             <TimeZoneCookie />
             <ThemeProvider>
               <TooltipProvider>
