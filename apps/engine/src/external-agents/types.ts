@@ -10,6 +10,8 @@ export type ExternalAgentTask = {
     summary?: string
     branch?: string
     error?: string
+    // Parsed NDJSON/JSONL events from CLIs running with a structured output format, newest last.
+    events?: unknown[]
     raw: unknown
 }
 

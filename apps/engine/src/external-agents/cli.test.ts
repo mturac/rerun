@@ -90,6 +90,22 @@ describe('cliProvider', () => {
         expect((failed.summary as string).length).toBeLessThanOrEqual(500)
     })
 
+    it('status parses JSONL output into events and prefers event text for the summary', async () => {
+        const provider = cliProvider(baseOpts({ spawnImpl: fakeSpawn([]), pidAlive: () => true }) as any)
+        const task = await provider.launch({ prompt: 'x' })
+        writeFileSync(join(runDirOf(task.id), 'exit.txt'), '0\n')
+        writeFileSync(join(runDirOf(task.id), 'output.log'), [
+            '{"type":"system","subtype":"init"}',
+            'not json at all',
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"working on it"}]}}',
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"final answer"}]}}',
+        ].join('\n'))
+        const status = await provider.status(task.id)
+        expect(status.status).toBe('completed')
+        expect(status.summary).toBe('final answer')
+        expect(status.events).toHaveLength(3)
+    })
+
     it('status is failed when the pid is dead and no exit file was written', async () => {
         const provider = cliProvider(baseOpts({ spawnImpl: fakeSpawn([]), pidAlive: () => false }) as any)
         const task = await provider.launch({ prompt: 'x' })
@@ -141,8 +157,8 @@ describe('codexCliProvider and claudeCliProvider', () => {
         const provider = codexCliProvider('test-agent', { RERUN_CODEX_CLI_PATH: '/bin/echo', RERUN_CODEX_CLI_ARGS: '--sandbox read-only' }, {}, { spawnImpl: fakeSpawn(calls) })
         const task = await provider.launch({ prompt: 'ship it', model: 'gpt-test' })
         const argv = calls[0].args.slice(4)
-        expect(argv.slice(0, 7)).toEqual(['exec', '--skip-git-repo-check', '-s', 'workspace-write', '-c', 'approval_policy="never"', '-m'])
-        expect(argv[7]).toBe('gpt-test')
+        expect(argv.slice(0, 8)).toEqual(['exec', '--json', '--skip-git-repo-check', '-s', 'workspace-write', '-c', 'approval_policy="never"', '-m'])
+        expect(argv[8]).toBe('gpt-test')
         expect(argv.at(-2)).toBe('--sandbox')
         expect(argv.slice(-2)).toEqual(['--sandbox', 'read-only'])
         expect(task.provider).toBe('codex-cli')
@@ -150,14 +166,15 @@ describe('codexCliProvider and claudeCliProvider', () => {
         expect(provider.list).toBeUndefined()
     })
 
-    it('claude -p gets --output-format text and --model when set', async () => {
+    it('claude -p gets stream-json output and --model when set', async () => {
         const calls: any[] = []
         const provider = claudeCliProvider('test-agent', { RERUN_CLAUDE_CLI_PATH: '/bin/echo', RERUN_CLAUDE_MODEL: 'claude-test' }, {}, { spawnImpl: fakeSpawn(calls) })
         await provider.launch({ prompt: 'review this' })
         const argv = calls[0].args.slice(4)
         expect(argv[0]).toBe('-p')
         expect(argv).toContain('--output-format')
-        expect(argv).toContain('text')
+        expect(argv).toContain('stream-json')
+        expect(argv).toContain('--verbose')
         expect(argv).toContain('--model')
         expect(argv).toContain('claude-test')
         expect(argv.join(' ')).not.toContain('--dangerously')
@@ -168,7 +185,7 @@ describe('codexCliProvider and claudeCliProvider', () => {
         const provider = cursorCliProvider('test-agent', { RERUN_CURSOR_CLI_PATH: '/bin/echo', RERUN_CURSOR_MODEL: 'auto' }, {}, { spawnImpl: fakeSpawn(calls) })
         const task = await provider.launch({ prompt: 'fix the bug' })
         const argv = calls[0].args.slice(4)
-        expect(argv.slice(0, 5)).toEqual(['-p', '--output-format', 'text', '--force', '--trust'])
+        expect(argv.slice(0, 5)).toEqual(['-p', '--output-format', 'stream-json', '--force', '--trust'])
         expect(argv).toContain('--model')
         expect(argv.at(-1)).toContain('fix the bug')
         expect(task.provider).toBe('cursor-cli')

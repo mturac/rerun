@@ -78,6 +78,58 @@ function logTail(logPath: string): string | undefined {
     }
 }
 
+const EVENT_TAIL_BYTES = 64 * 1024
+const EVENT_LIMIT = 20
+
+function jsonEvents(logPath: string): unknown[] | undefined {
+    try {
+        const content = readFileSync(logPath, 'utf8')
+        const lines = content.slice(-EVENT_TAIL_BYTES).split('\n')
+        const events: unknown[] = []
+        for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed.startsWith('{')) continue
+            try {
+                events.push(JSON.parse(trimmed))
+            } catch {
+                // Partial line at the tail boundary or plain-text output mixed in.
+            }
+        }
+        return events.length > 0 ? events.slice(-EVENT_LIMIT) : undefined
+    } catch {
+        return undefined
+    }
+}
+
+function eventText(event: unknown): string | undefined {
+    if (!event || typeof event !== 'object') return undefined
+    const e = event as Record<string, any>
+    const item = e.item
+    if (item && typeof item === 'object') {
+        if (item.type === 'agent_message' && typeof item.text === 'string') return item.text
+        if (item.type === 'error') return undefined
+    }
+    const content = e.message?.content ?? e.content ?? item?.content
+    if (Array.isArray(content)) {
+        const texts = content.filter((c: any) => c?.type === 'text' && typeof c.text === 'string').map((c: any) => c.text)
+        if (texts.length > 0) return texts.join('')
+    }
+    for (const key of ['result', 'text', 'output']) {
+        if (typeof e[key] === 'string' && e[key].trim()) return e[key]
+    }
+    if (item && typeof item.text === 'string' && item.text.trim()) return item.text
+    return undefined
+}
+
+function eventSummary(events: unknown[] | undefined, fallback: string | undefined): string | undefined {
+    if (!events) return fallback
+    for (let i = events.length - 1; i >= 0; i--) {
+        const text = eventText(events[i])
+        if (text?.trim()) return text.trim().slice(-500)
+    }
+    return fallback
+}
+
 export function cliProvider(opts: CliProviderOptions): ExternalAgentProvider {
     const { name, agentId, agentEnv, env } = opts
     const spawnImpl = opts.spawnImpl ?? spawn
@@ -137,13 +189,18 @@ export function cliProvider(opts: CliProviderOptions): ExternalAgentProvider {
 
         async status(id: string) {
             const run = readRun(id)
+            const events = jsonEvents(run.logPath)
             if (existsSync(run.exitPath)) {
                 const code = Number.parseInt(readFileSync(run.exitPath, 'utf8').trim(), 10)
                 const tail = logTail(run.logPath)
-                if (code === 0) return toTask(run, 'completed', tail ? { summary: tail } : {})
-                return toTask(run, 'failed', { error: `process exited with code ${Number.isNaN(code) ? 'unknown' : code}`, ...(tail ? { summary: tail } : {}) })
+                const summary = eventSummary(events, tail)
+                if (code === 0) return toTask(run, 'completed', { ...(summary ? { summary } : {}), ...(events ? { events } : {}) })
+                return toTask(run, 'failed', { error: `process exited with code ${Number.isNaN(code) ? 'unknown' : code}`, ...(summary ? { summary } : {}), ...(events ? { events } : {}) })
             }
-            if (run.pid > 0 && pidAlive(run.pid)) return toTask(run, 'running')
+            if (run.pid > 0 && pidAlive(run.pid)) {
+                const tail = logTail(run.logPath)
+                return toTask(run, 'running', { ...(events ? { events } : {}), ...(tail && !events ? { summary: tail } : {}) })
+            }
             return toTask(run, 'failed', { error: run.pid > 0 ? 'process exited without recording a status (engine may have restarted)' : 'process failed to spawn' })
         },
 
@@ -177,7 +234,7 @@ export function codexCliProvider(
         },
         buildArgs: input => {
             const model = input.model || agentEnv.RERUN_CODEX_MODEL || env.RERUN_CODEX_MODEL
-            return ['exec', '--skip-git-repo-check', '-s', 'workspace-write', '-c', 'approval_policy="never"', ...(model ? ['-m', model] : []), input.prompt]
+            return ['exec', '--json', '--skip-git-repo-check', '-s', 'workspace-write', '-c', 'approval_policy="never"', ...(model ? ['-m', model] : []), input.prompt]
         },
         ...seams,
     })
@@ -201,7 +258,7 @@ export function cursorCliProvider(
         },
         buildArgs: input => {
             const model = input.model || agentEnv.RERUN_CURSOR_MODEL || env.RERUN_CURSOR_MODEL
-            return ['-p', '--output-format', 'text', '--force', '--trust', ...(model ? ['--model', model] : []), input.prompt]
+            return ['-p', '--output-format', 'stream-json', '--force', '--trust', ...(model ? ['--model', model] : []), input.prompt]
         },
         ...seams,
     })
@@ -225,7 +282,7 @@ export function claudeCliProvider(
         },
         buildArgs: input => {
             const model = input.model || agentEnv.RERUN_CLAUDE_MODEL || env.RERUN_CLAUDE_MODEL
-            return ['-p', input.prompt, '--output-format', 'text', ...(model ? ['--model', model] : [])]
+            return ['-p', input.prompt, '--output-format', 'stream-json', '--verbose', ...(model ? ['--model', model] : [])]
         },
         ...seams,
     })
