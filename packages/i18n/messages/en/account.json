@@ -1,0 +1,32 @@
+{
+    "_context": {
+        "language.automatic": "Option of the language picker: the app follows the browser's language.",
+        "language.automaticHint": "Under the picker when Automatic is selected. {language} is the name of the language the browser asks for, in that language.",
+        "tabs.signIn.label": "Tab of the account dialog listing the ways to sign in (email, Google, phone)."
+    },
+    "title": "Account",
+    "tabs": {
+        "profile": {
+            "label": "Profile",
+            "description": "Your photo and your name, as your teammates see them."
+        },
+        "signIn": {
+            "label": "Sign-in",
+            "description": "The ways you can sign into this account."
+        },
+        "language": {
+            "label": "Language",
+            "description": "The language Rerun uses with you."
+        },
+        "delete": {
+            "label": "Delete account",
+            "description": "Close your Rerun account for good."
+        }
+    },
+    "language": {
+        "field": "Language",
+        "automatic": "Automatic",
+        "automaticHint": "Follows your browser: {language}.",
+        "failed": "Could not change the language. Try again."
+    }
+}

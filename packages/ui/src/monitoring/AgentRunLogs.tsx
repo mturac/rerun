@@ -1,10 +1,12 @@
 'use client'
 
 import type { Run } from '@rerun/contracts'
+import { formatDate, formatNumber } from '@rerun/i18n/format'
 import type { LucideIcon } from '../icons'
 import { AlertCircleIcon, BanIcon, CheckIcon, ChevronRightIcon, LoaderIcon, ScrollTextIcon } from '../icons'
 import { Icon } from '../primitives/icon'
 import { Badge, type BadgeTone } from '../primitives/badge'
+import { useUiLocale } from '../locale'
 
 export const RUN_STATUS_META: Record<Run['status'], { label: string; icon: LucideIcon; color: string; tint: string; tone: BadgeTone }> = {
     running: { label: 'Running', icon: LoaderIcon, color: 'text-amber-400', tint: 'border-amber-400/20 bg-amber-400/10 text-amber-400', tone: 'orange' },
@@ -22,9 +24,9 @@ export function RunStatusBadge({ status }: { status: Run['status'] }) {
     )
 }
 
-function formatUsage(run: Run): string {
+function formatUsage(run: Run, locale: string): string {
     const total = run.totalTokens ?? (((run.inputTokens ?? 0) + (run.outputTokens ?? 0)) || undefined)
-    return total ? `${total.toLocaleString('en-US')} tokens` : ''
+    return total ? `${formatNumber(total, locale)} tokens` : ''
 }
 
 function SkeletonRows({ rows }: { rows: number }) {
@@ -76,8 +78,9 @@ export function AgentRunLogs({ runs, loading, onOpenRun }: AgentRunLogsProps) {
 }
 
 function RunRow({ run, onOpen }: { run: Run; onOpen: () => void }) {
+    const locale = useUiLocale()
     const meta = RUN_STATUS_META[run.status] ?? RUN_STATUS_META.done
-    const usage = formatUsage(run)
+    const usage = formatUsage(run, locale)
     const trigger = run.triggerSlug ?? run.triggerSource
     return (
         <button
@@ -87,9 +90,9 @@ function RunRow({ run, onOpen }: { run: Run; onOpen: () => void }) {
         >
             <Icon size="sm" icon={meta.icon} className={meta.tint} />
             <div className="flex min-w-0 flex-1 flex-col">
-                {/* The visitor's own clock and locale, which the server rendering this row cannot know. */}
+                {/* The visitor's own clock, which the server rendering this row cannot know. */}
                 <span suppressHydrationWarning className="truncate text-[13px] font-medium text-foreground">
-                    {run.startedAt ? new Date(run.startedAt).toLocaleString() : run.id}
+                    {run.startedAt ? formatDate(run.startedAt, locale) : run.id}
                 </span>
                 <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                     <span className={meta.color}>{meta.label}</span>

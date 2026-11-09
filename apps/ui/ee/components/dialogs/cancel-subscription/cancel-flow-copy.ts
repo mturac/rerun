@@ -1,3 +1,5 @@
+import { formatDate } from '@rerun/i18n/format'
+
 import type { CancelComeback, CancelReason } from '@/ee/lib/billing/cancel-flow'
 
 export const CANCEL_STEPS = ['goodbye', 'sunk', 'reason', 'offer', 'farewell', 'done'] as const
@@ -21,8 +23,8 @@ export const COMEBACK_COPY: readonly { value: CancelComeback; label: string }[] 
     { value: 'not_coming_back', label: 'Probably not.' },
 ]
 
-export function shortDate(iso: string): string {
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+export function shortDate(iso: string, locale: string): string {
+    return formatDate(iso, locale, { month: 'short', day: 'numeric' })
 }
 
 export function daysBetween(fromIso: string, toIso: string): number {

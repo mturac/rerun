@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import type { ActionResult } from '@/app/api/_actions/space.actions'
 import { updatePublishPolicyAction } from '@/app/api/_actions/publish.actions'
 import { updateWorkspaceAction } from '@/app/api/_actions/workspace.actions'
-import { usePublishedAccessEnabled } from '@/components/layout/FeatureFlagsProvider'
+import { useLanguagePacksEnabled, usePublishedAccessEnabled } from '@/components/layout/FeatureFlagsProvider'
 import { PublishPolicyField, usePublishPolicyDraft } from '@/components/published/PublishPolicyField'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -13,6 +13,7 @@ import { Field } from '@/components/ui/field'
 import { FileDropzone } from '@/components/ui/file-dropzone'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { BLOB_ILLUSTRATIONS, getBlobByFile } from '@/lib/blobs/catalog'
 import { CheckIcon, GlobeIcon, Loader2Icon, UploadIcon } from '@/lib/icons'
@@ -20,7 +21,9 @@ import { WORKSPACE_NAME_MAX } from '@/lib/naming/workspace-name'
 import { cn } from '@/lib/utils'
 import { LOGO_ACCEPT, logoLinkImageUrl, NO_LOGO_FOUND, readLogoLink, type LogoLink } from '@/lib/workspace/logo-input'
 import { useIsWorkspaceAdmin, useSession } from '@/supabase/session/SessionProvider'
+import { DEFAULT_LOCALE, isStableLocale, localeNativeName, stableLocales, type Locale } from '@rerun/i18n'
 import { ScrollFade } from '@rerun/ui/primitives'
+import { useTranslations } from 'next-intl'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -43,6 +46,7 @@ export function WorkspaceSettingsDialog({ open, onOpenChange, fallbackIconUrl }:
     const { workspace, refreshWorkspace } = useSession()
     const isAdmin = useIsWorkspaceAdmin()
     const publishedAccess = usePublishedAccessEnabled()
+    const languagePacks = useLanguagePacksEnabled()
     const policy = usePublishPolicyDraft(open && publishedAccess && !!workspace && !workspace.is_sandbox)
     if (!workspace) return null
 
@@ -63,13 +67,29 @@ export function WorkspaceSettingsDialog({ open, onOpenChange, fallbackIconUrl }:
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
-                {open && <WorkspaceSettingsForm workspace={workspace} fallbackIconUrl={fallbackIconUrl} onSave={save} onCancel={() => onOpenChange(false)} extra={policyField} disabledReason={isAdmin ? undefined : WORKSPACE_SETTINGS_ADMIN_ONLY} />}
+                {open && <WorkspaceSettingsForm workspace={workspace} fallbackIconUrl={fallbackIconUrl} onSave={save} onCancel={() => onOpenChange(false)} extra={policyField} showLanguage={languagePacks} disabledReason={isAdmin ? undefined : WORKSPACE_SETTINGS_ADMIN_ONLY} />}
             </DialogContent>
         </Dialog>
     )
 }
 
-export function WorkspaceSettingsForm({ workspace, fallbackIconUrl, onSave, onCancel, extra, disabledReason }: { workspace: { name: string | null; icon_url: string | null }; fallbackIconUrl?: string; onSave: (formData: FormData) => Promise<ActionResult>; onCancel: () => void; extra?: ReactNode; disabledReason?: string }) {
+export function WorkspaceSettingsForm({
+    workspace,
+    fallbackIconUrl,
+    onSave,
+    onCancel,
+    extra,
+    showLanguage = false,
+    disabledReason,
+}: {
+    workspace: { name: string | null; icon_url: string | null; locale?: string }
+    fallbackIconUrl?: string
+    onSave: (formData: FormData) => Promise<ActionResult>
+    onCancel: () => void
+    extra?: ReactNode
+    showLanguage?: boolean
+    disabledReason?: string
+}) {
     const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { name: workspace.name ?? '' } })
     const {
         formState: { isSubmitting },
@@ -77,6 +97,7 @@ export function WorkspaceSettingsForm({ workspace, fallbackIconUrl, onSave, onCa
     const name = form.watch('name')
 
     const [logo, setLogo] = useState<LogoDraft>({ kind: 'current' })
+    const [locale, setLocale] = useState<Locale>(isStableLocale(workspace.locale) ? workspace.locale : DEFAULT_LOCALE)
     const [linkInput, setLinkInput] = useState('')
     const [brokenSrc, setBrokenSrc] = useState<string | null>(null)
     const [brokenPreviewSrc, setBrokenPreviewSrc] = useState<string | null>(null)
@@ -118,6 +139,7 @@ export function WorkspaceSettingsForm({ workspace, fallbackIconUrl, onSave, onCa
         if (logo.kind === 'blob') formData.set('iconFile', logo.file)
         if (logo.kind === 'link') formData.set('logoLink', linkInput)
         if (logo.kind === 'upload') formData.set('logoFile', logo.file)
+        if (showLanguage) formData.set('locale', locale)
 
         const result = await onSave(formData)
         if (result.ok) return
@@ -177,6 +199,8 @@ export function WorkspaceSettingsForm({ workspace, fallbackIconUrl, onSave, onCa
                             </Field>
                         )}
 
+                        {showLanguage && <CoworkersLanguageField value={locale} onChange={setLocale} />}
+
                         {extra}
 
                         {form.formState.errors.root && <p className="text-sm text-destructive">{form.formState.errors.root.message}</p>}
@@ -196,6 +220,26 @@ export function WorkspaceSettingsForm({ workspace, fallbackIconUrl, onSave, onCa
                 </DialogFooter>
             </form>
         </Form>
+    )
+}
+
+function CoworkersLanguageField({ value, onChange }: { value: Locale; onChange: (locale: Locale) => void }) {
+    const t = useTranslations('workspace.settings')
+    return (
+        <Field label={t('coworkersLanguage')} htmlFor="workspace-locale" helperText={t('coworkersLanguageHint')}>
+            <Select value={value} onValueChange={next => onChange(next as Locale)}>
+                <SelectTrigger id="workspace-locale" className="w-full">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                    {stableLocales().map(locale => (
+                        <SelectItem key={locale} value={locale} lang={locale}>
+                            {localeNativeName(locale)}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </Field>
     )
 }
 

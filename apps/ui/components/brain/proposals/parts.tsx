@@ -12,6 +12,7 @@ import { BorderBeam } from '@rerun/ui'
 import { AgentBuddy } from '@rerun/ui/iso-grid'
 import { Badge } from '@rerun/ui/primitives'
 import { AnimatePresence, motion } from 'motion/react'
+import { useLocale } from 'next-intl'
 import type { ReactNode } from 'react'
 
 import { Prose } from './Prose'
@@ -43,7 +44,8 @@ function PageTag({ proposal, onOpenPage }: { proposal: BrainProposal; onOpenPage
 }
 
 export function When({ proposal }: { proposal: BrainProposal }) {
-    return <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{shortRelativeTime(proposal.createdAt)}</span>
+    const locale = useLocale()
+    return <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{shortRelativeTime(proposal.createdAt, locale)}</span>
 }
 
 function Sources({ proposal }: { proposal: BrainProposal }) {

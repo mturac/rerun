@@ -16,6 +16,7 @@ import { LOGO_MAX_BYTES, LOGO_TOO_LARGE, logoLinkImageUrl, NO_LOGO_FOUND, readLo
 import { getServerSession } from '@/supabase/session/getServerSession'
 import { selectSingle } from '@/supabase/supabase-helpers'
 
+import { isStableLocale } from '@rerun/i18n'
 import type { ActionResult } from './space.actions'
 
 async function requireUserId(): Promise<string> {
@@ -57,12 +58,15 @@ export async function updateWorkspaceAction(formData: FormData): Promise<ActionR
     if (!name) return { ok: false, error: 'Name is required' }
     if (name.length > WORKSPACE_NAME_MAX) return { ok: false, error: `Keep the name under ${WORKSPACE_NAME_MAX} characters` }
 
+    const locale = formData.get('locale')
+    if (locale !== null && !isStableLocale(locale)) return { ok: false, error: 'Unknown language.' }
+
     const logo = await readLogo(formData, workspace.id)
     if (!logo.ok) return logo
 
     const { error } = await supabase
         .from('workspaces')
-        .update<Database['public']['Tables']['workspaces']['Update']>({ name, ...(logo.iconUrl ? { icon_url: logo.iconUrl } : {}) })
+        .update<Database['public']['Tables']['workspaces']['Update']>({ name, ...(logo.iconUrl ? { icon_url: logo.iconUrl } : {}), ...(locale ? { locale } : {}) })
         .eq('id', workspace.id)
     if (error) return { ok: false, error: error.message }
     return { ok: true }

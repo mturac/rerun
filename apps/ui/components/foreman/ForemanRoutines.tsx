@@ -1,5 +1,6 @@
 'use client'
 
+import { useLocale } from 'next-intl'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -36,6 +37,7 @@ function leaveForTheBoard() {
 }
 
 export function ForemanRoutines({ docked, className }: { docked: boolean; className?: string }) {
+    const locale = useLocale()
     const [data, setData] = useState<WorkspaceRoutines | null>(null)
     const [saving, setSaving] = useState<string[]>([])
     const [renamingKey, setRenamingKey] = useState<string | null>(null)
@@ -75,9 +77,9 @@ export function ForemanRoutines({ docked, className }: { docked: boolean; classN
             const key = routineKey(routine)
             const held = heldNextRuns[key]
             const stillHeld = key in heldNextRuns && (held === null || new Date(held).getTime() > now)
-            return { ...routine, frequency: routineFrequency(routine), nextRunAt: stillHeld ? held : nextRunAt(routine, at) }
+            return { ...routine, frequency: routineFrequency(routine, locale), nextRunAt: stillHeld ? held : nextRunAt(routine, at) }
         })
-    }, [data, now, heldNextRuns])
+    }, [data, now, heldNextRuns, locale])
 
     const patch = (key: string, change: Partial<WorkspaceRoutine>) =>
         setData(current => current && { ...current, routines: current.routines.map(routine => (routineKey(routine) === key ? { ...routine, ...change } : routine)) })

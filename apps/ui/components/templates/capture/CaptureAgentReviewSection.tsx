@@ -1,5 +1,6 @@
 'use client'
 
+import { useLocale } from 'next-intl'
 import * as React from 'react'
 import { isSetupAnswered } from '@rerun/contracts'
 import { Stripes } from '@rerun/ui/primitives'
@@ -35,6 +36,7 @@ export function CaptureAgentReviewSection({
     onApprove: (next: boolean) => void
     onSetupChange: (next: AgentSetupDraft) => void
 }) {
+    const locale = useLocale()
     const flagged = React.useMemo(() => flaggedPathSet(plan), [plan])
     const stats = planStats(plan, excluded)
     const [filesOpen, setFilesOpen] = React.useState(stats.flaggedTotal > 0 || soloAgent)
@@ -49,7 +51,7 @@ export function CaptureAgentReviewSection({
                 <div className="flex items-baseline justify-between gap-3">
                     <span className="min-w-0 truncate text-sm font-medium">{plan.displayName || plan.name}</span>
                     <span className="shrink-0 text-xs text-muted-foreground">
-                        {stats.kept} of {stats.total} files, {formatBytes(stats.keptBytes)}
+                        {stats.kept} of {stats.total} files, {formatBytes(stats.keptBytes, locale)}
                     </span>
                 </div>
                 <span className="flex min-w-0 items-baseline gap-1.5 text-xs text-muted-foreground">

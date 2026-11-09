@@ -13,7 +13,9 @@ import { cn } from '@/lib/utils'
 import { useBillingStore } from '@/stores/billing.store'
 import { useSandboxArchiveStore } from '@/stores/sandbox-archive.store'
 import { useSession } from '@/supabase/session/SessionProvider'
+import { formatDate } from '@rerun/i18n/format'
 import { ChromeBar } from '@rerun/ui/chrome'
+import { useLocale } from 'next-intl'
 import { useCallback, useState } from 'react'
 
 const RESTORE_STEPS: readonly { stage: Exclude<RestoreStage, 'waiting' | 'failed'>; label: string; activeLabel?: string }[] = [
@@ -26,8 +28,8 @@ const STAGE_POLL_MS = 4000
 // An approval is a human's doing: nothing here changes by the second.
 const SANDBOX_ARCHIVE_POLL_MS = 15_000
 
-export function formatKeptUntil(date: Date): string {
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+export function formatKeptUntil(date: Date, locale: string): string {
+    return formatDate(date, locale, { month: 'short', day: 'numeric' })
 }
 
 // The board of a workspace whose machine was archived when its plan ended, and of one coming back
@@ -49,12 +51,13 @@ export function WorkspacePausedBanner() {
 }
 
 export function PausedContent({ keptUntil, paymentFailed = false }: { keptUntil: Date | null; paymentFailed?: boolean }) {
+    const locale = useLocale()
     return (
         <>
             <ArchiveIcon className="relative size-4 shrink-0 text-muted-foreground" />
             <p className="relative min-w-0 truncate text-sm">
                 <span className="font-medium">{paymentFailed ? 'Payment failed, workspace paused.' : 'Workspace paused.'}</span>{' '}
-                <span className="text-muted-foreground max-sm:hidden">Your coworkers and their data are saved{keptUntil ? ` until ${formatKeptUntil(keptUntil)}` : ''}.</span>
+                <span className="text-muted-foreground max-sm:hidden">Your coworkers and their data are saved{keptUntil ? ` until ${formatKeptUntil(keptUntil, locale)}` : ''}.</span>
             </p>
             <Button className="shrink-0 rounded-full px-3" onClick={() => useBillingStore.getState().openBilling(undefined, 'paused_banner')}>
                 {paymentFailed ? 'Update payment' : 'Subscribe to restore'}
@@ -95,6 +98,7 @@ function SandboxArchivedBanner({ keptUntil }: { keptUntil: Date | null }) {
 }
 
 export function SandboxArchivedContent({ keptUntil, status, onRequest }: { keptUntil: Date | null; status: SandboxArchiveState['status']; onRequest?: () => void }) {
+    const locale = useLocale()
     return (
         <>
             <ArchiveIcon className="relative size-4 shrink-0 text-muted-foreground" />
@@ -104,7 +108,7 @@ export function SandboxArchivedContent({ keptUntil, status, onRequest }: { keptU
                     {status === 'rejected'
                         ? 'Contact us if you think this is a mistake.'
                         : keptUntil
-                          ? `Your coworkers and their data are saved until ${formatKeptUntil(keptUntil)}.`
+                          ? `Your coworkers and their data are saved until ${formatKeptUntil(keptUntil, locale)}.`
                           : 'Its saved data has expired, a reactivation starts from an empty sandbox.'}
                 </span>
             </p>

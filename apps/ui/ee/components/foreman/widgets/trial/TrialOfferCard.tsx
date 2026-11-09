@@ -1,6 +1,7 @@
 'use client'
 
 import { BorderBeam } from '@rerun/ui'
+import { useLocale } from 'next-intl'
 import { Badge } from '@rerun/ui/primitives'
 
 import { Button } from '@/components/ui/button'
@@ -59,12 +60,13 @@ function TimelineStep({ icon, title, description }: { icon: LucideIcon; title: s
 }
 
 export function TrialOfferCard({ offer, priceArm, submitting, error, onStart, subject, thenPay }: TrialOfferCardProps) {
+    const locale = useLocale()
     const price = formatAmount(basePriceCents(priceArm), PLAN_CURRENCY)
     const trial = offer !== 'paid'
     const cardless = offer === 'cardless'
     const chargeOn = trialEndDate()
-    const chargeDate = shortDate(chargeOn)
-    const reminderDate = shortDate(new Date(chargeOn.getTime() - TRIAL_ENDING_LEAD_MS))
+    const chargeDate = shortDate(chargeOn, locale)
+    const reminderDate = shortDate(new Date(chargeOn.getTime() - TRIAL_ENDING_LEAD_MS), locale)
 
     return (
         <div className="relative mb-2 rounded-xl border border-border bg-background">

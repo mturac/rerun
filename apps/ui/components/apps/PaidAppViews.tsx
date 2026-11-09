@@ -2,6 +2,8 @@
 
 import type { ComponentProps, ComponentType, ReactNode } from 'react'
 import { TRIAL_DAYS, formatAmount } from '@rerun/contracts'
+import { formatDate } from '@rerun/i18n/format'
+import { useLocale } from 'next-intl'
 import { BorderBeam } from '@rerun/ui'
 import { Badge } from '@rerun/ui/primitives'
 import type { AppConnectionView, AppsOverview } from '@/app/api/_services/apps.service'
@@ -45,8 +47,8 @@ export function AppIcon({ slug, size = 'sm', tone }: { slug: AppSlug; size?: 'xs
     return <Icon size={size} tone={tone} {...(icon ? serviceIconProps(icon) : { icon: UsersIcon })} />
 }
 
-function shortDate(iso: string) {
-    return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+function shortDate(iso: string, locale: string) {
+    return formatDate(iso, locale, { month: 'long', day: 'numeric' })
 }
 
 function slotTotal(overview: AppsOverview): number {
@@ -61,8 +63,8 @@ function blockedReason(overview: AppsOverview): string | undefined {
     return undefined
 }
 
-function slotsDescription(overview: AppsOverview): string {
-    if (overview.subscriberTrialEndsAt) return `first one free until ${shortDate(overview.subscriberTrialEndsAt)}, then ${slotPriceLabel(overview)}`
+function slotsDescription(overview: AppsOverview, locale: string): string {
+    if (overview.subscriberTrialEndsAt) return `first one free until ${shortDate(overview.subscriberTrialEndsAt, locale)}, then ${slotPriceLabel(overview)}`
     if (overview.workspaceTrialing && overview.stripeSlots > 0) return '$0 during your trial, billed with your plan after'
     return `${slotPriceLabel(overview)} each, billed with your plan`
 }
@@ -175,6 +177,7 @@ type AccountsScreenProps = {
 
 // Every account and every slot in one list: a slot is either an account or a dashed place for one.
 export function AccountsScreen({ overview, pending, onConnectStart, onReconnect, onDisconnect, onAddSlot }: AccountsScreenProps) {
+    const locale = useLocale()
     const { providerLabel } = appInfo(overview.slug)
     const total = slotTotal(overview)
     const used = overview.connections.length
@@ -204,7 +207,7 @@ export function AccountsScreen({ overview, pending, onConnectStart, onReconnect,
                 <span className="font-medium text-foreground tabular-nums">
                     {used} of {total} slot{total === 1 ? '' : 's'} used
                 </span>
-                , {slotsDescription(overview)}
+                , {slotsDescription(overview, locale)}
             </footer>
         </>
     )

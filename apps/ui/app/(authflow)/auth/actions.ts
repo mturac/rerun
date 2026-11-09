@@ -13,6 +13,7 @@ import { normalizeEmail } from '@/lib/email'
 import { createClient } from '@/supabase/server'
 import { EXPERIMENT_COOKIE } from '@rerun/analytics/experiments'
 import { CONSENT_COOKIE } from '@rerun/contracts'
+import { LOCALE_COOKIE, resolveLocale } from '@rerun/i18n'
 import { cookies, headers } from 'next/headers'
 import { z } from 'zod'
 
@@ -88,6 +89,7 @@ export async function completeSignupAction(): Promise<SignupCompletion> {
             consentCookie: cookieStore.get(CONSENT_COOKIE)?.value,
             userAgent: (await headers()).get('user-agent'),
         }),
+        locale: resolveLocale({ cookie: cookieStore.get(LOCALE_COOKIE)?.value, acceptLanguage: (await headers()).get('accept-language') }),
     })
     return provisioned ? { ok: true, signedUp: provisioned.signedUp } : { ok: false }
 }

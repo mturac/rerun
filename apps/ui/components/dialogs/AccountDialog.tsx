@@ -10,15 +10,18 @@ import {
     syncAccountEmailAction,
     updateMyNameAction,
     uploadMyAvatarAction,
+    updateMyLocaleAction,
     type SignInMethods,
 } from '@/app/api/_actions/account.actions'
 import type { ActionResult } from '@/app/api/_actions/space.actions'
-import { ACCOUNT_TABS, AccountTabs } from '@/components/account/AccountTabs'
+import { AccountTabs, useAccountTabText } from '@/components/account/AccountTabs'
 import { DeleteAccountPanel } from '@/components/account/DeleteAccountPanel'
+import { LanguagePanel, type LanguageChoice } from '@/components/account/LanguagePanel'
 import { ProfilePanel } from '@/components/account/ProfilePanel'
 import { SignInMethodsPanel } from '@/components/account/SignInMethodsPanel'
 import { EmailCodeForm } from '@/components/auth/EmailCodeForm'
 import { DIALOG_TABS_CONTENT, DIALOG_TABS_HEADER } from '@/components/dialogs/DialogTabs'
+import { useLanguagePacksEnabled } from '@/components/layout/FeatureFlagsProvider'
 import { PHONE_ENABLED } from '@rerun/cloud/phone'
 import { PhoneChangeForm } from '@rerun/cloud/phone.client'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -35,6 +38,9 @@ import { useAccountStore, type AccountTab } from '@/stores/account.store'
 import { useBillingStore } from '@/stores/billing.store'
 import { createClient } from '@/supabase/client'
 import { useSession } from '@/supabase/session/SessionProvider'
+import { isStableLocale, PSEUDO_LOCALE } from '@rerun/i18n'
+import { useLocale, useTranslations } from 'next-intl'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 
@@ -240,14 +246,42 @@ function DeleteAccountTab() {
     return <DeleteAccountPanel blockers={blockers} currentWorkspaceId={workspace?.id ?? null} onOpenBilling={openBillingPanel} deleteAccount={deleteAccount} />
 }
 
+// The pseudo-locale lives in the cookie alone, so it is read back from the page's locale.
+function LanguageTab() {
+    const t = useTranslations('account.language')
+    const { user, refreshUser } = useSession()
+    const locale = useLocale()
+    const router = useRouter()
+    const stored = user?.locale
+    const value: LanguageChoice = locale === PSEUDO_LOCALE ? PSEUDO_LOCALE : isStableLocale(stored) ? stored : null
+
+    const change = async (choice: LanguageChoice) => {
+        const result = await updateMyLocaleAction({ locale: choice })
+        if (!result.ok) {
+            toast.error(t('failed'))
+            return
+        }
+        // No success toast: it would speak the language being left, and the screen switching says it.
+        await refreshUser()
+        router.refresh()
+    }
+
+    return <LanguagePanel value={value} onChange={change} />
+}
+
 const TAB_CONTENT: Record<AccountTab, () => ReactNode> = {
     profile: ProfileTab,
     'sign-in': SignInTab,
+    language: LanguageTab,
     delete: DeleteAccountTab,
 }
 
 export function AccountDialog() {
-    const { open, tab, setOpen, setTab } = useAccountStore()
+    const { open, tab: requestedTab, setOpen, setTab } = useAccountStore()
+    const t = useTranslations('account')
+    const showLanguage = useLanguagePacksEnabled()
+    const tab = requestedTab === 'language' && !showLanguage ? 'profile' : requestedTab
+    const { description } = useAccountTabText(tab)
     const TabContent = TAB_CONTENT[tab]
 
     return (
@@ -256,10 +290,11 @@ export function AccountDialog() {
                 <AccountTabs
                     tab={tab}
                     onTabChange={setTab}
+                    showLanguage={showLanguage}
                     header={
                         <DialogHeader className={DIALOG_TABS_HEADER}>
-                            <DialogTitle>Account</DialogTitle>
-                            <DialogDescription>{ACCOUNT_TABS[tab].description}</DialogDescription>
+                            <DialogTitle>{t('title')}</DialogTitle>
+                            <DialogDescription>{description}</DialogDescription>
                         </DialogHeader>
                     }
                 >

@@ -3,6 +3,7 @@
 import { Badge, Card } from '@rerun/ui/primitives'
 import { TemplateBoardPreview, type BoardAgent } from '@rerun/ui/iso-grid'
 import type { TemplateConnector } from '@rerun/contracts'
+import { useLocale } from 'next-intl'
 import { useMemo } from 'react'
 
 import { formatDuration, toolLabel } from '@/lib/rewind/format'
@@ -12,6 +13,7 @@ import { RewindHeadline, RewindReveal, RewindSlideFrame } from '../RewindSlideFr
 import type { RewindSlideProps } from './types'
 
 export function MvpSlide({ payload, wide }: RewindSlideProps) {
+    const locale = useLocale()
     const mvp = payload.agents.find(agent => agent.agentId === payload.mvpAgentId)
     const board = useMemo(() => {
         if (!mvp) return null
@@ -35,7 +37,7 @@ export function MvpSlide({ payload, wide }: RewindSlideProps) {
                     <RewindReveal delay={1} className="mt-4 grid grid-cols-3 gap-2">
                         <Stat label="runs" value={<RewindCount value={mvp.runs} delay={1.1} />} />
                         <Stat label="of all work" value={<RewindCount value={share} delay={1.2} suffix="%" />} />
-                        <Stat label="on the clock" value={formatDuration(mvp.workedMs)} />
+                        <Stat label="on the clock" value={formatDuration(mvp.workedMs, locale)} />
                     </RewindReveal>
                     {mvp.topTools.length > 0 && (
                         <RewindReveal delay={1.6} className="mt-3 text-sm text-white/80">

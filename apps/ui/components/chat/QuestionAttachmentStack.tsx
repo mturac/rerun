@@ -6,6 +6,7 @@ import { formatBytes } from '@/lib/files/format'
 import { FileIcon, RefreshCwIcon, XIcon } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import type { FileUIPart } from 'ai'
+import { useLocale } from 'next-intl'
 
 export type StackedAttachment = { file: FileUIPart & { id: string }; upload: UploadItem | undefined }
 
@@ -18,10 +19,10 @@ type QuestionAttachmentStackProps = {
 const VISIBLE = 3
 const TILTS = ['-rotate-6', 'rotate-4', '-rotate-3']
 
-function statusLine(upload: UploadItem | undefined): string {
+function statusLine(upload: UploadItem | undefined, locale: string): string {
     if (!upload) return 'Waiting'
     if (upload.status === 'error') return upload.error ?? 'Upload failed'
-    if (upload.status === 'done') return formatBytes(upload.size)
+    if (upload.status === 'done') return formatBytes(upload.size, locale)
     if (upload.status === 'uploading') return `Uploading · ${Math.round(upload.progress * 100)}%`
     return upload.status === 'finishing' ? 'Finishing' : 'Waiting'
 }
@@ -49,6 +50,7 @@ export function QuestionAttachmentStack({ items, onRemove, onRetry }: QuestionAt
 }
 
 function Thumb({ item, tilt, onRemove, onRetry }: { item: StackedAttachment; tilt: string; onRemove: (id: string) => void; onRetry: (id: string) => void }) {
+    const locale = useLocale()
     const { file, upload } = item
     const failed = upload?.status === 'error'
     const pending = !failed && upload?.status !== 'done'
@@ -98,7 +100,7 @@ function Thumb({ item, tilt, onRemove, onRetry }: { item: StackedAttachment; til
             </TooltipTrigger>
             <TooltipContent>
                 <span className="font-medium">{file.filename ?? 'file'}</span>
-                <span className="ml-1.5 opacity-70">{statusLine(upload)}</span>
+                <span className="ml-1.5 opacity-70">{statusLine(upload, locale)}</span>
             </TooltipContent>
         </Tooltip>
     )

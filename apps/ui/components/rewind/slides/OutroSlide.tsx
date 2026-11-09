@@ -1,6 +1,7 @@
 'use client'
 
 import { Badge, Card } from '@rerun/ui/primitives'
+import { useLocale } from 'next-intl'
 import { useEffect } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -12,6 +13,7 @@ import { RewindHeadline, RewindReveal, RewindSlideFrame } from '../RewindSlideFr
 import type { RewindSlideProps } from './types'
 
 export function OutroSlide({ payload, agentName, onReplay, onClose }: RewindSlideProps) {
+    const locale = useLocale()
     const worked = formatWorked(payload.totals.workedMs)
 
     useEffect(() => {
@@ -37,7 +39,7 @@ export function OutroSlide({ payload, agentName, onReplay, onClose }: RewindSlid
                             <Badge tone="brand" size="xs" className="mb-2 self-start">
                                 Rerun Rewind
                             </Badge>
-                            <p className="text-sm text-muted-foreground">{formatWeekRange(payload.weekStart, payload.weekEnd)}</p>
+                            <p className="text-sm text-muted-foreground">{formatWeekRange(payload.weekStart, payload.weekEnd, locale)}</p>
                             <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rewind-wide:mt-6 rewind-wide:gap-y-5">
                                 {stats.map((stat, i) => (
                                     <div key={stat.label}>

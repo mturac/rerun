@@ -13,6 +13,7 @@ import { ArrowLeftIcon } from '@/lib/icons'
 import { fullDateTime, shortRelativeTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import type { BrainPage, BrainRevision } from '@rerun/contracts'
+import { useLocale } from 'next-intl'
 import { useEffect, useState } from 'react'
 
 type BrainPageHistoryProps = {
@@ -41,6 +42,7 @@ function PreviewSkeleton() {
 // Every version of a page, newest first, as Notion lays its history out: what the page said on the
 // left, who changed it and when on the right.
 export function BrainPageHistory({ page, revisions, titles, onBack, onOpenPage, onOpenFile, onRestore }: BrainPageHistoryProps) {
+    const locale = useLocale()
     const [selectedId, setSelectedId] = useState<string | null>(revisions[0]?.id ?? null)
     const [preview, setPreview] = useState<{ id: string; content: string } | null>(null)
     const [restoring, setRestoring] = useState(false)
@@ -90,7 +92,7 @@ export function BrainPageHistory({ page, revisions, titles, onBack, onOpenPage, 
                     {selected && (
                         <div className="flex items-center gap-2 border-b border-border px-4 py-2 text-sm">
                             <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                                {isCurrent ? 'Current version' : `Version from ${fullDateTime(selected.createdAt)}`}
+                                {isCurrent ? 'Current version' : `Version from ${fullDateTime(selected.createdAt, locale)}`}
                             </span>
                             {!isCurrent && (
                                 <ConfirmDialog
@@ -130,8 +132,8 @@ export function BrainPageHistory({ page, revisions, titles, onBack, onOpenPage, 
                                 onClick={() => setSelectedId(revision.id)}
                                 className={cn('block w-full rounded-md px-2 py-1.5 text-left transition-colors', revision.id === selectedId ? 'bg-accent' : 'hover:bg-accent/60')}
                             >
-                                <span className="block text-sm font-medium" title={fullDateTime(revision.createdAt)}>
-                                    {index === 0 && revision.hash === page.hash ? 'Current' : shortRelativeTime(revision.createdAt)}
+                                <span className="block text-sm font-medium" title={fullDateTime(revision.createdAt, locale)}>
+                                    {index === 0 && revision.hash === page.hash ? 'Current' : shortRelativeTime(revision.createdAt, locale)}
                                 </span>
                                 <span className="block truncate text-xs text-muted-foreground">
                                     {brainAuthorLabel(revision.author)}

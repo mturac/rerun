@@ -14,6 +14,7 @@ import { isPlanLimited, type IsoAgent } from '@/lib/board/types'
 import { useBillingStore } from '@/stores/billing.store'
 import { useBoardStore } from '@/stores/board.store'
 import { useSession } from '@/supabase/session/SessionProvider'
+import { useLocale } from 'next-intl'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -30,13 +31,14 @@ export function AgentLockedOverlay({ agent }: { agent: IsoAgent }) {
 
 // The whole workspace is off, its machine archived: nothing here is about a slot.
 export function WorkspacePausedOverlay({ name, keptUntil, paymentFailed = false }: { name: string; keptUntil: Date | null; paymentFailed?: boolean }) {
+    const locale = useLocale()
     return (
         <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
             <Icon size="lg" icon={LockIcon} className="text-muted-foreground" />
             <div className="space-y-1.5">
                 <p className="text-sm font-medium">{name} is paused with your workspace</p>
                 <p className="text-sm text-muted-foreground">
-                    Its conversations, memory, skills, schedules and files are saved{keptUntil ? ` until ${formatKeptUntil(keptUntil)}` : ''}. {paymentFailed ? 'Update your payment' : 'Subscribe'} and {name} picks up exactly where it stopped.
+                    Its conversations, memory, skills, schedules and files are saved{keptUntil ? ` until ${formatKeptUntil(keptUntil, locale)}` : ''}. {paymentFailed ? 'Update your payment' : 'Subscribe'} and {name} picks up exactly where it stopped.
                 </p>
             </div>
             <Button variant="outline" highlight onClick={() => useBillingStore.getState().openBilling(undefined, 'paused_agent_panel')}>
@@ -48,13 +50,14 @@ export function WorkspacePausedOverlay({ name, keptUntil, paymentFailed = false 
 
 // No button here: the request lives on the board's banner, where its answer is shown too.
 function SandboxArchivedOverlay({ name, keptUntil }: { name: string; keptUntil: Date | null }) {
+    const locale = useLocale()
     return (
         <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
             <Icon size="lg" icon={LockIcon} className="text-muted-foreground" />
             <div className="space-y-1.5">
                 <p className="text-sm font-medium">{name} is archived with your sandbox</p>
                 <p className="text-sm text-muted-foreground">
-                    Its conversations, memory, skills, schedules and files are saved{keptUntil ? ` until ${formatKeptUntil(keptUntil)}` : ''}. Request a reactivation from the board and {name} picks up exactly where it stopped.
+                    Its conversations, memory, skills, schedules and files are saved{keptUntil ? ` until ${formatKeptUntil(keptUntil, locale)}` : ''}. Request a reactivation from the board and {name} picks up exactly where it stopped.
                 </p>
             </div>
         </div>

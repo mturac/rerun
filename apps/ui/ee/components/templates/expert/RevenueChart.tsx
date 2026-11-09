@@ -1,6 +1,8 @@
 'use client'
 
+import { formatDate } from '@rerun/i18n/format'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@rerun/ui/primitives'
+import { useLocale } from 'next-intl'
 import { useMemo } from 'react'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import type { CreatorRevenue } from '@/ee/services/creator-revenue.service'
@@ -9,13 +11,14 @@ import type { CreatorRevenue } from '@/ee/services/creator-revenue.service'
 // comparison between anything.
 const CHART_CONFIG: ChartConfig = { net: { label: 'You earned', color: '#6366f1' } }
 
-function monthLabel(month: string): string {
+function monthLabel(month: string, locale: string): string {
     const date = new Date(`${month}-01T00:00:00`)
-    return Number.isNaN(date.getTime()) ? month : date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+    return Number.isNaN(date.getTime()) ? month : formatDate(date, locale, { month: 'short', year: '2-digit' })
 }
 
 export function RevenueChart({ revenue }: { revenue: CreatorRevenue }) {
-    const rows = useMemo(() => revenue.monthly.map(entry => ({ month: monthLabel(entry.month), net: entry.netCents / 100 })), [revenue.monthly])
+    const locale = useLocale()
+    const rows = useMemo(() => revenue.monthly.map(entry => ({ month: monthLabel(entry.month, locale), net: entry.netCents / 100 })), [revenue.monthly, locale])
     const formatValue = (value: number) => `$${Math.round(value)}`
 
     if (rows.length === 0) {

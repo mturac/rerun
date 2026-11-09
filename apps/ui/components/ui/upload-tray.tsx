@@ -8,6 +8,7 @@ import { CheckIcon, ChevronDownIcon, RefreshCwIcon, XIcon } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { Stripes } from '@rerun/ui/primitives'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { useLocale } from 'next-intl'
 import { useId, useState } from 'react'
 
 type UploadTrayProps = {
@@ -21,17 +22,18 @@ type UploadTrayProps = {
 const COLLAPSED_ROWS = 6
 const COLLAPSE_TRANSITION = { duration: 0.28, ease: [0.4, 0, 0.2, 1] } as const
 
-function statusLine(item: UploadItem): string {
+function statusLine(item: UploadItem, locale: string): string {
     if (item.status === 'error') return item.error ?? 'Upload failed'
-    if (item.status === 'done') return formatBytes(item.size)
+    if (item.status === 'done') return formatBytes(item.size, locale)
     if (item.status === 'finishing') return 'Finishing'
-    if (item.status === 'queued') return `Waiting · ${formatBytes(item.size)}`
+    if (item.status === 'queued') return `Waiting · ${formatBytes(item.size, locale)}`
     const parts = [`${Math.round(item.progress * 100)}%`]
     if (item.etaMs != null) parts.push(formatEta(item.etaMs))
     return parts.join(' · ')
 }
 
 function UploadRow({ item, onCancel, onRetry }: { item: UploadItem; onCancel: (id: string) => void; onRetry: (id: string) => void }) {
+    const locale = useLocale()
     return (
         <div className="flex items-center gap-2 px-3 py-1.5">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -40,11 +42,11 @@ function UploadRow({ item, onCancel, onRetry }: { item: UploadItem; onCancel: (i
                     {item.dir && <span className="shrink-0 truncate text-[10px] text-muted-foreground">{item.dir}</span>}
                 </div>
                 {item.status === 'done' ? (
-                    <span className="text-[10px] text-muted-foreground">{statusLine(item)}</span>
+                    <span className="text-[10px] text-muted-foreground">{statusLine(item, locale)}</span>
                 ) : (
                     <>
                         <Progress value={item.status === 'finishing' ? null : item.progress * 100} size="sm" tone={item.status === 'error' ? 'destructive' : 'brand'} label={`Uploading ${item.name}`} />
-                        <span className={item.status === 'error' ? 'text-[10px] text-destructive' : 'text-[10px] text-muted-foreground'}>{statusLine(item)}</span>
+                        <span className={item.status === 'error' ? 'text-[10px] text-destructive' : 'text-[10px] text-muted-foreground'}>{statusLine(item, locale)}</span>
                     </>
                 )}
             </div>

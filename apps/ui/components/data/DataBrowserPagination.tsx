@@ -3,6 +3,8 @@
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChevronFirstIcon, ChevronLastIcon, ChevronLeftIcon, ChevronRightIcon } from '@/lib/icons'
+import { formatNumber } from '@rerun/i18n/format'
+import { useLocale } from 'next-intl'
 
 export const PAGE_SIZES = [25, 50, 100, 250]
 
@@ -16,6 +18,7 @@ type DataBrowserPaginationProps = {
 }
 
 export function DataBrowserPagination({ pageIndex, pageSize, shown, total, onPageSizeChange, onPageChange }: DataBrowserPaginationProps) {
+    const locale = useLocale()
     const canPrev = pageIndex > 0
     const canNext = pageIndex * pageSize + shown < total
     const lastPageIndex = Math.max(0, Math.ceil(total / pageSize) - 1)
@@ -24,7 +27,7 @@ export function DataBrowserPagination({ pageIndex, pageSize, shown, total, onPag
     return (
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border/70 px-4 py-1.5 text-[11px] text-muted-foreground @3xl:px-12">
             <span>
-                Count <span className="font-medium text-foreground tabular-nums">{total.toLocaleString('en-US')}</span>
+                Count <span className="font-medium text-foreground tabular-nums">{formatNumber(total, locale)}</span>
             </span>
             <span className="flex items-center gap-1">
                 <Select value={String(pageSize)} onValueChange={value => onPageSizeChange(Number(value))}>
@@ -42,7 +45,7 @@ export function DataBrowserPagination({ pageIndex, pageSize, shown, total, onPag
                 {pages && (
                     <>
                         <span className="px-1 whitespace-nowrap tabular-nums">
-                            {pageIndex * pageSize + 1}–{pageIndex * pageSize + shown} of {total.toLocaleString('en-US')}
+                            {pageIndex * pageSize + 1}–{pageIndex * pageSize + shown} of {formatNumber(total, locale)}
                         </span>
                         <Button variant="ghost" size="icon-xs" disabled={!canPrev} onClick={() => onPageChange(0)} aria-label="First page" className="hidden text-muted-foreground @md:inline-flex">
                             <ChevronFirstIcon className="size-3.5" />

@@ -2,6 +2,7 @@
 
 import { useCheckout } from '@stripe/react-stripe-js/checkout'
 import type { StripeExpressCheckoutElementConfirmEvent } from '@stripe/stripe-js'
+import { useLocale } from 'next-intl'
 import { Badge, Stripes, type BadgeTone } from '@rerun/ui/primitives'
 import { useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
@@ -50,10 +51,10 @@ function planBillCents(state: SubscriptionState, quantities: AddonQuantities, in
     return Math.max(0, planPriceCents(quantities, interval, state.priceArm) - planDiscountCents(state, interval))
 }
 
-function statusOf(state: SubscriptionState): { label: string; tone: BadgeTone } {
+function statusOf(state: SubscriptionState, locale: string): { label: string; tone: BadgeTone } {
     if (state.status === 'past_due') return { label: 'Payment failed', tone: 'red' }
-    if (state.cancelAtPeriodEnd) return { label: state.periodEnd ? `Ends ${shortDate(state.periodEnd)}` : 'Ending', tone: 'orange' }
-    if (state.pendingSwitch) return { label: `Monthly from ${shortDate(state.pendingSwitch.at)}`, tone: 'yellow' }
+    if (state.cancelAtPeriodEnd) return { label: state.periodEnd ? `Ends ${shortDate(state.periodEnd, locale)}` : 'Ending', tone: 'orange' }
+    if (state.pendingSwitch) return { label: `Monthly from ${shortDate(state.pendingSwitch.at, locale)}`, tone: 'yellow' }
     return { label: 'Active', tone: 'green' }
 }
 
@@ -73,6 +74,7 @@ export function PlanDialog({
     onChanged: () => Promise<void>
     appSlots?: Partial<Record<AppSlug, AppSlotsState>>
 }) {
+    const locale = useLocale()
     const { refreshWorkspace } = useSession()
     const currentSlots = appSlotsOf(state.quantities)
     const [slots, setSlots] = useState<AppSlots>(currentSlots)
@@ -89,7 +91,7 @@ export function PlanDialog({
     const pastDue = state.status === 'past_due'
     const locked = pastDue || state.cancelAtPeriodEnd || !!success
     const dirty = APP_SLUGS.some(slug => slots[slug] !== currentSlots[slug]) || interval !== state.interval
-    const renewal = state.periodEnd ? shortDate(state.periodEnd) : 'your renewal'
+    const renewal = state.periodEnd ? shortDate(state.periodEnd, locale) : 'your renewal'
     const selection: PlanSelection = { quantities: withAppSlots(state.quantities, slots), interval }
     const currentBillCents = planBillCents(state, state.quantities, state.interval)
 
@@ -104,7 +106,7 @@ export function PlanDialog({
         setBillingInterval(state.interval)
     }
 
-    const status = statusOf(state)
+    const status = statusOf(state, locale)
     const left = (
         <>
             <div className="flex flex-col items-start gap-3">
@@ -211,6 +213,7 @@ function OverviewPane({
     onCancel: () => void
     onChanged: () => Promise<void>
 }) {
+    const locale = useLocale()
     const [keeping, setKeeping] = useState(false)
 
     const keepYearly = async () => {
@@ -222,9 +225,9 @@ function OverviewPane({
     }
 
     const rows = [
-        { label: 'Next invoice', value: state.nextInvoice ? `${shortDate(state.nextInvoice.at)} · ${usd(state.nextInvoice.amountCents)}` : '-' },
+        { label: 'Next invoice', value: state.nextInvoice ? `${shortDate(state.nextInvoice.at, locale)} · ${usd(state.nextInvoice.amountCents)}` : '-' },
         { label: 'Billed', value: `${state.interval === 'yearly' ? 'Yearly' : 'Monthly'}, tax included`, muted: true },
-        ...(state.pendingSwitch ? [{ label: 'From ' + shortDate(state.pendingSwitch.at), value: `Monthly · ${billed(planPriceCents(state.pendingSwitch.selection.quantities, 'monthly', state.priceArm), 'monthly')}` }] : []),
+        ...(state.pendingSwitch ? [{ label: 'From ' + shortDate(state.pendingSwitch.at, locale), value: `Monthly · ${billed(planPriceCents(state.pendingSwitch.selection.quantities, 'monthly', state.priceArm), 'monthly')}` }] : []),
     ]
 
     return (
@@ -249,7 +252,7 @@ function OverviewPane({
                             Credit usage
                         </span>
                         <span className="flex items-center gap-1 text-muted-foreground">
-                            {creditLeftMicros != null && <span className="tabular-nums">{formatCredits(creditLeftMicros)} left</span>}
+                            {creditLeftMicros != null && <span className="tabular-nums">{formatCredits(creditLeftMicros, locale)} left</span>}
                             <ChevronRightIcon className="size-4" />
                         </span>
                     </button>
@@ -286,6 +289,7 @@ function ChangePane({
     onReset: () => void
     onDone: (success: Success) => void
 }) {
+    const locale = useLocale()
     const [accepted, setAccepted] = useState(false)
     const [submitting, setSubmitting] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -297,7 +301,7 @@ function ChangePane({
     const interval = selection.interval
     const newBillCents = planBillCents(state, selection.quantities, interval)
     const newBill = billed(newBillCents, interval)
-    const renewal = state.periodEnd ? shortDate(state.periodEnd) : 'your renewal'
+    const renewal = state.periodEnd ? shortDate(state.periodEnd, locale) : 'your renewal'
     const switchingDown = state.interval === 'yearly' && interval === 'monthly'
     const switchingUp = state.interval === 'monthly' && interval === 'yearly'
     const increase = APP_SLUGS.some(slug => slots[slug] > currentSlots[slug])
@@ -311,7 +315,7 @@ function ChangePane({
         const result = await runPlanChange(selection)
         setSubmitting(false)
         if (!result.ok) return setError(result.error)
-        if (result.switchAt) return onDone({ title: 'Switch scheduled', body: `Your yearly plan runs to its end. Monthly billing starts on ${shortDate(result.switchAt)}.` })
+        if (result.switchAt) return onDone({ title: 'Switch scheduled', body: `Your yearly plan runs to its end. Monthly billing starts on ${shortDate(result.switchAt, locale)}.` })
         if (!chargesToday) return onDone({ title: 'Change scheduled', body: `You keep ${planLabel(currentSlots)} until ${renewal}, then ${planLabel(slots)} at ${newBill}.` })
         onDone({ title: 'Plan updated', body: `${planLabel(slots)}, billed ${interval}. Your receipt is on its way by email.` })
     }
@@ -376,8 +380,9 @@ function ChangePane({
 }
 
 function CancelPendingPane({ state, currentBillCents, onResumed }: { state: SubscriptionState; currentBillCents: number; onResumed: () => void }) {
+    const locale = useLocale()
     const [resuming, setResuming] = useState(false)
-    const ends = state.periodEnd ? shortDate(state.periodEnd) : 'the end of your period'
+    const ends = state.periodEnd ? shortDate(state.periodEnd, locale) : 'the end of your period'
 
     const resume = async () => {
         setResuming(true)
@@ -466,6 +471,7 @@ function CardPane({ onBack, onSaved }: { onBack: () => void; onSaved: () => void
 }
 
 function PastDuePane({ state, onDone }: { state: SubscriptionState; onDone: () => void }) {
+    const locale = useLocale()
     const { access } = useWorkspaceAccess()
     const due = state.openInvoice ? usd(state.openInvoice.amountCents) : null
     return (
@@ -473,7 +479,7 @@ function PastDuePane({ state, onDone }: { state: SubscriptionState; onDone: () =
             <RightTitle>Update your card</RightTitle>
             <div className="mt-6">
                 <Notice tone="danger">
-                    {due ? `Your ${due} payment${state.openInvoice ? ` on ${shortDate(state.openInvoice.createdAt)}` : ''} was declined.` : 'Your last payment was declined.'}{' '}
+                    {due ? `Your ${due} payment${state.openInvoice ? ` on ${shortDate(state.openInvoice.createdAt, locale)}` : ''} was declined.` : 'Your last payment was declined.'}{' '}
                     {access === 'paused' ? 'Your workspace is paused and comes back as soon as it goes through.' : 'Pay it now to keep your workspace running.'}
                 </Notice>
             </div>
@@ -483,6 +489,7 @@ function PastDuePane({ state, onDone }: { state: SubscriptionState; onDone: () =
 }
 
 function InvoicesPane({ onBack }: { onBack: () => void }) {
+    const locale = useLocale()
     const [invoices, setInvoices] = useState<InvoiceSummary[] | null>(null)
 
     useEffect(() => {
@@ -518,7 +525,7 @@ function InvoicesPane({ onBack }: { onBack: () => void }) {
                                 rel="noreferrer"
                                 className="flex items-center justify-between gap-4 px-4 py-3 text-sm hover:bg-background"
                             >
-                                <span>{longDate(invoice.createdAt)}</span>
+                                <span>{longDate(invoice.createdAt, locale)}</span>
                                 <span className="flex items-center gap-3">
                                     {invoice.status !== 'paid' && <span className="text-xs text-muted-foreground capitalize">{invoice.status}</span>}
                                     <span className="tabular-nums">{usd(invoice.amountCents)}</span>

@@ -3,6 +3,8 @@
 import { Gauge } from '@/components/ui/gauge'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { cn } from '@/lib/utils'
+import { formatNumber } from '@rerun/i18n/format'
+import { useLocale } from 'next-intl'
 
 export type ContextUsage = {
     inputTokens?: number
@@ -25,16 +27,18 @@ function toneFor(ratio: number): string {
 }
 
 function UsageRow({ label, value }: { label: string; value: number }) {
+    const locale = useLocale()
     if (!value) return null
     return (
         <div className="flex items-center justify-between gap-4 text-xs">
             <span className="text-muted-foreground">{label}</span>
-            <span className="tabular-nums">{value.toLocaleString()}</span>
+            <span className="tabular-nums">{formatNumber(value, locale)}</span>
         </div>
     )
 }
 
 export function Context({ usedTokens, maxTokens, usage, modelId }: ContextProps) {
+    const locale = useLocale()
     if (!maxTokens || usedTokens <= 0) return null
     const ratio = usedTokens / maxTokens
     const percent = Math.round(ratio * 100)
@@ -60,7 +64,7 @@ export function Context({ usedTokens, maxTokens, usage, modelId }: ContextProps)
                     <div className="mt-1 flex items-center justify-between gap-4 border-t border-border pt-1 text-xs">
                         <span className="text-muted-foreground">Total</span>
                         <span className="tabular-nums">
-                            {usedTokens.toLocaleString()} / {maxTokens.toLocaleString()}
+                            {formatNumber(usedTokens, locale)} / {formatNumber(maxTokens, locale)}
                         </span>
                     </div>
                 </div>

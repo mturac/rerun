@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { PanelEditorHeader, PanelEditorShell } from '@/components/ui/panel-editor'
 import { editDisabledTooltip, fileEditBlockReason } from '@/lib/files/editable'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/lib/icons'
+import { useLocale } from 'next-intl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { FileDetailActions } from './FileDetailActions'
@@ -35,6 +36,7 @@ type FileDetailProps = {
 }
 
 export function FileDetail({ name, path, rawUrl, readFile, siblings, onBack, onDownload, onDelete, writeFile, onSaved, publicUrl, onPublish, onUnpublish, onShareSettings, openUrl }: FileDetailProps) {
+    const locale = useLocale()
     const { content, truncated, loading, error, replaceContent } = useFileContent({ path, name, read: readFile })
     // Keyed on the path rather than a boolean, so opening another file leaves the editor by itself.
     const [editingPath, setEditingPath] = useState<string | null>(null)
@@ -72,7 +74,7 @@ export function FileDetail({ name, path, rawUrl, readFile, siblings, onBack, onD
     )
 
     const blocked = loading ? null : fileEditBlockReason({ name, truncated, content })
-    const editDisabledReason = loading ? 'Still loading this file' : blocked ? editDisabledTooltip(blocked) : undefined
+    const editDisabledReason = loading ? 'Still loading this file' : blocked ? editDisabledTooltip(blocked, locale) : undefined
 
     return (
         <PanelEditorShell>

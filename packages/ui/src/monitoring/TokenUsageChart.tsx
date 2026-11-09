@@ -1,21 +1,23 @@
 'use client'
 
+import { formatDate, formatNumber } from '@rerun/i18n/format'
 import { useCallback, useMemo } from 'react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from 'recharts'
 import type { EngineUsageBucket } from '@rerun/contracts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../primitives/chart'
 import { CHART_FALLBACK_COLOR, CHART_PALETTE, chartColorAt } from './chart-palette'
 import { cn } from '../cn'
+import { useUiLocale } from '../locale'
 
-const compactFmt = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
+const compact = (n: number, locale: string) => formatNumber(n, locale, { notation: 'compact', maximumFractionDigits: 1 })
 
 function formatCost(n: number): string {
     return `$${n >= 1 ? n.toFixed(2) : n.toFixed(4)}`
 }
 
-function dayShort(day: string): string {
+function dayShort(day: string, locale: string): string {
     const d = new Date(`${day}T00:00:00`)
-    return Number.isNaN(d.getTime()) ? day : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    return Number.isNaN(d.getTime()) ? day : formatDate(d, locale, { month: 'short', day: 'numeric' })
 }
 
 type Series = { key: string; label: string; color: string }
@@ -32,7 +34,8 @@ export type TokenUsageChartProps = {
 }
 
 export function TokenUsageChart({ metric = 'tokens', breakdown = 'total', chartType = 'area', buckets, className, animated = true }: TokenUsageChartProps) {
-    const formatValue = useCallback((n: number) => (metric === 'cost' ? formatCost(n) : compactFmt.format(n)), [metric])
+    const locale = useUiLocale()
+    const formatValue = useCallback((n: number) => (metric === 'cost' ? formatCost(n) : compact(n, locale)), [metric, locale])
 
     const daily = useMemo(() => {
         const map = new Map<string, { day: string; tokens: number; cost: number; input: number; output: number; cached: number; runCount: number }>()
@@ -73,7 +76,7 @@ export function TokenUsageChart({ metric = 'tokens', breakdown = 'total', chartT
             }
             const s: Series[] = models.map(m => ({ key: m.key, label: m.name, color: m.color }))
             const r = daily.map(d => {
-                const row: Record<string, number | string> = { day: dayShort(d.day) }
+                const row: Record<string, number | string> = { day: dayShort(d.day, locale) }
                 for (const m of models) row[m.key] = perDay.get(d.day)?.get(m.name) ?? 0
                 return row
             })
@@ -85,13 +88,13 @@ export function TokenUsageChart({ metric = 'tokens', breakdown = 'total', chartT
                 { key: 'output', label: 'Output', color: CHART_PALETTE[1] },
                 { key: 'cached', label: 'Cached', color: CHART_PALETTE[2] },
             ]
-            const r = daily.map(d => ({ day: dayShort(d.day), input: d.input, output: d.output, cached: d.cached }))
+            const r = daily.map(d => ({ day: dayShort(d.day, locale), input: d.input, output: d.output, cached: d.cached }))
             return { rows: r, series: s }
         }
         const s: Series[] = [{ key: 'value', label: metric === 'cost' ? 'Cost' : 'Tokens', color: CHART_PALETTE[0] }]
-        const r = daily.map(d => ({ day: dayShort(d.day), value: metric === 'cost' ? d.cost : d.tokens }))
+        const r = daily.map(d => ({ day: dayShort(d.day, locale), value: metric === 'cost' ? d.cost : d.tokens }))
         return { rows: r, series: s }
-    }, [buckets, daily, models, metric, effectiveBreakdown])
+    }, [buckets, daily, models, metric, effectiveBreakdown, locale])
 
     const chartConfig = useMemo<ChartConfig>(() => Object.fromEntries(series.map(s => [s.key, { label: s.label, color: s.color }])), [series])
 

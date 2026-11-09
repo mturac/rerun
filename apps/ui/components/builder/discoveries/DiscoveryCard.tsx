@@ -1,7 +1,9 @@
 'use client'
 
+import { formatNumber } from '@rerun/i18n/format'
 import { BorderBeam } from '@rerun/ui'
 import { animate, motion } from 'motion/react'
+import { useLocale } from 'next-intl'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { Icon } from '@/components/ui/icon'
@@ -56,21 +58,22 @@ function useArrivalBeam(enabled: boolean): boolean {
     return enabled && lit
 }
 
-function formatCount(value: number, decimals: number): string {
-    return value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+function formatCount(value: number, decimals: number, locale: string): string {
+    return formatNumber(value, locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
 }
 
 function CountUp({ value, decimals = 0, still }: { value: number; decimals?: number; still?: boolean }) {
+    const locale = useLocale()
     const ref = useRef<HTMLSpanElement>(null)
     useEffect(() => {
         const node = ref.current
         if (!node || still) return
-        const controls = animate(0, value, { duration: 1.4, ease: [0.16, 1, 0.3, 1], onUpdate: latest => (node.textContent = formatCount(latest, decimals)) })
+        const controls = animate(0, value, { duration: 1.4, ease: [0.16, 1, 0.3, 1], onUpdate: latest => (node.textContent = formatCount(latest, decimals, locale)) })
         return () => controls.stop()
-    }, [value, decimals, still])
+    }, [value, decimals, still, locale])
     return (
         <span ref={ref} className="tabular-nums">
-            {formatCount(value, decimals)}
+            {formatCount(value, decimals, locale)}
         </span>
     )
 }

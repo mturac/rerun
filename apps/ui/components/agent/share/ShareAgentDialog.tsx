@@ -12,6 +12,7 @@ import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { formatBytes } from '@/lib/files/format'
 import { Link2 } from '@/lib/icons'
 import { Stripes } from '@rerun/ui/primitives'
+import { useLocale } from 'next-intl'
 import { ShareAgentLink } from './ShareAgentLink'
 import { ShareAgentOptions, ShareAgentOptionsSkeleton } from './ShareAgentOptions'
 import { ShareAgentSafety } from './ShareAgentSafety'
@@ -106,6 +107,7 @@ function ShareAgentBody({ agentId, agentName, onClose }: { agentId: string; agen
 // Sending the agent alone needs no ceremony. Sending someone's memories, database or files out of
 // the workspace does, and the confirmation spells out what that means rather than asking twice.
 function CreateLinkButton({ flow, agentId, agentName }: { flow: ShareFlow; agentId: string; agentName: string }) {
+    const locale = useLocale()
     const canManage = useCanManageAgent(agentId)
     const button = (
         <Button type="button" disabled={!canManage || flow.busy || flow.loading || !flow.plan} onClick={flow.carriesData ? undefined : () => void flow.create()}>
@@ -117,7 +119,7 @@ function CreateLinkButton({ flow, agentId, agentName }: { flow: ShareFlow; agent
 
     const carried = [
         flow.include.memories && flow.plan.contents.memories.count > 0 ? `${flow.plan.contents.memories.count} memories` : null,
-        flow.include.database && flow.plan.contents.database.count > 0 ? `its database (${formatBytes(flow.plan.contents.database.bytes)}, not scanned for secrets)` : null,
+        flow.include.database && flow.plan.contents.database.count > 0 ? `its database (${formatBytes(flow.plan.contents.database.bytes, locale)}, not scanned for secrets)` : null,
         flow.include.files && flow.plan.contents.files.count > 0 ? `${flow.plan.contents.files.count} workspace files` : null,
     ].filter((entry): entry is string => entry !== null)
 

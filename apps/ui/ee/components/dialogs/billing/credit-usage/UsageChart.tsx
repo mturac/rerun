@@ -1,5 +1,6 @@
 'use client'
 
+import { useLocale } from 'next-intl'
 import { useState } from 'react'
 
 import { dayLabel, periodDayCount, type CreditBalance, type CreditUsage } from '@/ee/lib/billing/credit-usage'
@@ -43,7 +44,7 @@ function Daily({ days, slots, hover, onHover }: { days: Day[]; slots: number; ho
 }
 
 // Spent so far against the credit, and where today's pace lands by the end of the period.
-function Cumulative({ days, slots, balance, trial, hover, onHover }: { days: Day[]; slots: number; balance: CreditBalance; trial: boolean; hover: number | null; onHover: (index: number | null) => void }) {
+function Cumulative({ days, slots, balance, trial, hover, onHover, locale }: { days: Day[]; slots: number; balance: CreditBalance; trial: boolean; hover: number | null; onHover: (index: number | null) => void; locale: string }) {
     const month = balance.wholeMicros - balance.topupLeftMicros
     const whole = balance.wholeMicros
     const points = days.reduce<number[]>((sums, day) => [...sums, (sums.at(-1) ?? 0) + spentOn(day)], [])
@@ -68,11 +69,11 @@ function Cumulative({ days, slots, balance, trial, hover, onHover }: { days: Day
             </svg>
             {showMonth && (
                 <span className="absolute left-0 -translate-y-full pb-0.5 text-[10px] text-muted-foreground" style={{ top: y(month) }}>
-                    Monthly {formatCredits(month)}
+                    Monthly {formatCredits(month, locale)}
                 </span>
             )}
             <span className={cn('absolute -translate-y-full pb-0.5 text-[10px]', showMonth ? 'right-0 text-muted-foreground/70' : 'left-0 text-muted-foreground')} style={{ top: y(whole) }}>
-                {trial ? `Trial credits ${formatCredits(whole)}` : showMonth ? `+ top-up ${formatCredits(whole)}` : `Credits ${formatCredits(whole)}`}
+                {trial ? `Trial credits ${formatCredits(whole, locale)}` : showMonth ? `+ top-up ${formatCredits(whole, locale)}` : `Credits ${formatCredits(whole, locale)}`}
             </span>
             <div className="absolute inset-0 flex">
                 {Array.from({ length: slots }, (_, index) => (
@@ -84,6 +85,7 @@ function Cumulative({ days, slots, balance, trial, hover, onHover }: { days: Day
 }
 
 export function UsageChart({ usage, balance, trial, mode }: { usage: CreditUsage; balance: CreditBalance; trial: boolean; mode: ChartMode }) {
+    const locale = useLocale()
     const [hover, setHover] = useState<number | null>(null)
     const slots = periodDayCount(usage)
     const day = hover != null ? usage.days[hover] : null
@@ -94,21 +96,21 @@ export function UsageChart({ usage, balance, trial, mode }: { usage: CreditUsage
             <div className="flex h-9 items-end justify-between gap-3 text-xs">
                 {day ? (
                     <>
-                        <span className="font-medium">{dayLabel(day.day)}</span>
+                        <span className="font-medium">{dayLabel(day.day, locale)}</span>
                         <span className="flex items-center gap-3 text-muted-foreground">
                             {mode === 'cumulative' ? (
                                 <span>
-                                    <span className="text-foreground tabular-nums">{formatCredits(upTo)}</span> spent so far
+                                    <span className="text-foreground tabular-nums">{formatCredits(upTo, locale)}</span> spent so far
                                 </span>
                             ) : (
                                 <>
                                     <span className="flex items-center gap-1.5">
                                         <Swatch kind="ai" />
-                                        AI <span className="text-foreground tabular-nums">{formatCredits(day.aiMicros)}</span>
+                                        AI <span className="text-foreground tabular-nums">{formatCredits(day.aiMicros, locale)}</span>
                                     </span>
                                     <span className="flex items-center gap-1.5">
                                         <Swatch kind="data" />
-                                        Data <span className="text-foreground tabular-nums">{formatCredits(day.dataMicros)}</span>
+                                        Data <span className="text-foreground tabular-nums">{formatCredits(day.dataMicros, locale)}</span>
                                     </span>
                                 </>
                             )}
@@ -118,16 +120,16 @@ export function UsageChart({ usage, balance, trial, mode }: { usage: CreditUsage
                     <span className="text-muted-foreground">{mode === 'daily' ? 'Credits per day' : 'Spent so far, and where this pace lands'}</span>
                 )}
             </div>
-            {mode === 'daily' ? <Daily days={usage.days} slots={slots} hover={hover} onHover={setHover} /> : <Cumulative days={usage.days} slots={slots} balance={balance} trial={trial} hover={hover} onHover={setHover} />}
+            {mode === 'daily' ? <Daily days={usage.days} slots={slots} hover={hover} onHover={setHover} /> : <Cumulative days={usage.days} slots={slots} balance={balance} trial={trial} hover={hover} onHover={setHover} locale={locale} />}
             <div className="relative flex justify-between text-[10px] text-muted-foreground tabular-nums">
-                <span>{shortDate(usage.period.start)}</span>
+                <span>{shortDate(usage.period.start, locale)}</span>
                 {usage.days.length < slots && (
                     <span className="absolute -translate-x-1/2 text-foreground" style={{ left: `${((usage.days.length - 0.5) / slots) * 100}%` }}>
                         Today
                     </span>
                 )}
                 <span>
-                    {trial ? 'Trial ends' : 'Resets'} {shortDate(usage.period.end)}
+                    {trial ? 'Trial ends' : 'Resets'} {shortDate(usage.period.end, locale)}
                 </span>
             </div>
         </figure>

@@ -1,6 +1,7 @@
 'use client'
 
 import { AgentBuddy } from '@rerun/ui/iso-grid'
+import { useLocale } from 'next-intl'
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react'
 
 import { listWorkspacePublishedAction } from '@/app/api/_actions/publish.actions'
@@ -72,6 +73,7 @@ export function WorkspacePublishedList() {
 }
 
 function GridCard({ file, onShare, onUnpublished }: { file: PublishedFile; onShare: () => void; onUnpublished: (slug: string) => void }) {
+    const locale = useLocale()
     const coworkerName = useBoardStore(s => s.agents.find(agent => agent.id === file.agentId)?.name) ?? 'Coworker'
     const activate = (event: KeyboardEvent<HTMLDivElement>) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
@@ -90,7 +92,7 @@ function GridCard({ file, onShare, onUnpublished }: { file: PublishedFile; onSha
                     <AccessBadge access={file.access} />
                     <AgentBuddy agentId={file.agentId} size={12} animated={false} facing="right" />
                     <span className="truncate">
-                        {coworkerName} · {relativeDate(file.updatedAt)}
+                        {coworkerName} · {relativeDate(file.updatedAt, locale)}
                     </span>
                 </div>
             </div>

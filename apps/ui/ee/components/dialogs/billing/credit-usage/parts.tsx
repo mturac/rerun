@@ -1,6 +1,7 @@
 'use client'
 
 import { AgentBuddy } from '@rerun/ui/iso-grid'
+import { useLocale } from 'next-intl'
 import { createElement } from 'react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -53,7 +54,8 @@ type Segment = { key: string; micros: number; className: string; label: string; 
 // the top-up that outlives the reset, hatched so it reads as a reserve rather than more month. A
 // trial's credit is all top-up and never resets, so it is simply what is left.
 export function SplitBar({ balance, trial = false }: { balance: CreditBalance; trial?: boolean }) {
-    const segments: Segment[] = [{ key: 'ai', micros: balance.usedAiMicros, className: KIND_FILL.ai, label: `${KIND_LABEL.ai} · ${formatCredits(balance.usedAiMicros)} credits` }, { key: 'data', micros: balance.usedDataMicros, className: KIND_FILL.data, label: `${KIND_LABEL.data} · ${formatCredits(balance.usedDataMicros)} credits` }, { key: 'month', micros: balance.monthLeftMicros, className: 'bg-muted-foreground/20', label: `Left this month · ${formatCredits(balance.monthLeftMicros)} credits` }, trial ? { key: 'topup', micros: balance.topupLeftMicros, className: 'bg-muted-foreground/20', label: `Left · ${formatCredits(balance.topupLeftMicros)} credits` } : { key: 'topup', micros: balance.topupLeftMicros, className: 'bg-muted-foreground/15', label: `Top-up, never expires · ${formatCredits(balance.topupLeftMicros)} credits`, hatched: true }].filter(segment => segment.micros > 0)
+    const locale = useLocale()
+    const segments: Segment[] = [{ key: 'ai', micros: balance.usedAiMicros, className: KIND_FILL.ai, label: `${KIND_LABEL.ai} · ${formatCredits(balance.usedAiMicros, locale)} credits` }, { key: 'data', micros: balance.usedDataMicros, className: KIND_FILL.data, label: `${KIND_LABEL.data} · ${formatCredits(balance.usedDataMicros, locale)} credits` }, { key: 'month', micros: balance.monthLeftMicros, className: 'bg-muted-foreground/20', label: `Left this month · ${formatCredits(balance.monthLeftMicros, locale)} credits` }, trial ? { key: 'topup', micros: balance.topupLeftMicros, className: 'bg-muted-foreground/20', label: `Left · ${formatCredits(balance.topupLeftMicros, locale)} credits` } : { key: 'topup', micros: balance.topupLeftMicros, className: 'bg-muted-foreground/15', label: `Top-up, never expires · ${formatCredits(balance.topupLeftMicros, locale)} credits`, hatched: true }].filter(segment => segment.micros > 0)
 
     if (segments.length === 0) return <div className="h-2.5 w-full rounded-full bg-muted-foreground/20" />
 
@@ -74,19 +76,20 @@ export function SplitBar({ balance, trial = false }: { balance: CreditBalance; t
 }
 
 export function KindLegend({ balance }: { balance: CreditBalance }) {
+    const locale = useLocale()
     return (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             {(['ai', 'data'] as const).map(kind => (
                 <span key={kind} className="flex items-center gap-1.5">
                     <Swatch kind={kind} />
                     {KIND_LABEL[kind]}
-                    <span className="text-foreground tabular-nums">{formatCredits(kind === 'ai' ? balance.usedAiMicros : balance.usedDataMicros)}</span>
+                    <span className="text-foreground tabular-nums">{formatCredits(kind === 'ai' ? balance.usedAiMicros : balance.usedDataMicros, locale)}</span>
                 </span>
             ))}
             <span className="flex items-center gap-1.5">
                 <span aria-hidden className="inline-block size-2 rounded-[2px] bg-muted-foreground/25" />
                 Left
-                <span className="text-foreground tabular-nums">{formatCredits(balance.leftMicros)}</span>
+                <span className="text-foreground tabular-nums">{formatCredits(balance.leftMicros, locale)}</span>
             </span>
         </div>
     )

@@ -17,10 +17,12 @@ import { cn } from '@/lib/utils'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { track } from '@rerun/analytics/client'
 import { formatAmount } from '@rerun/contracts'
+import { formatNumber } from '@rerun/i18n/format'
 import { OptionRow } from '@rerun/ui/chat'
 import { Icon } from '@rerun/ui/primitives'
 import { TemplateBoardPreview, type BoardAgent } from '@rerun/ui/iso-grid'
 import { StepTransition, useStepper } from '@rerun/ui/steps'
+import { useLocale } from 'next-intl'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
@@ -63,6 +65,7 @@ export type CancelFlowProps = {
 type Header = { icon: IconType; title: string; description: string }
 
 export function CancelFlow({ state, activity, activityLoading, agentCount, creditLeftLabel, onRemind, onClaim, onCancel, onCheckReason, onResume, onClose, onStepChange }: CancelFlowProps) {
+    const locale = useLocale()
     const firstStep: CancelStep = state.reminderAt ? 'goodbye' : 'sunk'
     const stepper = useStepper(CANCEL_STEPS.length, CANCEL_STEPS.indexOf(firstStep))
     const step = CANCEL_STEPS[stepper.index]
@@ -79,11 +82,11 @@ export function CancelFlow({ state, activity, activityLoading, agentCount, credi
     const reasonMissing = !comment.trim() ? 'Tell us in a few words why you are leaving' : !comeback ? "Tell us if you'll be back" : undefined
 
     const trial = state.phase === 'trial'
-    const endsOn = shortDate(state.endsAt)
-    const keptUntil = shortDate(state.keptUntil)
-    const reminderOn = state.reminderAt ? shortDate(state.reminderAt) : null
+    const endsOn = shortDate(state.endsAt, locale)
+    const keptUntil = shortDate(state.keptUntil, locale)
+    const reminderOn = state.reminderAt ? shortDate(state.reminderAt, locale) : null
     const offer = state.offer
-    const offerCopy = offer ? offerCopyOf(offer, endsOn) : null
+    const offerCopy = offer ? offerCopyOf(offer, endsOn, locale) : null
 
     useEffect(() => onStepChange(step), [step, onStepChange])
 
@@ -191,7 +194,7 @@ export function CancelFlow({ state, activity, activityLoading, agentCount, credi
 
     const boardAgents = useMemo((): BoardAgent[] => (activity?.agents ?? []).map(({ key, name, connectorSlugs }) => ({ key, name, connectorSlugs })), [activity])
 
-    const sunk = sunkFigures({ trial, state, activity, agentCount, creditLeftLabel })
+    const sunk = sunkFigures({ trial, state, activity, agentCount, creditLeftLabel, locale })
     const contentKey = `${step}-${outcome}`
 
     return (
@@ -253,7 +256,7 @@ export function CancelFlow({ state, activity, activityLoading, agentCount, credi
                     )}
                     {step === 'offer' && offer && offerCopy && (
                         <div className="flex flex-col gap-5">
-                            <OfferCard headline={offerCopy.headline} priceLabel={offerCopy.priceLabel} fullPriceLabel={offerCopy.fullPriceLabel} billedOnLabel={shortDate(offer.billedOn)} terms={offerCopy.terms} />
+                            <OfferCard headline={offerCopy.headline} priceLabel={offerCopy.priceLabel} fullPriceLabel={offerCopy.fullPriceLabel} billedOnLabel={shortDate(offer.billedOn, locale)} terms={offerCopy.terms} />
                             <Button size="lg" highlight className="w-full" disabled={busy} onClick={claim}>
                                 {offerCopy.claimLabel}
                             </Button>
@@ -339,10 +342,10 @@ export function CancelFlow({ state, activity, activityLoading, agentCount, credi
 
 type OfferCopy = { headline: string; priceLabel: string; fullPriceLabel: string; terms: string; claimLabel: string; claimedDescription: string }
 
-function offerCopyOf(offer: NonNullable<CancelFlowState['offer']>, endsOn: string): OfferCopy {
+function offerCopyOf(offer: NonNullable<CancelFlowState['offer']>, endsOn: string, locale: string): OfferCopy {
     const price = formatAmount(offer.priceCents, PLAN_CURRENCY)
     const full = formatAmount(offer.fullPriceCents, PLAN_CURRENCY)
-    const fullFrom = shortDate(offer.fullPriceFrom)
+    const fullFrom = shortDate(offer.fullPriceFrom, locale)
 
     if (offer.kind === 'trial_half') {
         return {
@@ -368,12 +371,12 @@ function offerCopyOf(offer: NonNullable<CancelFlowState['offer']>, endsOn: strin
     }
 }
 
-function sunkFigures({ trial, state, activity, agentCount, creditLeftLabel }: { trial: boolean; state: CancelFlowState; activity: CancelFlowActivity | null; agentCount: number; creditLeftLabel: string }): {
+function sunkFigures({ trial, state, activity, agentCount, creditLeftLabel, locale }: { trial: boolean; state: CancelFlowState; activity: CancelFlowActivity | null; agentCount: number; creditLeftLabel: string; locale: string }): {
     value: string
     caption: string
     stats: SunkStat[]
 } {
-    const runs = activity ? activity.runsMonth.toLocaleString() : null
+    const runs = activity ? formatNumber(activity.runsMonth, locale) : null
 
     if (!trial) {
         return {
@@ -391,7 +394,7 @@ function sunkFigures({ trial, state, activity, agentCount, creditLeftLabel }: { 
         caption: agentCount > 0 ? 'set up, connected and working' : 'Rerun credits left',
         stats: [
             { icon: ActivityIcon, label: 'Runs so far', value: runs },
-            { icon: CalendarIcon, label: 'Schedules', value: activity ? activity.schedules.toLocaleString() : null },
+            { icon: CalendarIcon, label: 'Schedules', value: activity ? formatNumber(activity.schedules, locale) : null },
         ],
     }
 }

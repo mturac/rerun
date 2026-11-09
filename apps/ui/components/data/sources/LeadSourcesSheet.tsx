@@ -7,6 +7,7 @@ import { absoluteDate, domainOf, isEmpty, relativeDate, rowCurrency, type Friend
 import { ExternalLinkIcon, MailCheckIcon, ShieldCheckIcon } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import type { BadgeTone } from '@rerun/ui/primitives'
+import { useLocale } from 'next-intl'
 import type { ReactNode } from 'react'
 import { EMAIL_VERDICTS, EmailVerdictBadge } from './EmailVerdictBadge'
 import { SourceFacepile, SourceLogo } from './SourceLogo'
@@ -15,13 +16,14 @@ import type { CellSource, RowSources } from './table-sources'
 export type LeadField = { key: string; label: string; value: ReactNode; source?: CellSource }
 
 export function FieldSourceDetails({ cell }: { cell: CellSource }) {
+    const locale = useLocale()
     return (
         <div className="flex flex-col gap-2 text-xs">
             <div className="flex min-w-0 items-center gap-2">
                 <SourceLogo source={cell.source} />
                 <span className="min-w-0 flex-1 truncate text-foreground">{cell.source.name}</span>
-                <span title={absoluteDate(cell.at)} className="shrink-0 text-muted-foreground tabular-nums">
-                    {relativeDate(cell.at)}
+                <span title={absoluteDate(cell.at, locale)} className="shrink-0 text-muted-foreground tabular-nums">
+                    {relativeDate(cell.at, locale)}
                 </span>
             </div>
             {cell.verdict && (

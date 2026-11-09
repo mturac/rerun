@@ -1,6 +1,8 @@
 'use client'
 
+import { formatDate } from '@rerun/i18n/format'
 import { motion } from 'motion/react'
+import { useLocale } from 'next-intl'
 
 import { Gauge } from '@/components/ui/gauge'
 import { dailyTotals } from '@/lib/rewind/format'
@@ -11,7 +13,8 @@ import { useLocalHourly } from '../useLocalHourly'
 import { useSettledValue } from '../useSettledValue'
 import type { RewindSlideProps } from './types'
 
-const FULL_DAY_NAMES: Record<string, string> = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' }
+// 2024-01-01 is a Monday, the first day of the week the totals start on.
+const fullDayName = (day: number, locale: string) => formatDate(Date.UTC(2024, 0, 1 + day), locale, { weekday: 'long', timeZone: 'UTC' })
 
 function SuccessRing({ ratio }: { ratio: number }) {
     const shown = useSettledValue(ratio, 1.8)
@@ -24,7 +27,8 @@ function SuccessRing({ ratio }: { ratio: number }) {
 }
 
 export function RhythmSlide({ payload }: RewindSlideProps) {
-    const days = dailyTotals(useLocalHourly(payload.hourly, payload.weekStart))
+    const locale = useLocale()
+    const days = dailyTotals(useLocalHourly(payload.hourly, payload.weekStart), locale)
     const peak = Math.max(1, ...days.map(day => day.runs))
     const busiest = days.find(day => day.runs === peak) ?? days[0]
     const successRatio = payload.totals.runs ? payload.totals.done / payload.totals.runs : 0
@@ -69,7 +73,7 @@ export function RhythmSlide({ payload }: RewindSlideProps) {
             <RewindHeadline>
                 <RewindCount value={payload.totals.runs} delay={0.3} /> runs.
                 <br />
-                {FULL_DAY_NAMES[busiest.label]} was the big one.
+                {fullDayName(days.indexOf(busiest), locale)} was the big one.
             </RewindHeadline>
         </RewindSlideFrame>
     )

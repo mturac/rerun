@@ -1,6 +1,7 @@
 'use client'
 
 import { Badge } from '@rerun/ui/primitives'
+import { useLocale } from 'next-intl'
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatWeekRange } from '@/lib/rewind/format'
@@ -12,6 +13,7 @@ import { useRewindStore } from '@/stores/rewind.store'
 const CONTENT_LAYER = 'z-[110]'
 
 export function RewindWeekPicker({ currentId, onOpenChange, className }: { currentId: string; onOpenChange: (open: boolean) => void; className?: string }) {
+    const locale = useLocale()
     const weeks = useRewindStore(s => s.weeks)
     const loadingWeek = useRewindStore(s => s.loadingWeek)
     const openWeek = useRewindStore(s => s.openWeek)
@@ -29,7 +31,7 @@ export function RewindWeekPicker({ currentId, onOpenChange, className }: { curre
             <SelectContent position="popper" align="center" className={cn(CONTENT_LAYER, 'max-h-72')}>
                 {weeks.map((week, index) => (
                     <SelectItem key={week.id} value={week.id} className="text-xs">
-                        {formatWeekRange(week.weekStart, weekEndOf(week.weekStart))}
+                        {formatWeekRange(week.weekStart, weekEndOf(week.weekStart), locale)}
                         {index === 0 && !week.viewed && (
                             <Badge tone="brand" size="sm">
                                 New

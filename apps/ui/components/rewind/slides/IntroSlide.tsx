@@ -2,6 +2,7 @@
 
 import { TemplateBoardPreview, type BoardAgent } from '@rerun/ui/iso-grid'
 import type { TemplateConnector } from '@rerun/contracts'
+import { useLocale } from 'next-intl'
 import { useMemo } from 'react'
 
 import { formatWeekRange } from '@/lib/rewind/format'
@@ -11,6 +12,7 @@ import type { RewindSlideProps } from './types'
 const MAX_BOARD_AGENTS = 6
 
 export function IntroSlide({ payload, wide }: RewindSlideProps) {
+    const locale = useLocale()
     const { agents, connectors } = useMemo(() => {
         const shown = payload.agents.slice(0, MAX_BOARD_AGENTS)
         const boardAgents: BoardAgent[] = shown.map(agent => ({ key: agent.agentId, name: agent.name, connectorSlugs: agent.connectors }))
@@ -21,7 +23,7 @@ export function IntroSlide({ payload, wide }: RewindSlideProps) {
     return (
         <RewindSlideFrame
             tone="violet"
-            eyebrow={formatWeekRange(payload.weekStart, payload.weekEnd)}
+            eyebrow={formatWeekRange(payload.weekStart, payload.weekEnd, locale)}
             visual={
                 <div className="relative -mx-6 h-[50cqh] [mask-image:linear-gradient(to_bottom,transparent,black_20%)] rewind-wide:mx-0 rewind-wide:h-full rewind-wide:[mask-image:linear-gradient(to_right,transparent,black_15%)]">
                     {agents.length > 0 && <TemplateBoardPreview agents={agents} connectors={connectors} alive maxZoom={wide ? 4 : 2.4} className="size-full" />}

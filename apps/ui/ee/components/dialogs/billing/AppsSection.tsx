@@ -1,5 +1,7 @@
 'use client'
 
+import { formatDate } from '@rerun/i18n/format'
+import { useLocale } from 'next-intl'
 import { useEffect, useState } from 'react'
 import { getAppsOverviewAction } from '@/app/api/_actions/apps.actions'
 import type { AppsOverview } from '@/app/api/_services/apps.service'
@@ -81,6 +83,7 @@ export function AppsSection({ rows, interval, renewal, disabled = false, onChang
 }
 
 function AppSlotsLine({ row, interval, renewal, disabled, onChange }: { row: AppSlotsRow; interval: BillingInterval; renewal: string; disabled: boolean; onChange: (value: number) => void }) {
+    const locale = useLocale()
     const { slug, value, current, slotsState, onOpen } = row
     const { name, providerLabel } = appInfo(slug)
     const slotPrice = PLAN_PRICES_CENTS[interval][APP_ADDON_KEYS[slug]]
@@ -93,7 +96,7 @@ function AppSlotsLine({ row, interval, renewal, disabled, onChange }: { row: App
     const lessReason = disabled
         ? undefined
         : onlyTrialSlot
-          ? `Free until ${trialUntil(trialEndsAt)}`
+          ? `Free until ${trialUntil(trialEndsAt, locale)}`
           : inUse === null
             ? 'Loading your accounts'
             : value <= floor
@@ -167,16 +170,17 @@ function SlotsCount({ value, inUse }: { value: number; inUse: number | null }) {
     )
 }
 
-function trialUntil(trialEndsAt: string): string {
-    return new Date(trialEndsAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+function trialUntil(trialEndsAt: string, locale: string): string {
+    return formatDate(trialEndsAt, locale, { month: 'long', day: 'numeric' })
 }
 
 // The subscriber trial's slot is not on Stripe: the stepper shows it on top of the paid ones but never
 // sends it back as a quantity, and the line says apart the day it turns into a paid one.
 function TrialSlotsCount({ value, inUse, trialEndsAt, price }: { value: number; inUse: number | null; trialEndsAt: string; price: string }) {
+    const locale = useLocale()
     const trial = (
         <>
-            <span className="font-medium text-foreground">1 slot free until {trialUntil(trialEndsAt)}</span>, then {price}
+            <span className="font-medium text-foreground">1 slot free until {trialUntil(trialEndsAt, locale)}</span>, then {price}
         </>
     )
     if (value === 0) return trial

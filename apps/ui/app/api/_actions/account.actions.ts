@@ -1,6 +1,7 @@
 'use server'
 
 import { parsePhoneNumberFromString } from 'libphonenumber-js/min'
+import { cookies, headers } from 'next/headers'
 import type { User } from '@supabase/supabase-js'
 
 import { AuthorizationError } from '@/app/api/_auth/ownership'
@@ -16,6 +17,8 @@ import { uploadPublicImage } from '@/lib/images/upload'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { getServerSession } from '@/supabase/session/getServerSession'
 import { selectMany, selectMaybeSingle } from '@/supabase/supabase-helpers'
+import type { Database } from '@/app/api/database.types'
+import { isStableLocale, LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE, PSEUDO_LOCALE, type Locale } from '@rerun/i18n'
 import type { ActionResult } from './space.actions'
 
 const USER_AVATARS_BUCKET = 'user-avatars'
@@ -51,6 +54,35 @@ export async function updateMyNameAction(params: { name: string }): Promise<Acti
         return { ok: true }
     } catch (err) {
         return failed(err, 'Could not save your name.')
+    }
+}
+
+// Saved on the account for the emails and notifications it receives, and mirrored in a cookie so
+// this device reads it without a query. The cookie sits on `.rerun.build`, where the landing reads it
+// too. `null` goes back to following the browser.
+export async function updateMyLocaleAction(params: { locale: Locale | typeof PSEUDO_LOCALE | null }): Promise<ActionResult> {
+    try {
+        const account = await requireAccount()
+        const { locale } = params
+        const pseudo = locale === PSEUDO_LOCALE && process.env.NODE_ENV !== 'production'
+        if (locale !== null && !pseudo && !isStableLocale(locale)) return { ok: false, error: 'Unknown language.' }
+
+        if (!pseudo) {
+            const { error } = await createServiceRoleClient()
+                .from('users')
+                .update<Database['public']['Tables']['users']['Update']>({ locale })
+                .eq('id', account.id)
+            if (error) throw new Error(error.message)
+        }
+
+        const cookieStore = await cookies()
+        const host = ((await headers()).get('host') ?? '').split(':')[0]
+        const domain = host.endsWith('rerun.build') ? '.rerun.build' : undefined
+        if (locale === null) cookieStore.set(LOCALE_COOKIE, '', { path: '/', maxAge: 0, domain })
+        else cookieStore.set(LOCALE_COOKIE, locale, { path: '/', maxAge: LOCALE_COOKIE_MAX_AGE, sameSite: 'lax', domain })
+        return { ok: true }
+    } catch (err) {
+        return failed(err, 'Could not change the language.')
     }
 }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import type { AgentArchiveEntry } from '@rerun/contracts'
+import { useLocale } from 'next-intl'
 import * as React from 'react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { formatBytes } from '@/lib/files/format'
@@ -94,6 +95,7 @@ function TreeRow({
     excluded: string[]
     onToggle: (paths: string[], keep: boolean) => void
 }) {
+    const locale = useLocale()
     const leaves = React.useMemo(() => leavesOf(node), [node])
     const kept = leaves.filter(file => !excluded.includes(file.path))
     const checked = kept.length === leaves.length ? true : kept.length === 0 ? false : 'indeterminate'
@@ -137,7 +139,7 @@ function TreeRow({
                         {node.file ? node.file.flagged.join(', ') : `${flaggedCount} flagged`}
                     </span>
                 )}
-                <span className="w-14 shrink-0 text-right text-[0.65rem] text-muted-foreground">{formatBytes(node.bytes)}</span>
+                <span className="w-14 shrink-0 text-right text-[0.65rem] text-muted-foreground">{formatBytes(node.bytes, locale)}</span>
             </div>
 
             {!node.file &&

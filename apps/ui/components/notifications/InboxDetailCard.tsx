@@ -7,6 +7,7 @@ import { cjk } from '@streamdown/cjk'
 import { code } from '@streamdown/code'
 import { math } from '@streamdown/math'
 import { mermaid } from '@streamdown/mermaid'
+import { useLocale } from 'next-intl'
 import { Streamdown } from 'streamdown'
 
 import { TooltipDisabledReason, TooltipLabeled } from '@/components/ui/tooltip'
@@ -28,8 +29,9 @@ type InboxDetailCardProps = {
 }
 
 export function InboxDetailCard({ entry, message, total, onClose, onSeeAll, onOpenConversation, onMarkRead }: InboxDetailCardProps) {
+    const locale = useLocale()
     const meta = ATTENTION_STATUS_META[entry.status] ?? ATTENTION_STATUS_META.waiting_human
-    const subtitle = [entry.title || meta.label, entry.updatedAt && shortRelativeTime(entry.updatedAt)].filter(Boolean).join(' · ')
+    const subtitle = [entry.title || meta.label, entry.updatedAt && shortRelativeTime(entry.updatedAt, locale)].filter(Boolean).join(' · ')
 
     return (
         <div className="flex flex-col gap-3 p-3">

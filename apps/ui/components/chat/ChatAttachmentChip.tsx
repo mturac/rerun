@@ -7,6 +7,7 @@ import { CheckIcon, FileIcon, RefreshCwIcon, XIcon } from '@/lib/icons'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { FileUIPart } from 'ai'
+import { useLocale } from 'next-intl'
 
 type ChatAttachmentChipProps = {
     file: FileUIPart & { id: string }
@@ -24,6 +25,7 @@ function progressLine(upload: UploadItem): string {
 }
 
 export function ChatAttachmentChip({ file, upload, onRemove, onRetry }: ChatAttachmentChipProps) {
+    const locale = useLocale()
     const isImage = file.mediaType?.startsWith('image/')
     const failed = upload?.status === 'error'
     const pending = upload != null && upload.status !== 'done' && upload.status !== 'error'
@@ -53,7 +55,7 @@ export function ChatAttachmentChip({ file, upload, onRemove, onRetry }: ChatAtta
                     </>
                 )}
                 {failed && <span className="max-w-40 truncate text-[10px] text-destructive">{upload.error}</span>}
-                {upload?.status === 'done' && <span className="text-[10px] text-muted-foreground">{formatBytes(upload.size)}</span>}
+                {upload?.status === 'done' && <span className="text-[10px] text-muted-foreground">{formatBytes(upload.size, locale)}</span>}
             </div>
 
             {/* Le padding droit de la chip est plus court que le gauche : le padding propre des boutons

@@ -2,8 +2,10 @@
 
 import type { RewindAwardId } from '@rerun/contracts'
 import type { BorderBeamProps } from '@rerun/ui'
+import { formatNumber } from '@rerun/i18n/format'
 import { Card } from '@rerun/ui/primitives'
 import { motion } from 'motion/react'
+import { useLocale } from 'next-intl'
 
 import { Icon } from '@/components/ui/icon'
 
@@ -13,16 +15,17 @@ import { HandshakeIcon, MoonStar, PlugIcon, ShieldCheck, TimerIcon, WrenchIcon, 
 import { RewindHeadline, RewindSlideFrame } from '../RewindSlideFrame'
 import type { RewindSlideProps } from './types'
 
-const AWARDS: Record<RewindAwardId, { title: string; icon: LucideIcon; tone: NonNullable<BorderBeamProps['tone']>; color: string; caption: (value: number) => string }> = {
+const AWARDS: Record<RewindAwardId, { title: string; icon: LucideIcon; tone: NonNullable<BorderBeamProps['tone']>; color: string; caption: (value: number, locale: string) => string }> = {
     'night-owl': { title: 'Night Owl', icon: MoonStar, tone: 'brand', color: '#b7a8ff', caption: value => `${value} runs after dark` },
-    marathon: { title: 'Marathoner', icon: TimerIcon, tone: 'orange', color: '#ff8a1f', caption: value => `${formatDuration(value)} in one go` },
+    marathon: { title: 'Marathoner', icon: TimerIcon, tone: 'orange', color: '#ff8a1f', caption: (value, locale) => `${formatDuration(value, locale)} in one go` },
     flawless: { title: 'Flawless', icon: ShieldCheck, tone: 'green', color: '#a3ff3f', caption: value => `${value} runs, zero errors` },
-    toolsmith: { title: 'Toolsmith', icon: WrenchIcon, tone: 'cyan', color: '#38d4ff', caption: value => `${value.toLocaleString('en-US')} tool calls` },
+    toolsmith: { title: 'Toolsmith', icon: WrenchIcon, tone: 'cyan', color: '#38d4ff', caption: (value, locale) => `${formatNumber(value, locale)} tool calls` },
     'connector-hub': { title: 'Connector Hub', icon: PlugIcon, tone: 'yellow', color: '#ffd23f', caption: value => `${value} apps juggled` },
     'team-player': { title: 'Team Player', icon: HandshakeIcon, tone: 'red', color: '#ff3fa4', caption: value => `${value} handoffs` },
 }
 
 export function AwardsSlide({ payload, agentName }: RewindSlideProps) {
+    const locale = useLocale()
     return (
         <RewindSlideFrame
             tone="ink"
@@ -45,7 +48,7 @@ export function AwardsSlide({ payload, agentName }: RewindSlideProps) {
                                     <p className="truncate text-base font-medium" style={{ color: meta.color }}>
                                         {agentName(award.agentId)}
                                     </p>
-                                    <p className="mt-0.5 text-xs text-muted-foreground">{meta.caption(award.value)}</p>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">{meta.caption(award.value, locale)}</p>
                                 </Card>
                             </motion.div>
                         )

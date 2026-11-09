@@ -2,6 +2,7 @@
 
 import { InboxRow } from '@rerun/ui/inbox'
 import { Badge } from '@rerun/ui/primitives'
+import { useLocale } from 'next-intl'
 import { useEffect, useMemo, useState } from 'react'
 
 import { adoptEngineSessionAction, listAgentSessionsAction } from '@/app/api/_actions/session.actions'
@@ -61,7 +62,8 @@ export function AgentChatsList({ agentId, agentName, activeSessionId, initialFil
     const inboxItems = attention.map(item => ({ ...item, agentName }))
     const listsHistory = filter !== 'needs'
     const shown = others.filter(entry => (filter === 'chats' ? !isAutomated(entry) : filter === 'automations' ? isAutomated(entry) : true))
-    const days = groupByDay(shown)
+    const locale = useLocale()
+    const days = groupByDay(shown, locale)
 
     const open = async (entry: SessionHistoryEntry) => {
         if (entry.id) {
@@ -154,11 +156,11 @@ export function AgentChatsList({ agentId, agentName, activeSessionId, initialFil
 }
 
 // `history` arrives most recent first, so the days come out in order too.
-export function groupByDay(entries: SessionHistoryEntry[]) {
+export function groupByDay(entries: SessionHistoryEntry[], locale?: string) {
     const now = new Date()
     const days: { day: string; entries: SessionHistoryEntry[] }[] = []
     for (const entry of entries) {
-        const day = messageDayLabel(entry.updatedAt, now)
+        const day = messageDayLabel(entry.updatedAt, locale, now)
         const last = days.at(-1)
         if (last?.day === day) last.entries.push(entry)
         else days.push({ day, entries: [entry] })
@@ -167,6 +169,7 @@ export function groupByDay(entries: SessionHistoryEntry[]) {
 }
 
 export function ChatRow({ entry, active, running, adopting, onOpen }: { entry: SessionHistoryEntry; active: boolean; running: boolean; adopting: boolean; onOpen: () => void }) {
+    const locale = useLocale()
     const SourceIcon = entry.source === 'trigger' ? WebhookIcon : CalendarClock
     // A run titled before the hub retitled them, or by an engine that sends no final answer, is still
     // named after its routine: the routine line would only repeat it.
@@ -196,7 +199,7 @@ export function ChatRow({ entry, active, running, adopting, onOpen }: { entry: S
                 )}
                 {entry.originAgentName && <span className="truncate text-xs text-muted-foreground">Started by {entry.originAgentName}</span>}
             </span>
-            {adopting ? <LoaderIcon className="size-3.5 shrink-0 animate-spin text-muted-foreground" /> : <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{messageTime(entry.updatedAt)}</span>}
+            {adopting ? <LoaderIcon className="size-3.5 shrink-0 animate-spin text-muted-foreground" /> : <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{messageTime(entry.updatedAt, locale)}</span>}
         </button>
     )
 }

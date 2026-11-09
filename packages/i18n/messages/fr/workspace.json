@@ -1,0 +1,6 @@
+{
+    "settings": {
+        "coworkersLanguage": "Langue des coworkers",
+        "coworkersLanguageHint": "La langue de vos coworkers quand ils travaillent seuls, sur un planning ou un déclencheur."
+    }
+}

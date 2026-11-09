@@ -1,5 +1,6 @@
 'use client'
 
+import { useLocale } from 'next-intl'
 import { useCallback, useEffect, useState } from 'react'
 
 import { listPublishedAction } from '@/app/api/_actions/publish.actions'
@@ -22,6 +23,7 @@ const SKELETON_ROWS = 3
 
 // What one coworker published, a card per link. A card opens the share dialog.
 export function AgentPublishedPanel({ agentId, agentName }: { agentId: string; agentName: string }) {
+    const locale = useLocale()
     const [files, setFiles] = useState<PublishedFile[] | null>(null)
     const [sharing, setSharing] = useState<PublishedFile | null>(null)
 
@@ -55,7 +57,7 @@ export function AgentPublishedPanel({ agentId, agentName }: { agentId: string; a
                               title={file.title}
                               meta={<AccessBadge access={file.access} />}
                               description={<span className="block truncate font-mono text-[11px]">{publishedHostOf(file.url)}</span>}
-                              footer={`Updated ${relativeDate(file.updatedAt)}`}
+                              footer={`Updated ${relativeDate(file.updatedAt, locale)}`}
                               actions={
                                   <>
                                       <Button

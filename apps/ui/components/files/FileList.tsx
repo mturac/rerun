@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatBytes } from '@/lib/files/format'
 import { entriesFromDataTransfer, type UploadEntry } from '@/lib/files/upload'
 import { DownloadIcon, EllipsisIcon, FileIcon, FolderIcon, PencilIcon, Trash2Icon } from '@/lib/icons'
+import { useLocale } from 'next-intl'
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 
 type FileListProps = {
@@ -82,6 +83,7 @@ function ListSkeleton() {
 // A folder of the shared folder as Notion lists a database: the folder name as the page title, one
 // line per entry, actions on hover, and the whole page as a drop zone.
 export function FileList({ title, entries, onOpen, onRename, onDelete, onDownload, onUpload }: FileListProps) {
+    const locale = useLocale()
     const [renaming, setRenaming] = useState<string | null>(null)
     const [deleting, setDeleting] = useState<FileEntry | null>(null)
     const [dragOver, setDragOver] = useState(false)
@@ -159,7 +161,7 @@ export function FileList({ title, entries, onOpen, onRename, onDelete, onDownloa
                                             <span className="truncate">{entry.name}</span>
                                         )}
                                     </span>
-                                    <span className="text-right text-xs tabular-nums text-muted-foreground max-sm:hidden">{entry.type === 'dir' ? '' : formatBytes(entry.size)}</span>
+                                    <span className="text-right text-xs tabular-nums text-muted-foreground max-sm:hidden">{entry.type === 'dir' ? '' : formatBytes(entry.size, locale)}</span>
                                     <span className="truncate text-xs text-muted-foreground max-sm:hidden">{kindLabel(entry)}</span>
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>

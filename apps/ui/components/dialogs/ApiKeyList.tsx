@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { BanIcon } from '@/lib/icons'
 import { shortRelativeTime } from '@/lib/time'
+import { useLocale } from 'next-intl'
 
 export const API_KEYS_ADMIN_ONLY = 'Only an admin can manage API keys'
 
@@ -27,6 +28,7 @@ export function ApiKeyList({ keys, busy, disabledReason, onRevoke }: { keys: Api
 }
 
 function Row({ apiKey, busy, disabledReason, onRevoke }: { apiKey: ApiKeyView; busy: boolean; disabledReason?: string; onRevoke: (key: ApiKeyView) => void }) {
+    const locale = useLocale()
     return (
         <div className="flex items-center gap-2.5 px-3 py-2.5">
             <div className="min-w-0 flex-1">
@@ -34,7 +36,7 @@ function Row({ apiKey, busy, disabledReason, onRevoke }: { apiKey: ApiKeyView; b
                 <span className="font-mono text-[11px] text-muted-foreground">{apiKey.keyPrefix}…</span>
             </div>
 
-            <span className="shrink-0 text-[11px] text-muted-foreground">{apiKey.lastUsedAt ? `Used ${shortRelativeTime(apiKey.lastUsedAt)}` : 'Never used'}</span>
+            <span className="shrink-0 text-[11px] text-muted-foreground">{apiKey.lastUsedAt ? `Used ${shortRelativeTime(apiKey.lastUsedAt, locale)}` : 'Never used'}</span>
 
             {/* Revoking breaks whatever runs on that key, so the click only asks: the confirmation
                 dialog is what actually revokes. */}

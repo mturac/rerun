@@ -1,0 +1,27 @@
+{
+    "title": "Cuenta",
+    "tabs": {
+        "profile": {
+            "label": "Perfil",
+            "description": "Tu foto y tu nombre, tal como los ve tu equipo."
+        },
+        "signIn": {
+            "label": "Inicio de sesión",
+            "description": "Las formas de iniciar sesión en esta cuenta."
+        },
+        "language": {
+            "label": "Idioma",
+            "description": "El idioma que Rerun usa contigo."
+        },
+        "delete": {
+            "label": "Eliminar cuenta",
+            "description": "Cierra tu cuenta de Rerun para siempre."
+        }
+    },
+    "language": {
+        "field": "Idioma",
+        "automatic": "Automático",
+        "automaticHint": "Sigue a tu navegador: {language}.",
+        "failed": "No se pudo cambiar el idioma. Inténtalo de nuevo."
+    }
+}

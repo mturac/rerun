@@ -1,0 +1,6 @@
+{
+    "settings": {
+        "coworkersLanguage": "Idioma de los coworkers",
+        "coworkersLanguageHint": "En qué escriben tus coworkers cuando trabajan solos, con una programación o un disparador."
+    }
+}

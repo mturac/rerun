@@ -1,5 +1,7 @@
 import { cn } from '@/lib/utils'
 import NumberFlow from '@number-flow/react'
+import { formatDate } from '@rerun/i18n/format'
+import { useLocale } from 'next-intl'
 import type { CSSProperties } from 'react'
 
 const PERCENT_FORMAT = { minimumFractionDigits: 1, maximumFractionDigits: 1 } as const
@@ -36,6 +38,7 @@ function tickMask({ width, gap, height }: TickGeometry): CSSProperties {
 }
 
 export function CreditsUsageBar({ usedMicros, budgetMicros, resetAt, className }: CreditsUsageBarProps) {
+    const locale = useLocale()
     const budget = budgetMicros ?? 0
     if (budget <= 0) return null
 
@@ -68,7 +71,7 @@ export function CreditsUsageBar({ usedMicros, budgetMicros, resetAt, className }
 
             {bar}
 
-            {resetAt && <span className="text-[11px] text-muted-foreground">Resets on {new Date(resetAt).toLocaleDateString()}</span>}
+            {resetAt && <span className="text-[11px] text-muted-foreground">Resets on {formatDate(resetAt, locale, { year: 'numeric', month: 'numeric', day: 'numeric' })}</span>}
         </div>
     )
 }

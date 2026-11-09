@@ -8,7 +8,9 @@ import { PanelRow } from '@/components/ui/panel-row'
 import { SkeletonPanelRows } from '@/components/ui/skeleton'
 import type { EngineRun } from '@/lib/engine/types'
 import { ArrowLeftIcon, Loader2Icon } from '@/lib/icons'
+import { formatDate, formatNumber } from '@rerun/i18n/format'
 import { RunStatusBadge } from '@rerun/ui/monitoring'
+import { useLocale } from 'next-intl'
 import { type ComponentType, useCallback, useState } from 'react'
 import { useVisibleInterval } from '@/hooks/useVisibleInterval'
 
@@ -18,19 +20,19 @@ export async function adoptRunSession(agentId: string, engineSessionId: string, 
     return adoptEngineSessionAction(agentId, engineSessionId, title).catch(() => adoptEngineSessionAction(agentId, engineSessionId, title))
 }
 
-function parseUsage(usageJson?: string | null): string {
+function parseUsage(usageJson: string | null | undefined, locale: string): string {
     if (!usageJson) return ''
     try {
         const u = JSON.parse(usageJson) as { totalTokens?: number; inputTokens?: number; outputTokens?: number }
         const total = u.totalTokens ?? ((u.inputTokens ?? 0) + (u.outputTokens ?? 0) || undefined)
-        return total ? `${total.toLocaleString()} tokens` : ''
+        return total ? `${formatNumber(total, locale)} tokens` : ''
     } catch {
         return ''
     }
 }
 
-function runMeta(run: { stepCount?: number | null; usageJson?: string | null }): string {
-    const usage = parseUsage(run.usageJson)
+function runMeta(run: { stepCount?: number | null; usageJson?: string | null }, locale: string): string {
+    const usage = parseUsage(run.usageJson, locale)
     const steps = typeof run.stepCount === 'number' ? `${run.stepCount} step${run.stepCount !== 1 ? 's' : ''}` : ''
     return [steps, usage].filter(Boolean).join(' · ')
 }
@@ -45,6 +47,7 @@ type RunHistoryListProps = {
 }
 
 export function RunHistoryList({ title, loadRuns, emptyIcon: EmptyIcon, emptyLabel, onBack, onSelectRun }: RunHistoryListProps) {
+    const locale = useLocale()
     const [runs, setRuns] = useState<EngineRun[]>([])
     const [loading, setLoading] = useState(true)
     const [openingRunId, setOpeningRunId] = useState<string | null>(null)
@@ -86,8 +89,8 @@ export function RunHistoryList({ title, loadRuns, emptyIcon: EmptyIcon, emptyLab
                                 key={r.id}
                                 disabled={openingRunId !== null}
                                 onClick={() => handleSelect(r)}
-                                title={r.startedAt ? new Date(r.startedAt).toLocaleString() : r.id}
-                                description={runMeta(r)}
+                                title={r.startedAt ? formatDate(r.startedAt, locale) : r.id}
+                                description={runMeta(r, locale)}
                                 meta={openingRunId === r.id ? <Loader2Icon className="size-3.5 shrink-0 animate-spin text-muted-foreground" /> : <RunStatusBadge status={r.status} />}
                             />
                         ))}

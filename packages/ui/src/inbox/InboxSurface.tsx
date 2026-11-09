@@ -8,6 +8,7 @@ import { CHROME_SIZE, ChromePill } from '../chrome/ChromeSurface'
 import { cn } from '../cn'
 import { BellIcon, CheckCheckIcon, InboxIcon, Loader2Icon } from '../icons'
 import { Button, Chip, EmptyState, useScrollFade } from '../primitives'
+import { useUiLocale } from '../locale'
 import { shortRelativeTime } from '../time'
 import { TooltipDisabledReason, TooltipLabeled } from '../Tooltip'
 import { AgentBuddy } from '../iso-grid/components/buddy/AgentBuddy'
@@ -447,6 +448,7 @@ export function InboxSurface<T extends InboxEntry>({
 }
 
 function AnnouncementLine({ announcement, animated }: { announcement: InboxAnnouncement; animated: boolean }) {
+    const locale = useUiLocale()
     const { item, bundled, loud } = announcement
     if (bundled > 1) {
         return (
@@ -474,7 +476,7 @@ function AnnouncementLine({ announcement, animated }: { announcement: InboxAnnou
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="flex items-baseline justify-between gap-2">
                         <span className="truncate text-xs text-muted-foreground">{item.title ? `${item.agentName} · ${item.title}` : item.agentName}</span>
-                        {item.updatedAt && <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{shortRelativeTime(item.updatedAt)}</span>}
+                        {item.updatedAt && <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{shortRelativeTime(item.updatedAt, locale)}</span>}
                     </span>
                     <span className="truncate text-sm font-medium text-foreground">{item.message ?? `${item.agentName} ${sentence}`}</span>
                 </span>
@@ -563,6 +565,7 @@ type InboxRowProps<T extends InboxEntry> = { item: T; onOpen: (item: T) => void;
 
 // `memo` drops the type parameter: the cast gives it back, so a row hands its caller the item type it was given.
 export const InboxRow = memo(function InboxRow({ item, onOpen, onMarkRead, reason, Menu, onMenuOpenChange = noop }: InboxRowProps<InboxEntry>) {
+    const locale = useUiLocale()
     const meta = ATTENTION_STATUS_META[item.status] ?? ATTENTION_STATUS_META.waiting_human
     const sentence = STATUS_SENTENCE[item.status] ?? STATUS_SENTENCE.waiting_human
     // A Radix tooltip per row made opening the card slow. The button only shows on hover or focus
@@ -606,7 +609,7 @@ export const InboxRow = memo(function InboxRow({ item, onOpen, onMarkRead, reaso
                     <span title={item.message ?? undefined} className="truncate text-sm font-medium text-foreground">
                         {item.message ?? item.title}
                     </span>
-                    {item.updatedAt && <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{shortRelativeTime(item.updatedAt)}</span>}
+                    {item.updatedAt && <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{shortRelativeTime(item.updatedAt, locale)}</span>}
                 </div>
                 <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                     <span className="truncate">{item.message ? `${item.agentName} · ${item.title}` : `${item.agentName} ${sentence}`}</span>

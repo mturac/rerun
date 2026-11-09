@@ -1,0 +1,9 @@
+{
+    "_context": {
+        "settings.coworkersLanguage": "Label of a setting: the language AI coworkers write in when they work alone (schedules, triggers), with nobody talking to them."
+    },
+    "settings": {
+        "coworkersLanguage": "Coworkers' language",
+        "coworkersLanguageHint": "What your coworkers write in when they work on their own, on a schedule or a trigger."
+    }
+}

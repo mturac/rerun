@@ -4,6 +4,7 @@ import { APP_INFO } from '@/lib/apps/catalog'
 import { APP_ADDON_KEYS, APP_SLUGS } from '@/lib/apps/types'
 import { useCheckout } from '@stripe/react-stripe-js/checkout'
 import type { StripeExpressCheckoutElementConfirmEvent } from '@stripe/stripe-js'
+import { useLocale } from 'next-intl'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 
@@ -64,9 +65,9 @@ function billedLabel(interval: BillingInterval, priceArm: PriceArm): string {
 }
 
 // A year from now reads with its year: "Oct 2" alone would read as today.
-function invoiceDateLabel(interval: BillingInterval): string {
+function invoiceDateLabel(interval: BillingInterval, locale: string): string {
     const date = nextInvoiceDate(interval)
-    return interval === 'yearly' ? longDate(date) : shortDate(date)
+    return interval === 'yearly' ? longDate(date, locale) : shortDate(date, locale)
 }
 
 function errorMessage(error: unknown): string {
@@ -88,6 +89,7 @@ export function CheckoutDialog({
     onChanged: () => void
     onTrialRefused: () => void
 }) {
+    const locale = useLocale()
     const { workspace, refreshWorkspace } = useSession()
     const { keptUntil } = useWorkspaceAccess()
     const parkedTemplate = useOnboardingStore(s => s.pendingTemplate)
@@ -119,13 +121,13 @@ export function CheckoutDialog({
     const startTrialEnds = trialEndDate(new Date(openedAt))
     const context: CheckoutContext = {
         billed: <BilledFlow cents={planPriceCents(ZERO_QUANTITIES, interval, priceArm)} interval={interval} />,
-        nextInvoice: invoiceDateLabel(interval),
-        trialEnds: route.variant === 'start_trial' ? shortDate(startTrialEnds) : trialEndsAt ? shortDate(trialEndsAt) : null,
+        nextInvoice: invoiceDateLabel(interval, locale),
+        trialEnds: route.variant === 'start_trial' ? shortDate(startTrialEnds, locale) : trialEndsAt ? shortDate(trialEndsAt, locale) : null,
         trialDaysLeft: trialEndsAt ? Math.ceil((trialEndsAt.getTime() - openedAt) / DAY_MS) : null,
-        reminderOn: reminderAt && reminderAt.getTime() > openedAt ? shortDate(reminderAt) : null,
+        reminderOn: reminderAt && reminderAt.getTime() > openedAt ? shortDate(reminderAt, locale) : null,
         firstCharge: usd(firstChargeCents),
         trialCancelled: !!state?.cancelAtPeriodEnd,
-        keptUntil: keptUntil ? longDate(keptUntil) : null,
+        keptUntil: keptUntil ? longDate(keptUntil, locale) : null,
         parked: parkedTemplate ? { title: parkedTemplate.title, agentCount: parkedTemplate.agentCount } : null,
         coworker: upgrade?.coworker ?? null,
     }
@@ -183,7 +185,7 @@ export function CheckoutDialog({
                 setPlacing(false)
             }
         }
-        const success = creditLocked && done === 'paid' ? creditUnlockedCopy(interval, priceArm, upgrade) : successCopy(done, { interval, priceArm, trialEnds: context.trialEnds, firstCharge: context.firstCharge })
+        const success = creditLocked && done === 'paid' ? creditUnlockedCopy(interval, priceArm, upgrade, locale) : successCopy(done, { interval, priceArm, trialEnds: context.trialEnds, firstCharge: context.firstCharge, locale })
         return (
             <BillingDialogShell
                 title={success.title}
@@ -225,8 +227,8 @@ export function CheckoutDialog({
     return <BillingDialogShell title={copy.title} mobileOrder={planFixed ? 'payment-first' : 'plan-first'} intro={intro} left={left} right={right} />
 }
 
-function successCopy(done: Done, { interval, priceArm, trialEnds, firstCharge }: { interval: BillingInterval; priceArm: PriceArm; trialEnds: string | null; firstCharge: string }) {
-    const next = `${invoiceDateLabel(interval)} · ${billedLabel(interval, priceArm)}`
+function successCopy(done: Done, { interval, priceArm, trialEnds, firstCharge, locale }: { interval: BillingInterval; priceArm: PriceArm; trialEnds: string | null; firstCharge: string; locale: string }) {
+    const next = `${invoiceDateLabel(interval, locale)} · ${billedLabel(interval, priceArm)}`
     const planRows = [
         { label: 'Plan', value: 'Pro · Unlimited coworkers' },
         { label: 'Next invoice', value: next },
@@ -249,7 +251,7 @@ function successCopy(done: Done, { interval, priceArm, trialEnds, firstCharge }:
 }
 
 // Paying from a chat that ran out of trial credit: what came with Pro, and the way back to the task.
-function creditUnlockedCopy(interval: BillingInterval, priceArm: PriceArm, upgrade: BillingUpgrade | null) {
+function creditUnlockedCopy(interval: BillingInterval, priceArm: PriceArm, upgrade: BillingUpgrade | null, locale: string) {
     return {
         title: "You're on Pro",
         body: `${upgrade?.coworker ?? 'Your coworker'} is ready to pick the task back up. Your receipt is on its way by email.`,
@@ -257,7 +259,7 @@ function creditUnlockedCopy(interval: BillingInterval, priceArm: PriceArm, upgra
             { label: 'Credits', value: `${creditsLabel(BASE_PLAN_CREDITS)} a month` },
             { label: 'Models', value: 'Every premium model' },
             { label: 'Coworkers', value: 'Unlimited' },
-            { label: 'Next invoice', value: `${invoiceDateLabel(interval)} · ${billedLabel(interval, priceArm)}` },
+            { label: 'Next invoice', value: `${invoiceDateLabel(interval, locale)} · ${billedLabel(interval, priceArm)}` },
         ],
         cta: upgrade?.onPaid ? 'Resume the task' : 'Back to my board',
     }

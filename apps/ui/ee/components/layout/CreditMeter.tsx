@@ -1,5 +1,7 @@
 'use client'
 
+import { useLocale } from 'next-intl'
+
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { formatCredits } from '@/ee/lib/billing/plans'
 import { PlusIcon } from '@/lib/icons'
@@ -20,10 +22,11 @@ function toneOf(leftMicros: number, wholeMicros: number): CreditTone {
 // The Rerun credit at a glance in the workspace menu: coworkers spend it without asking, so what is
 // left has to be one click away. The split by AI and paid data stays in the billing dialog.
 export function CreditMeter({ usedMicros, wholeMicros, trial, onOpen, onAdd }: { usedMicros: number; wholeMicros: number; trial: boolean; onOpen: () => void; onAdd?: () => void }) {
+    const locale = useLocale()
     const leftMicros = Math.max(wholeMicros - usedMicros, 0)
     const tone = toneOf(leftMicros, wholeMicros)
     const ratio = Math.min(usedMicros / wholeMicros, 1)
-    const left = tone === 'out' ? (trial ? 'No trial credits left' : 'Out of credits') : `${formatCredits(leftMicros)} left`
+    const left = tone === 'out' ? (trial ? 'No trial credits left' : 'Out of credits') : `${formatCredits(leftMicros, locale)} left`
 
     return (
         <>

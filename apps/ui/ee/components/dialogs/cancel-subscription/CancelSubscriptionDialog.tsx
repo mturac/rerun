@@ -9,6 +9,7 @@ import { useRerunCredit } from '@/hooks/useRerunCredit'
 import { useBoardStore } from '@/stores/board.store'
 import { track } from '@rerun/analytics/client'
 import { formatCredits } from '@rerun/contracts'
+import { useLocale } from 'next-intl'
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { CancelFlow, type CancelInput } from './CancelFlow'
@@ -51,13 +52,14 @@ function CancelFlowLoader({
     onFailed: () => void
     onStepChange: (step: { phase: CancelFlowState['phase']; step: CancelStep }) => void
 }) {
+    const locale = useLocale()
     const [state, setState] = useState<CancelFlowState | null>(null)
     const [activity, setActivity] = useState<CancelFlowActivity | null>(null)
     const [activityLoading, setActivityLoading] = useState(true)
 
     const agentCount = useBoardStore(s => s.agents.filter(agent => !agent.disabledAt).length)
     const credit = useRerunCredit()
-    const creditLeftLabel = formatCredits(Math.max(0, credit.budgetMicros - credit.usedMicros))
+    const creditLeftLabel = formatCredits(Math.max(0, credit.budgetMicros - credit.usedMicros), locale)
 
     const failed = useEffectEvent((error: string) => {
         toast.error('Could not open the cancellation', { description: error })

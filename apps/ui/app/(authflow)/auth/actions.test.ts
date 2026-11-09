@@ -33,7 +33,7 @@ describe('completeSignupAction', () => {
     it('stamps the signup of the account behind the request, with the phone step a web signup owes', async () => {
         expect(await completeSignupAction()).toEqual({ ok: true, signedUp: true })
 
-        expect(mocks.provisionUser).toHaveBeenCalledWith(expect.objectContaining({ auth: expect.anything() }), account, { phoneStep: true, priceArm: '29' })
+        expect(mocks.provisionUser).toHaveBeenCalledWith(expect.objectContaining({ auth: expect.anything() }), account, { phoneStep: true, priceArm: '29', locale: 'en' })
     })
 
     it('asks no phone of whoever arrived by invite', async () => {

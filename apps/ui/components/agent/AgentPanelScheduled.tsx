@@ -31,6 +31,8 @@ import { PanelSteps } from '@/components/ui/panel-steps'
 import { SkeletonPanelRows, SkeletonRows } from '@/components/ui/skeleton'
 import { useBoardStore } from '@/stores/board.store'
 import { Badge } from '@rerun/ui/primitives'
+import { formatDate } from '@rerun/i18n/format'
+import { useLocale } from 'next-intl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 type AgentPanelScheduledProps = {
@@ -44,6 +46,7 @@ type AgentPanelScheduledProps = {
 type View = { mode: 'list' } | { mode: 'create' } | { mode: 'edit'; slug: string } | { mode: 'runs'; slug: string }
 
 export function AgentPanelScheduled({ agentId, agentName, onOpenSession, focusSlug, onFocusConsumed }: AgentPanelScheduledProps) {
+    const locale = useLocale()
     const [schedules, setSchedules] = useState<EngineSchedule[]>([])
     const [outcomes, setOutcomes] = useState<Record<string, TaskOutcome>>({})
     const [loading, setLoading] = useState(true)
@@ -143,7 +146,7 @@ export function AgentPanelScheduled({ agentId, agentName, onOpenSession, focusSl
                                     key={s.slug}
                                     onClick={() => setView({ mode: 'edit', slug: s.slug })}
                                     title={s.name}
-                                    description={scheduleSummary(s)}
+                                    description={scheduleSummary(s, locale)}
                                     footer={<TaskOutcomeFooter outcome={outcomes[outcomeKey('schedule', s.slug)]} lastStartedAt={s.lastRunAt} />}
                                     meta={
                                         !s.enabled && (
@@ -178,12 +181,13 @@ function localInputToIso(local: string): string {
 type ScheduleSelection = { mode: 'cron' | 'runAt'; cron?: string; runAtLocal?: string; timezone?: string }
 
 function SchedulePicker({ mode, cron, runAtLocal, disabled, onChange }: { mode: 'cron' | 'runAt'; cron: string; runAtLocal: string; timezone: string; disabled?: boolean; onChange: (next: ScheduleSelection) => void }) {
+    const locale = useLocale()
     const [open, setOpen] = useState(false)
     const [input, setInput] = useState('')
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
-    const summary = mode === 'cron' ? (cron.trim() ? (humanCron(cron) ?? cron) : '') : runAtLocal ? new Date(localInputToIso(runAtLocal)).toLocaleString() : ''
+    const summary = mode === 'cron' ? (cron.trim() ? (humanCron(cron) ?? cron) : '') : runAtLocal ? formatDate(localInputToIso(runAtLocal), locale) : ''
 
     const handleGenerate = useCallback(async () => {
         if (!input.trim()) return

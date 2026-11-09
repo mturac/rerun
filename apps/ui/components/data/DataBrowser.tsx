@@ -26,8 +26,10 @@ import type { EngineDbRows, EngineDbTable } from '@/lib/engine/types'
 import { CheckIcon, ChevronDownIcon, DatabaseIcon, TableIcon } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import type { CardLayout, TableView } from '@rerun/contracts'
+import { formatNumber } from '@rerun/i18n/format'
 import type { CellContext } from '@rerun/ui/chat'
 import { type ColumnDef, type SortingState, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import { useLocale } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -48,6 +50,7 @@ type ViewDialog = { open: boolean; view?: TableView; layout?: CardLayout }
 const NO_ROWS: DbRow[] = []
 
 export function DataBrowser({ source, initial, onInitialConsumed, onExpand, table: pinnedTable, onTableDropped }: DataBrowserProps) {
+    const locale = useLocale()
     const [requested] = useState(() => initial ?? null)
     const requestedTableRef = useRef(requested?.table ?? null)
     const requestedViewRef = useRef(requested?.view)
@@ -452,7 +455,7 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
                         </DropdownMenu>
                     )}
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{data ? `${total.toLocaleString('en-US')} ${total === 1 ? 'row' : 'rows'}${query ? ' found' : ''}` : '\u00a0'}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{data ? `${formatNumber(total, locale)} ${total === 1 ? 'row' : 'rows'}${query ? ' found' : ''}` : '\u00a0'}</p>
                 {activeId !== null && (
                     <div className="mt-4">
                         <DataViewBar

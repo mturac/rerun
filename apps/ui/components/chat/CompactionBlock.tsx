@@ -4,8 +4,10 @@ import { StepRow } from '@/components/chat/StepRow'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Icon } from '@/components/ui/icon'
 import { Spinner } from '@/components/ui/spinner'
+import { formatNumber } from '@rerun/i18n/format'
 import { BorderBeam } from '@rerun/ui'
 import { CheckCircle2Icon, ChevronRightIcon, FoldVerticalIcon, XCircleIcon } from '@/lib/icons'
+import { useLocale } from 'next-intl'
 import { useEffect, useState } from 'react'
 
 export type CompactionData = {
@@ -18,13 +20,15 @@ const compactionLabel = (status: CompactionData['status']) => (status === 'runni
 
 /** The compaction on one line of the folded steps. */
 export function CompactionStep({ data }: { data: CompactionData }) {
+    const locale = useLocale()
     const settled = data.status === 'done'
     const summarized = settled && typeof data.messagesCompacted === 'number' ? `${data.messagesCompacted} earlier messages summarized` : undefined
-    const recovered = settled && typeof data.tokensRecovered === 'number' ? `~${data.tokensRecovered.toLocaleString()} tokens recovered` : undefined
+    const recovered = settled && typeof data.tokensRecovered === 'number' ? `~${formatNumber(data.tokensRecovered, locale)} tokens recovered` : undefined
     return <StepRow iconProps={{ icon: FoldVerticalIcon }} label={compactionLabel(data.status)} detail={[summarized, recovered].filter(Boolean).join(' · ')} status={data.status} />
 }
 
 export function CompactionBlock({ data }: { data: CompactionData }) {
+    const locale = useLocale()
     const isRunning = data.status === 'running'
     const hasContent = data.status === 'done' && (typeof data.messagesCompacted === 'number' || typeof data.tokensRecovered === 'number')
     const [open, setOpen] = useState(false)
@@ -50,7 +54,7 @@ export function CompactionBlock({ data }: { data: CompactionData }) {
                 <CollapsibleContent>
                     <div className="mx-1.5 border-t border-border/60 pt-2 pb-3 text-xs text-muted-foreground">
                         {typeof data.messagesCompacted === 'number' && <p>{data.messagesCompacted} earlier messages summarized</p>}
-                        {typeof data.tokensRecovered === 'number' && <p>~{data.tokensRecovered.toLocaleString()} tokens recovered</p>}
+                        {typeof data.tokensRecovered === 'number' && <p>~{formatNumber(data.tokensRecovered, locale)} tokens recovered</p>}
                     </div>
                 </CollapsibleContent>
             )}

@@ -17,6 +17,7 @@ import { shortRelativeTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import type { BrainPage as BrainPageData, BrainPageSummary, BrainPageType, BrainProposal } from '@rerun/contracts'
 import { Badge } from '@rerun/ui/primitives'
+import { useLocale } from 'next-intl'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -34,12 +35,12 @@ type BrainPageProps = {
     onDelete: () => Promise<void>
 }
 
-function saveLabel(status: AutosaveStatus, page: BrainPageData): string | null {
+function saveLabel(status: AutosaveStatus, page: BrainPageData, locale: string): string | null {
     if (status === 'pending' || status === 'saving') return 'Saving…'
     if (status === 'saved') return 'Saved'
     if (status === 'error') return 'Not saved'
     if (status === 'conflict') return null
-    return page.updatedAt ? `Edited ${shortRelativeTime(page.updatedAt)}` : null
+    return page.updatedAt ? `Edited ${shortRelativeTime(page.updatedAt, locale)}` : null
 }
 
 function Backlinks({ links, onOpenPage }: { links: BrainPageData['backlinks']; onOpenPage: (slug: string) => void }) {
@@ -67,6 +68,7 @@ function Backlinks({ links, onOpenPage }: { links: BrainPageData['backlinks']; o
 // A brain page is its own editor: the title, the type and the body are typed in place and saved as
 // they change, the way Notion does it.
 export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, onOpenFile, onReviewProposals, onSaved, onHistory, onDelete }: BrainPageProps) {
+    const locale = useLocale()
     const page = detail.page
     const autosave = useBrainAutosave({ page, onSaved })
     const [title, setTitle] = useState(page.title)
@@ -103,7 +105,7 @@ export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, 
     }
 
     const section = isCardType(type) ? 'Company' : 'Pages'
-    const status = saveLabel(autosave.status, page)
+    const status = saveLabel(autosave.status, page, locale)
 
     return (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -198,7 +200,7 @@ export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, 
                         {page.updatedAt && (
                             <PageProperty label="Last edited">
                                 <span className="text-foreground/80">
-                                    {shortRelativeTime(page.updatedAt)} by {brainAuthorLabel(page.updatedBy)}
+                                    {shortRelativeTime(page.updatedAt, locale)} by {brainAuthorLabel(page.updatedBy)}
                                 </span>
                             </PageProperty>
                         )}

@@ -5,6 +5,7 @@ import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { formatBytes } from '@/lib/files/format'
 import { ChevronUpIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, GlobeIcon, PencilIcon, Trash2Icon } from '@/lib/icons'
+import { useLocale } from 'next-intl'
 import { useCallback, useMemo, useState } from 'react'
 
 import { FolderGlyph, GLYPH_INK_MUTED } from './FileGlyph'
@@ -51,6 +52,7 @@ export function FileGrid({
     onUnpublish,
     contentRevision = 0,
 }: FileGridProps) {
+    const locale = useLocale()
     const [target, setTarget] = useState<string | null>(null)
     const [renaming, setRenaming] = useState<string | null>(null)
     const [confirming, setConfirming] = useState<{ name: string; action: 'delete' | 'unshare' } | null>(null)
@@ -84,7 +86,7 @@ export function FileGrid({
                             <FileTile
                                 key={entry.name}
                                 name={entry.name}
-                                title={entry.type === 'dir' ? entry.name : `${entry.name} — ${formatBytes(entry.size)}`}
+                                title={entry.type === 'dir' ? entry.name : `${entry.name} — ${formatBytes(entry.size, locale)}`}
                                 published={Boolean(publishedByName?.[entry.name])}
                                 renaming={renaming === entry.name}
                                 onOpen={() => (entry.type === 'dir' ? onNavigate(entry.name) : onSelectFile(entry.name))}

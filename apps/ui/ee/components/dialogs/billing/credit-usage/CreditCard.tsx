@@ -1,6 +1,7 @@
 'use client'
 
 import { BorderBeam } from '@rerun/ui'
+import { useLocale } from 'next-intl'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -18,12 +19,13 @@ import type { CreditUsageState } from './useCreditUsage'
 // Out of credit, the card leads with it: the coworkers are stopped, and getting more is the one thing
 // to do, so the button moves from the header into the alert. On a trial, more credit comes with Pro.
 function OutOfCredits({ trial, resetsOn, onAdd }: { trial: boolean; resetsOn: Date | null; onAdd?: () => void }) {
+    const locale = useLocale()
     return (
         <Alert variant="danger" stripes className="flex items-center gap-4 rounded-xl px-4 py-3">
             <TriangleAlertIcon className="size-4 shrink-0" />
             <div className="min-w-0 flex-1">
                 <AlertTitle>{trial ? "You're out of trial credits" : "You're out of credits"}</AlertTitle>
-                <AlertDescription>{trial ? `Your coworkers can't use Rerun models or paid data. Pro comes with ${creditsLabel(BASE_PLAN_CREDITS)} every month.` : `Your coworkers can't use Rerun models or paid data${resetsOn ? ` until ${shortDate(resetsOn)}` : ''}.`}</AlertDescription>
+                <AlertDescription>{trial ? `Your coworkers can't use Rerun models or paid data. Pro comes with ${creditsLabel(BASE_PLAN_CREDITS)} every month.` : `Your coworkers can't use Rerun models or paid data${resetsOn ? ` until ${shortDate(resetsOn, locale)}` : ''}.`}</AlertDescription>
             </div>
             {onAdd && (
                 <Button size="sm" onClick={onAdd}>
@@ -44,6 +46,7 @@ function OutOfCredits({ trial, resetsOn, onAdd }: { trial: boolean; resetsOn: Da
 // The Rerun credit under the plan: one bar split by what spent it, AI models and paid data, then
 // what is left. The details are one click away, in the usage pane.
 export function CreditCard({ credit, highlight = false, onAdd, onOpenUsage }: { credit: CreditUsageState; highlight?: boolean; onAdd?: () => void; onOpenUsage?: () => void }) {
+    const locale = useLocale()
     const { balance, trial, resetsOn, paused } = credit
     const out = !paused && !!balance && balance.wholeMicros > 0 && balance.leftMicros <= 0
 
@@ -69,9 +72,9 @@ export function CreditCard({ credit, highlight = false, onAdd, onOpenUsage }: { 
             {balance ? (
                 <div className="flex flex-col gap-2.5">
                     <div className="flex items-baseline justify-between text-sm">
-                        <span className="text-muted-foreground">{trial ? 'Used · trial credits' : `Used${resetsOn ? ` · resets ${shortDate(resetsOn)}` : ''}`}</span>
+                        <span className="text-muted-foreground">{trial ? 'Used · trial credits' : `Used${resetsOn ? ` · resets ${shortDate(resetsOn, locale)}` : ''}`}</span>
                         <span className="tabular-nums">
-                            {formatCredits(balance.usedAiMicros + balance.usedDataMicros)} of {formatCredits(balance.wholeMicros)} credits
+                            {formatCredits(balance.usedAiMicros + balance.usedDataMicros, locale)} of {formatCredits(balance.wholeMicros, locale)} credits
                         </span>
                     </div>
                     <SplitBar balance={balance} trial={trial} />
