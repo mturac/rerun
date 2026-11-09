@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { importSkillAction, listSkillsAction } from '@/app/api/_actions/agent.actions'
 import { setAgentSkillSummaries } from '@/hooks/useAgentSkillSummaries'
 import { SkillEditor } from '@/components/agent/skills/SkillEditor'
@@ -30,6 +31,7 @@ type View = { mode: 'list' } | { mode: 'create' } | { mode: 'edit'; slug: string
 
 export function AgentPanelSkills({ agentId, focusSlug, onFocusConsumed }: AgentPanelSkillsProps) {
     const t = useTranslations('agent.agentPanelSkills')
+    const errorText = useErrorText()
     const tShared = useTranslations('agent.modelsShared')
     const [skills, setSkills] = useState<EngineSkillWithSource[]>([])
     const [loading, setLoading] = useState(true)
@@ -86,8 +88,8 @@ export function AgentPanelSkills({ agentId, focusSlug, onFocusConsumed }: AgentP
         const result = await importSkillAction(agentId, await file.text())
         setImporting(false)
         if (result.success) load()
-        else setImportError(result.error ?? t('importFailed'))
-    }, [agentId, load, t])
+        else setImportError(errorText(result, t('importFailed')))
+    }, [agentId, load, t, errorText])
 
     const handleUploadFolder = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? [])
@@ -107,7 +109,7 @@ export function AgentPanelSkills({ agentId, focusSlug, onFocusConsumed }: AgentP
                     imported += 1
                     skipped += folder.skipped.length
                 } else {
-                    failures.push(t('folderFailure', { name: folder.name, error: result.error ?? t('folderImportFailed') }))
+                    failures.push(t('folderFailure', { name: folder.name, error: errorText(result, t('folderImportFailed')) }))
                 }
             }
             if (imported) setImportNotice(skipped ? t('importedSkipped', { count: imported, skipped }) : t('imported', { count: imported }))
@@ -118,7 +120,7 @@ export function AgentPanelSkills({ agentId, focusSlug, onFocusConsumed }: AgentP
         } finally {
             setImporting(false)
         }
-    }, [agentId, load, t])
+    }, [agentId, load, t, errorText])
 
     const actionButtons = (
         <div className="flex items-center gap-1.5">

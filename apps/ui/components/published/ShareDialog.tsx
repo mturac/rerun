@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { Stripes } from '@rerun/ui/primitives'
 import { useTranslations } from 'next-intl'
 import { useEffect, useState, type KeyboardEvent } from 'react'
@@ -44,6 +45,7 @@ export function ShareDialog({ open, onOpenChange, slug, initial, onChanged, onUn
 
 function ShareDialogBody({ slug, initial, onChanged, onUnpublished, onClose }: { slug: string; initial: PublishedFile | null; onChanged?: (file: PublishedFile) => void; onUnpublished?: (slug: string) => void; onClose: () => void }) {
     const t = useTranslations('published')
+    const errorText = useErrorText()
     const workspaceName = useWorkspaceName()
     const [file, setFile] = useState<PublishedFile | null>(initial?.slug === slug ? initial : null)
     const [settings, setSettings] = useState<PublishSettings | null>(null)
@@ -70,7 +72,7 @@ function ShareDialogBody({ slug, initial, onChanged, onUnpublished, onClose }: {
         const result = await updatePublishedAccessAction(slug, change)
         setSaving(false)
         if (!result.ok) {
-            toast.error(t('share.updateFailed'), { description: result.error })
+            toast.error(t('share.updateFailed'), { description: errorText(result) })
             return false
         }
         setFile(result.file)
@@ -91,7 +93,7 @@ function ShareDialogBody({ slug, initial, onChanged, onUnpublished, onClose }: {
         const result = await unpublishLinkAction(slug)
         setConfirmingUnpublish(false)
         if (!result.ok) {
-            toast.error(t('share.unpublishFailed'), { description: result.error })
+            toast.error(t('share.unpublishFailed'), { description: errorText(result) })
             return
         }
         onUnpublished?.(slug)

@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { deleteSkillFileAction, readSkillFileAction, writeSkillFileAction } from '@/app/api/_actions/agent.actions'
 import { PanelDeleteButton, PanelEditorBody, PanelEditorFooter, PanelEditorHeader, PanelEditorShell } from '@/components/ui/panel-editor'
 import { TemplateContentLock } from '@/components/agent/TemplateContentLock'
@@ -22,6 +23,7 @@ type SkillFileEditorProps = {
 
 export function SkillFileEditor({ agentId, slug, path, readOnly: readOnlyProp, onBack }: SkillFileEditorProps) {
     const t = useTranslations('agent.skillFileEditor')
+    const errorText = useErrorText()
     const tShared = useTranslations('agent.modelsShared')
     const locked = useTemplateContentLock(agentId)
     const canManage = useCanManageAgent(agentId)
@@ -55,8 +57,8 @@ export function SkillFileEditor({ agentId, slug, path, readOnly: readOnlyProp, o
         const result = await writeSkillFileAction(agentId, slug, path, content)
         setSaving(false)
         if (result.success) onBack()
-        else setError(result.error ?? t('saveFailed'))
-    }, [agentId, slug, path, content, onBack, t])
+        else setError(errorText(result, t('saveFailed')))
+    }, [agentId, slug, path, content, onBack, t, errorText])
 
     const handleDelete = useCallback(async () => {
         setDeleting(true)
@@ -64,8 +66,8 @@ export function SkillFileEditor({ agentId, slug, path, readOnly: readOnlyProp, o
         const result = await deleteSkillFileAction(agentId, slug, path)
         setDeleting(false)
         if (result.success) onBack()
-        else setError(result.error ?? t('deleteFailed'))
-    }, [agentId, slug, path, onBack, t])
+        else setError(errorText(result, t('deleteFailed')))
+    }, [agentId, slug, path, onBack, t, errorText])
 
     return (
         <PanelEditorShell>

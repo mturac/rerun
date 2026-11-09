@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { completeSignupAction, prepareAnonymousEmailStep, resendLiveSignInCode } from '@/app/(authflow)/auth/actions'
 import { AuthMethods } from '@/components/auth/AuthMethods'
 import type { AuthMethod } from '@/lib/auth/auth-method'
@@ -38,6 +39,7 @@ export function useAnonymousSignUp({ surface, active, onEntered }: { surface: Si
     const [formKey, setFormKey] = useState(0)
     // Past the first screen: a method switched to, or a code asked for.
     const [movedOn, setMovedOn] = useState(false)
+    const errorText = useErrorText()
     const supabase = createClient()
     const router = useRouter()
     const refreshUser = useOptionalSession()?.refreshUser
@@ -54,7 +56,7 @@ export function useAnonymousSignUp({ surface, active, onEntered }: { surface: Si
     const sendCode = (email: string, getToken: GetCaptchaToken) =>
         trackEmailSend(async () => {
             const prepared = await prepareAnonymousEmailStep({ email, captcha: await getToken() })
-            if (!prepared.ok) throw new EmailSendError(prepared.error, prepared.reason)
+            if (!prepared.ok) throw new EmailSendError(errorText(prepared), prepared.reason)
             const { exists } = prepared
             emailIsNew.current = !exists
             if (!exists) setSharedCookie(SIGNUP_INTENT_COOKIE, 'email', 1)

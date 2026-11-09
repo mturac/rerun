@@ -28,3 +28,18 @@ export function failureOf(err: unknown, fallback: ErrorCode = 'generic'): Action
     if (err instanceof AppError) return failure(err.code, err.params)
     return { ok: false, error: err instanceof Error ? err.message : english(fallback), code: err instanceof Error ? undefined : fallback }
 }
+
+// The same refusal for the older results shaped `{ success: false, error }`.
+export type ActionRefusal = Omit<ActionFailure, 'ok'>
+
+export function refusal(code: ErrorCode, params?: ErrorParams): ActionRefusal {
+    const { ok: _ok, ...rest } = failure(code, params)
+    return rest
+}
+
+export function refusalOf(err: unknown, fallback: ErrorCode = 'generic'): ActionRefusal {
+    const { ok: _ok, ...rest } = failureOf(err, fallback)
+    return rest
+}
+
+export type SuccessResult = { success: boolean } & Partial<ActionRefusal>

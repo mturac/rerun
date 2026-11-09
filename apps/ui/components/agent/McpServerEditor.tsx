@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText, type Refusal } from '@/hooks/useErrorText'
 import { updateAgentKeysAction } from '@/app/api/_actions/agent.actions'
 import { McpVarTextarea } from '@/components/agent/McpVarTextarea'
 import { Button } from '@/components/ui/button'
@@ -43,12 +44,13 @@ export function McpServerEditor({
     agentId: string
     server?: EngineMcpServer
     readOnly?: boolean
-    onSave: (server: EngineMcpServer) => Promise<{ success: boolean; error?: string }>
-    onDelete?: () => Promise<{ success: boolean; error?: string }>
+    onSave: (server: EngineMcpServer) => Promise<{ success: boolean } & Refusal>
+    onDelete?: () => Promise<{ success: boolean } & Refusal>
     onDone: () => void
     onBack: () => void
 }) {
     const t = useTranslations('agent.mcpServerEditor')
+    const errorText = useErrorText()
     const isEdit = !!server
     const [name, setName] = useState(server?.name ?? '')
     const [transport, setTransport] = useState<'stdio' | 'sse' | 'http'>(server?.transport ?? 'stdio')
@@ -104,7 +106,7 @@ export function McpServerEditor({
             const keysResult = await updateAgentKeysAction(agentId, { set: keysSet })
             if (!keysResult.success) {
                 setSaving(false)
-                setError(keysResult.error ?? t('storeCredentialsFailed'))
+                setError(errorText(keysResult, t('storeCredentialsFailed')))
                 return
             }
             vars.markDefined(Object.keys(keysSet))
@@ -113,8 +115,8 @@ export function McpServerEditor({
         const result = await onSave(next)
         setSaving(false)
         if (result.success) onDone()
-        else setError(result.error ?? t('saveFailed'))
-    }, [agentId, name, transport, command, argsText, url, envText, headersText, server, vars, onSave, onDone, t])
+        else setError(errorText(result, t('saveFailed')))
+    }, [agentId, name, transport, command, argsText, url, envText, headersText, server, vars, onSave, onDone, t, errorText])
 
     const handleDelete = useCallback(async () => {
         if (!onDelete) return
@@ -122,8 +124,8 @@ export function McpServerEditor({
         const result = await onDelete()
         setDeleting(false)
         if (result.success) onDone()
-        else setError(result.error ?? t('deleteFailed'))
-    }, [onDelete, onDone, t])
+        else setError(errorText(result, t('deleteFailed')))
+    }, [onDelete, onDone, t, errorText])
 
     const canSave = name.trim() && (transport === 'stdio' ? command.trim() : url.trim())
     const secretWarning = t('secretWarning', { token: VARIABLE_TOKEN })

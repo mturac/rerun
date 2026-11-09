@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { AddProviderPage } from '@/components/connections/AddProviderPage'
 import { AddCustomProviderPage } from '@/components/connections/custom/AddCustomProviderPage'
 import { ConnectionDetail } from '@/components/connections/ConnectionDetail'
@@ -73,6 +74,7 @@ export function AiProvidersPanel({
     onInitialAddProviderConsumed?: () => void
 }) {
     const t = useTranslations('connections')
+    const errorText = useErrorText()
     const { connections, boxDefault, opencodeOffered, customOffered, loading, create, update, updateKeys, remove, setDefault } = useWorkspaceConnections({ revalidate: true })
     const credit = useRerunCredit()
     const needsPlan = useNeedsPlanToConnect()
@@ -111,7 +113,7 @@ export function AiProvidersPanel({
 
     const pickDefault = (pick: BoxDefault) =>
         void setDefault(pick).then(result => {
-            if (!result.success) toast.error(result.error ?? t('errors.defaultFailed'))
+            if (!result.success) toast.error(errorText(result, t('errors.defaultFailed')))
         })
 
     const byKind = (kind: SourceKind) => connections.filter(c => sourceKind(c.provider) === kind)

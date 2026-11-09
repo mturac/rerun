@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { BaseUrlField } from '@/components/connections/BaseUrlField'
 import { CustomModelList } from '@/components/connections/CustomModelList'
@@ -49,6 +50,7 @@ type ConnectionDetailProps = {
 // model is a PATCH, a pasted key is a PATCH, and a failed one says so under the header.
 export function ConnectionDetail({ connection, credit, defaultModel, reconnectRequested = false, onReconnected, onBack, onUpdate, onUpdateKeys, onDelete, readOnlyReason }: ConnectionDetailProps) {
     const t = useTranslations('connections')
+    const errorText = useErrorText()
     const [error, setError] = useState<string | null>(null)
     const rejected = reconnectRequested || connection.credentialRejected
     const isOpenRouter = connection.provider === 'openrouter'
@@ -58,9 +60,9 @@ export function ConnectionDetail({ connection, credit, defaultModel, reconnectRe
     const patch = useCallback(
         async (next: UpdateBoxConnectionInput) => {
             const result = await onUpdate(connection.id, next)
-            setError(result.success ? null : (result.error ?? t('errors.saveFailed')))
+            setError(result.success ? null : errorText(result, t('errors.saveFailed')))
         },
-        [connection.id, onUpdate, t]
+        [connection.id, onUpdate, t, errorText]
     )
 
     const applyKeys = useCallback(
@@ -125,6 +127,7 @@ function AlertBlock({ children }: { children: ReactNode }) {
 function SourceAlert({ connection, credit, reconnectRequested, onKeys }: { connection: BoxConnection; credit: RerunCredit; reconnectRequested: boolean; onKeys: (keys: Record<string, string>) => Promise<MutationResult> }) {
     const t = useTranslations('connections')
     const tCommon = useTranslations('common')
+    const errorText = useErrorText()
     const locale = useLocale()
     const [value, setValue] = useState('')
     const [busy, setBusy] = useState(false)
@@ -174,7 +177,7 @@ function SourceAlert({ connection, credit, reconnectRequested, onKeys }: { conne
         setBusy(true)
         const result = await onKeys({ [CONNECTION_TOKEN_KEY[connection.provider]]: trimmed }).catch(() => ({ success: false as const, error: tCommon('somethingWentWrong') }))
         setBusy(false)
-        setError(result.success ? null : (result.error ?? t('errors.saveFailed')))
+        setError(result.success ? null : errorText(result, t('errors.saveFailed')))
         if (result.success) setValue('')
     }
 

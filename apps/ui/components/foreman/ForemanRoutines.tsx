@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useLocale, useTranslations } from 'next-intl'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -39,6 +40,7 @@ function leaveForTheBoard() {
 export function ForemanRoutines({ docked, className }: { docked: boolean; className?: string }) {
     const locale = useLocale()
     const t = useTranslations('foreman.routines')
+    const errorText = useErrorText()
     const [data, setData] = useState<WorkspaceRoutines | null>(null)
     const [saving, setSaving] = useState<string[]>([])
     const [renamingKey, setRenamingKey] = useState<string | null>(null)
@@ -97,7 +99,7 @@ export function ForemanRoutines({ docked, className }: { docked: boolean; classN
             return
         }
         patch(key, { enabled: !enabled })
-        toast.error(t(enabled ? 'resumeFailed' : 'pauseFailed', { name: routine.name }), { description: result.error })
+        toast.error(t(enabled ? 'resumeFailed' : 'pauseFailed', { name: routine.name }), { description: errorText(result) })
     }
 
     const rename = async (routine: WorkspaceRoutine, name: string) => {
@@ -110,7 +112,7 @@ export function ForemanRoutines({ docked, className }: { docked: boolean; classN
             return
         }
         patch(key, { name: routine.name })
-        toast.error(t('renameFailed', { name: routine.name }), { description: result.error })
+        toast.error(t('renameFailed', { name: routine.name }), { description: errorText(result) })
     }
 
     const openEditor = (routine: WorkspaceRoutine) => {
@@ -123,7 +125,7 @@ export function ForemanRoutines({ docked, className }: { docked: boolean; classN
     const runNow = async (routine: WorkspaceRoutine) => {
         const result = await testScheduleAction(routine.agentId, routine.slug)
         if (!result.success || !result.runId) {
-            toast.error(t('runFailed', { name: routine.name }), { description: result.error })
+            toast.error(t('runFailed', { name: routine.name }), { description: errorText(result) })
             return
         }
         if (!result.sessionId) {

@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { deleteFileAction, readFileAction, readFileHeadAction, renameFileAction, writeFileAction } from '@/app/api/_actions/file.actions'
 import { listPublishedAction, publishFileAction, unpublishFileAction } from '@/app/api/_actions/publish.actions'
 import { agentFileRawUrl } from '@/lib/files/raw-url'
@@ -31,6 +32,7 @@ type AgentPanelFilesProps = {
 
 export function AgentPanelFiles({ agentId, focusPath, onFocusConsumed }: AgentPanelFilesProps) {
     const t = useTranslations('agent.agentPanelFiles')
+    const errorText = useErrorText()
     const [openFile, setOpenFile] = useState<{ path: string; name: string } | null>(null)
     const [dragOver, setDragOver] = useState(false)
     const [published, setPublished] = useState<PublishedFile[]>([])
@@ -93,13 +95,13 @@ export function AgentPanelFiles({ agentId, focusPath, onFocusConsumed }: AgentPa
         const filePath = currentPath ? `${currentPath}/${name}` : name
         const result = await publishFileAction(agentId, filePath)
         if (!result.success) {
-            toast.error(t('publishFailed', { name }), { description: result.error })
+            toast.error(t('publishFailed', { name }), { description: errorText(result) })
             return
         }
         await loadPublished()
         // A new link starts with the access the workspace gives it: the share dialog is where it changes.
         if (publishedAccess && result.slug) setSharingSlug(result.slug)
-    }, [agentId, currentPath, loadPublished, publishedAccess, t])
+    }, [agentId, currentPath, loadPublished, publishedAccess, t, errorText])
 
     const handleUnpublish = useCallback(async (name: string) => {
         const filePath = currentPath ? `${currentPath}/${name}` : name

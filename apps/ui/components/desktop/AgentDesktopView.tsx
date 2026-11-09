@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText, type Refusal } from '@/hooks/useErrorText'
 import type { DesktopApp, DesktopViewMode } from '@rerun/contracts'
 import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -16,17 +17,17 @@ import { MonitorIcon } from '@/lib/icons'
 import { useBoardStore } from '@/stores/board.store'
 import { useDesktopStore, type TakeoverTarget } from '@/stores/desktop.store'
 
-type Screen = { status: 'loading' } | { status: 'live'; socketUrl: string; dock: boolean } | { status: 'error'; error: string } | { status: 'disconnected' }
+type Screen = { status: 'loading' } | { status: 'live'; socketUrl: string; dock: boolean } | { status: 'error'; refusal: Refusal } | { status: 'disconnected' }
 
 const openScreen = (agentId: string, mode: DesktopViewMode) => openDesktopAction(agentId, mode, Intl.DateTimeFormat().resolvedOptions().timeZone)
 
 async function connect(agentId: string, takeover: TakeoverTarget | null): Promise<Screen> {
     if (takeover) {
         const started = await startTakeoverAction(agentId, takeover.url)
-        if (!started.ok) return { status: 'error', error: started.error }
+        if (!started.ok) return { status: 'error', refusal: started }
     }
     const opened = await openScreen(agentId, 'drive')
-    return opened.ok ? { status: 'live', socketUrl: opened.socketUrl, dock: opened.dock } : { status: 'error', error: opened.error }
+    return opened.ok ? { status: 'live', socketUrl: opened.socketUrl, dock: opened.dock } : { status: 'error', refusal: opened }
 }
 
 // The screen of the agent whose sheet is open, in a dialog to drive it. Watching it happens in that
@@ -59,6 +60,7 @@ export function AgentDesktopView() {
 
 function DesktopSession({ agentId, takeover }: { agentId: string; takeover: TakeoverTarget | null }) {
     const t = useTranslations('desktop')
+    const errorText = useErrorText()
     const handBack = useDesktopStore(s => s.handBack)
     const [screen, setScreen] = useState<Screen>({ status: 'loading' })
     const [busy, setBusy] = useState(false)
@@ -92,7 +94,7 @@ function DesktopSession({ agentId, takeover }: { agentId: string; takeover: Take
         setBusy(true)
         const result = await action()
         setBusy(false)
-        if (!result.ok) toast.error(result.error)
+        if (!result.ok) toast.error(errorText(result))
         return result.ok
     }
 
@@ -121,7 +123,7 @@ function DesktopSession({ agentId, takeover }: { agentId: string; takeover: Take
         setBusy(false)
         if (!result.ok) {
             finishingRef.current = false
-            toast.error(result.error)
+            toast.error(errorText(result))
             return
         }
         handBack(takeover.callId, { url: result.url, open: result.open })
@@ -134,7 +136,7 @@ function DesktopSession({ agentId, takeover }: { agentId: string; takeover: Take
         <div className="relative flex min-h-0 flex-1 flex-col bg-muted/40">
             {screen.status === 'loading' && <DesktopScreenLoader label={t('screen.connecting')} />}
             {screen.status === 'live' && <DesktopViewer ref={viewerRef} socketUrl={screen.socketUrl} onDisconnect={onDisconnect} />}
-            {screen.status === 'error' && <EmptyState icon={MonitorIcon} title={t('screen.unavailable')} description={screen.error} action={<RetryButton onClick={() => void reconnect()} label={t('session.tryAgain')} />} />}
+            {screen.status === 'error' && <EmptyState icon={MonitorIcon} title={t('screen.unavailable')} description={errorText(screen.refusal)} action={<RetryButton onClick={() => void reconnect()} label={t('session.tryAgain')} />} />}
             {screen.status === 'disconnected' && <EmptyState icon={MonitorIcon} title={t('screen.wentAway')} description={t('session.disconnectedDescription')} action={<RetryButton onClick={() => void reconnect()} label={t('session.reconnect')} />} />}
             <DesktopNotch
                 launchers={screen.status === 'live' && !screen.dock}

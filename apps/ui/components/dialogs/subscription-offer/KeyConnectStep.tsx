@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { CONNECTION_TOKEN_KEY } from '@rerun/contracts'
 import { ScrollFade } from '@rerun/ui/primitives'
 import { useTranslations } from 'next-intl'
@@ -31,6 +32,7 @@ type KeyConnectStepProps = {
 // recommendation, and none of the four is one.
 export function KeyConnectStep({ onPick, onBack, onSkip, onKeys, only }: KeyConnectStepProps) {
     const t = useTranslations('dialogs.subscriptionOffer.key')
+    const errorText = useErrorText()
     const [provider, setProvider] = useState<GuidedProvider | null>(only ?? null)
     const headline = only === 'opencode' ? { title: t('opencodeTitle'), detail: t('opencodeDetail') } : { title: t('title'), detail: t('detail') }
     const [apiKey, setApiKey] = useState('')
@@ -51,7 +53,7 @@ export function KeyConnectStep({ onPick, onBack, onSkip, onKeys, only }: KeyConn
         try {
             const result = await onKeys(provider, { [CONNECTION_TOKEN_KEY[provider]]: apiKey.trim() })
             setNeedsPlan(!result.success && result.reason === 'no_plan')
-            if (!result.success) setError(result.error ?? t('failed'))
+            if (!result.success) setError(errorText(result, t('failed')))
         } catch {
             setError(t('somethingWentWrong'))
         } finally {

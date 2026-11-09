@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { createTriggerAction, deleteTriggerAction, getTriggerAction, rotateTriggerTokenAction, updateTriggerAction } from '@/app/api/_actions/agent.actions'
 import { PanelDeleteButton, PanelEditorBody, PanelEditorFooter, PanelEditorHeader, PanelEditorShell } from '@/components/ui/panel-editor'
 import { TaskNotifyField } from '@/components/agent/TaskNotifyField'
@@ -35,6 +36,7 @@ type TriggerEditorProps = {
 
 export function TriggerEditor({ agentId, slug, onDone, onBack, onShowHistory }: TriggerEditorProps) {
     const t = useTranslations('agent.triggerEditor')
+    const errorText = useErrorText()
     const isEdit = !!slug
     const { pick, setPick, availableGroups, providerFor, agentModel } = useRunModel(agentId)
     // Only the prompt is sealed: the URL, the methods and the on/off switch stay available.
@@ -86,8 +88,8 @@ export function TriggerEditor({ agentId, slug, onDone, onBack, onShowHistory }: 
             : await createTriggerAction(agentId, { name, description, body, methods, connectionId: pick.connectionId, provider, model: pick.model })
         setSaving(false)
         if (result.success) onDone()
-        else setError(result.error ?? t('saveFailed'))
-    }, [agentId, slug, isEdit, name, description, methods, enabled, pick, body, onDone, providerFor, t])
+        else setError(errorText(result, t('saveFailed')))
+    }, [agentId, slug, isEdit, name, description, methods, enabled, pick, body, onDone, providerFor, t, errorText])
 
     const handleRotate = useCallback(async () => {
         if (!slug) return
@@ -96,8 +98,8 @@ export function TriggerEditor({ agentId, slug, onDone, onBack, onShowHistory }: 
         const result = await rotateTriggerTokenAction(agentId, slug)
         setRotating(false)
         if (result.success && result.trigger) setTrigger(result.trigger)
-        else setError(result.error ?? t('rotateFailed'))
-    }, [agentId, slug, t])
+        else setError(errorText(result, t('rotateFailed')))
+    }, [agentId, slug, t, errorText])
 
     const handleDelete = useCallback(async () => {
         if (!slug) return
@@ -105,8 +107,8 @@ export function TriggerEditor({ agentId, slug, onDone, onBack, onShowHistory }: 
         const result = await deleteTriggerAction(agentId, slug)
         setDeleting(false)
         if (result.success) onDone()
-        else setError(result.error ?? t('deleteFailed'))
-    }, [agentId, slug, onDone, t])
+        else setError(errorText(result, t('deleteFailed')))
+    }, [agentId, slug, onDone, t, errorText])
 
     if (loading) {
         return (

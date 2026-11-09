@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { createScheduleAction, deleteScheduleAction, getScheduleAction, listScheduleRunsAction, listSchedulesAction, listTaskOutcomesAction, parseScheduleAction, testScheduleAction, updateScheduleAction } from '@/app/api/_actions/agent.actions'
 import { adoptRunSession, RunHistoryList } from '@/components/agent/AgentRunHistory'
 import { PanelDeleteButton, PanelEditorBody, PanelEditorFooter, PanelEditorHeader, PanelEditorShell } from '@/components/ui/panel-editor'
@@ -188,6 +189,7 @@ function SchedulePicker({ mode, cron, runAtLocal, disabled, onChange }: { mode: 
     const [input, setInput] = useState('')
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const errorText = useErrorText()
 
     const summary = mode === 'cron' ? (cron.trim() ? (humanCron(cron) ?? cron) : '') : runAtLocal ? formatDate(localInputToIso(runAtLocal), locale) : ''
 
@@ -199,14 +201,14 @@ function SchedulePicker({ mode, cron, runAtLocal, disabled, onChange }: { mode: 
         const result = await parseScheduleAction(input, { nowIso: new Date().toISOString(), timezone })
         setBusy(false)
         if (!result.success) {
-            setError(result.error)
+            setError(errorText(result))
             return
         }
         const data = result.data
         onChange(data.mode === 'cron' ? { mode: 'cron', cron: data.cron, timezone: data.timezone } : { mode: 'runAt', runAtLocal: isoToLocalInput(data.runAt), timezone: data.timezone })
         setInput('')
         setOpen(false)
-    }, [input, onChange])
+    }, [input, onChange, errorText])
 
     return (
         <Field label={t('when')}>
@@ -251,6 +253,7 @@ function SchedulePicker({ mode, cron, runAtLocal, disabled, onChange }: { mode: 
 
 function ScheduleEditor({ agentId, agentName, slug, onDone, onBack, onShowHistory, onOpenSession }: { agentId: string; agentName: string; slug?: string; onDone: () => void; onBack: () => void; onShowHistory?: () => void; onOpenSession?: (sessionId: string, title: string, runId: string | null) => void }) {
     const t = useTranslations('agent.agentPanelScheduled.editor')
+    const errorText = useErrorText()
     const isEdit = !!slug
     const { pick, setPick, availableGroups, providerFor, agentModel } = useRunModel(agentId)
     // Only the prompt is sealed: pausing a task or moving its hour stays available.
@@ -312,8 +315,8 @@ function ScheduleEditor({ agentId, agentName, slug, onDone, onBack, onShowHistor
         setSaving(false)
         if (result.success) useBoardStore.getState().requestSchedulesRefresh()
         if (result.success) onDone()
-        else setError(result.error ?? t('saveFailed'))
-    }, [agentId, slug, isEdit, canRename, name, description, scheduleMode, cron, runAtLocal, timezone, enabled, pick, body, onDone, providerFor, t])
+        else setError(errorText(result, t('saveFailed')))
+    }, [agentId, slug, isEdit, canRename, name, description, scheduleMode, cron, runAtLocal, timezone, enabled, pick, body, onDone, providerFor, t, errorText])
 
     const handleTest = useCallback(async () => {
         if (!slug) return
@@ -322,7 +325,7 @@ function ScheduleEditor({ agentId, agentName, slug, onDone, onBack, onShowHistor
         try {
             const result = await testScheduleAction(agentId, slug)
             if (!result.success || !result.runId) {
-                setError(result.error ?? t('runFailed'))
+                setError(errorText(result, t('runFailed')))
                 return
             }
             if (!result.sessionId) {
@@ -337,7 +340,7 @@ function ScheduleEditor({ agentId, agentName, slug, onDone, onBack, onShowHistor
         } finally {
             setTesting(false)
         }
-    }, [agentId, slug, name, onOpenSession, onShowHistory, t])
+    }, [agentId, slug, name, onOpenSession, onShowHistory, t, errorText])
 
     const handleDelete = useCallback(async () => {
         if (!slug) return
@@ -346,8 +349,8 @@ function ScheduleEditor({ agentId, agentName, slug, onDone, onBack, onShowHistor
         setDeleting(false)
         if (result.success) useBoardStore.getState().requestSchedulesRefresh()
         if (result.success) onDone()
-        else setError(result.error ?? t('deleteFailed'))
-    }, [agentId, slug, onDone, t])
+        else setError(errorText(result, t('deleteFailed')))
+    }, [agentId, slug, onDone, t, errorText])
 
     if (loading) {
         return (

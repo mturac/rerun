@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { defaultExcludedPaths, isSetupAnswered } from '@rerun/contracts'
 import * as React from 'react'
 import { useTranslations } from 'next-intl'
@@ -40,6 +41,7 @@ export type CaptureFlow = {
 // dialog and a step inside a longer wizard.
 export function useCaptureFlow(actions: CaptureActions): CaptureFlow {
     const t = useTranslations('templates.capture')
+    const errorText = useErrorText()
     // A server action rejects rather than answering when the request itself fails (offline, a
     // redeploy invalidating the action id), and a silent no-op reads as "nothing happened, click again".
     const failedRequest = t('failedRequest')
@@ -59,6 +61,7 @@ export function useCaptureFlow(actions: CaptureActions): CaptureFlow {
     // load. The flow is mounted only while its step is on screen, so the mount value is the one.
     const listSourcesRef = React.useRef(actions.listSources)
     const failedRequestRef = React.useRef(failedRequest)
+    const errorTextRef = React.useRef(errorText)
 
     React.useEffect(() => {
         let cancelled = false
@@ -66,7 +69,7 @@ export function useCaptureFlow(actions: CaptureActions): CaptureFlow {
             .then(result => {
                 if (cancelled) return
                 if (!result.ok) {
-                    setError(result.error)
+                    setError(errorTextRef.current(result))
                     return
                 }
                 setSpaces(result.spaces)
@@ -116,7 +119,7 @@ export function useCaptureFlow(actions: CaptureActions): CaptureFlow {
         try {
             const result = await actions.plan({ spaceId, agentIds: selectedIds })
             if (!result.ok) {
-                setError(result.error)
+                setError(errorText(result))
                 return false
             }
             setPlans(result.plans)
@@ -134,7 +137,7 @@ export function useCaptureFlow(actions: CaptureActions): CaptureFlow {
         } finally {
             setBusy(false)
         }
-    }, [actions, spaceId, selectedIds, failedRequest])
+    }, [actions, spaceId, selectedIds, failedRequest, errorText])
 
     const capture = React.useCallback(async () => {
         setError(null)
@@ -150,7 +153,7 @@ export function useCaptureFlow(actions: CaptureActions): CaptureFlow {
             })
             const result = await actions.capture({ spaceId, selections })
             if (!result.ok) {
-                setError(result.error)
+                setError(errorText(result))
                 return false
             }
             setWarnings(result.warnings)
@@ -161,7 +164,7 @@ export function useCaptureFlow(actions: CaptureActions): CaptureFlow {
         } finally {
             setBusy(false)
         }
-    }, [actions, plans, excluded, setups, spaceId, failedRequest])
+    }, [actions, plans, excluded, setups, spaceId, failedRequest, errorText])
 
     // An agent whose setup question is still unanswered cannot be signed off: the answer is what a
     // template is submitted on, and after the capture it is too late to ask. Re-checked here rather

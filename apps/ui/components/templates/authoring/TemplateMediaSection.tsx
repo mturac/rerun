@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { Card, CardContent, CardHeader, CardTitle } from '@rerun/ui/primitives'
 import { Reorder } from 'motion/react'
 import * as React from 'react'
@@ -62,6 +63,7 @@ export function TemplateMediaSection() {
 // editorial action rather than a nicety.
 function Gallery({ value, onChange }: { value: GalleryImage[]; onChange: (next: GalleryImage[]) => void }) {
     const t = useTranslations('templates.authoring.media')
+    const errorText = useErrorText()
     const { actions } = useTemplateAuthoring()
     const [uploading, setUploading] = React.useState(false)
     const [error, setError] = React.useState<string | null>(null)
@@ -76,7 +78,7 @@ function Gallery({ value, onChange }: { value: GalleryImage[]; onChange: (next: 
                 formData.append('file', file)
                 const result = await actions.uploadImage(formData, 'gallery')
                 if (!result.ok) {
-                    setError(result.error)
+                    setError(errorText(result))
                     break
                 }
                 uploaded.push({ url: result.url, alt: '' })

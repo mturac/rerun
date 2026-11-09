@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { rowKey, type DbRow } from '@/components/data/DataBrowserTable'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -32,6 +33,7 @@ type ViewBoardProps = {
 
 export function ViewBoard({ source, table, view, query, refreshKey, context, onOpenRow }: ViewBoardProps) {
     const t = useTranslations('data')
+    const errorText = useErrorText()
     const { groupBy, where, sort, tones } = view
     const fields = view.fields ?? {}
     const formats = view.formats ?? {}
@@ -54,7 +56,7 @@ export function ViewBoard({ source, table, view, query, refreshKey, context, onO
             const result = await source.readGroups(table, { groupBy, sum: sumColumn, q: query || undefined, where })
             if (cancelled) return
             if (!result.success) {
-                setError(result.error)
+                setError(errorText(result))
                 setLanes([])
                 return
             }
@@ -67,7 +69,7 @@ export function ViewBoard({ source, table, view, query, refreshKey, context, onO
         return () => {
             cancelled = true
         }
-    }, [source, table, groupBy, sumColumn, query, where, tones, readLane, refreshKey])
+    }, [source, table, groupBy, sumColumn, query, where, tones, readLane, refreshKey, errorText])
 
     const showMore = async (lane: Lane) => {
         const limit = lane.limit + PER_COLUMN
@@ -92,7 +94,7 @@ export function ViewBoard({ source, table, view, query, refreshKey, context, onO
         const result = await source.updateRow(table, id, { [groupBy]: target.value })
         if (!result.success) {
             setLanes(previous)
-            toast.error(t('board.moveFailed'), { description: result.error })
+            toast.error(t('board.moveFailed'), { description: errorText(result) })
         }
     }
 

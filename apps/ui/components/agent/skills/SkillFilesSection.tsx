@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { deleteSkillFileAction, writeSkillFileAction } from '@/app/api/_actions/agent.actions'
 import { PanelDeleteButton } from '@/components/ui/panel-editor'
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,7 @@ type SkillFilesSectionProps = {
 
 export function SkillFilesSection({ agentId, slug, files, readOnly, addLockedReason, deleteLockedReason, onOpen, onChanged }: SkillFilesSectionProps) {
     const t = useTranslations('agent.skillFilesSection')
+    const errorText = useErrorText()
     const [adding, setAdding] = useState(false)
     const [newPath, setNewPath] = useState('references/')
     const [busy, setBusy] = useState<string | null>(null)
@@ -41,23 +43,23 @@ export function SkillFilesSection({ agentId, slug, files, readOnly, addLockedRea
         const result = await writeSkillFileAction(agentId, slug, path, '')
         setBusy(null)
         if (!result.success) {
-            setError(result.error ?? t('createFailed'))
+            setError(errorText(result, t('createFailed')))
             return
         }
         setAdding(false)
         setNewPath('references/')
         onChanged()
         onOpen(path)
-    }, [agentId, slug, newPath, onChanged, onOpen, t])
+    }, [agentId, slug, newPath, onChanged, onOpen, t, errorText])
 
     const handleDelete = useCallback(async (path: string) => {
         setBusy(path)
         setError(null)
         const result = await deleteSkillFileAction(agentId, slug, path)
         setBusy(null)
-        if (!result.success) setError(result.error ?? t('deleteFailed'))
+        if (!result.success) setError(errorText(result, t('deleteFailed')))
         else onChanged()
-    }, [agentId, slug, onChanged, t])
+    }, [agentId, slug, onChanged, t, errorText])
 
     return (
         <Field label={t('label')} helperText={t('helper')}>

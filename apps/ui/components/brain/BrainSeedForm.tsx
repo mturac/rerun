@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { seedCompanyBrainAction } from '@/app/api/_actions/brain-seed.actions'
 import { Button } from '@/components/ui/button'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
@@ -18,13 +19,14 @@ type SeedValues = z.infer<ReturnType<typeof websiteSchema>>
 // background: the pages show up a few minutes later, not on submit.
 export function BrainSeedForm({ onStarted }: { onStarted: () => void }) {
     const t = useTranslations('brain.seed')
+    const errorText = useErrorText()
     const schema = useMemo(() => websiteSchema(t('required')), [t])
     const form = useForm<SeedValues>({ resolver: zodResolver(schema), defaultValues: { website: '' } })
 
     const submit = form.handleSubmit(async ({ website }) => {
         const result = await seedCompanyBrainAction(website)
         if (!result.ok) {
-            form.setError('website', { message: result.error })
+            form.setError('website', { message: errorText(result) })
             return
         }
         onStarted()

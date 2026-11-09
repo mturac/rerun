@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { RotateCwIcon } from '@/lib/icons'
 import { useTranslations } from 'next-intl'
 import { useTransition } from 'react'
@@ -30,6 +31,7 @@ export function WorkspacePowerMenuItems({ onPick }: { onPick: (action: PowerActi
 
 export function WorkspacePowerDialog({ action, onOpenChange }: { action: PowerAction | null; onOpenChange: (open: boolean) => void }) {
     const t = useTranslations('layout.power')
+    const errorText = useErrorText()
     const isAdmin = useIsAdmin()
     const [isPending, startTransition] = useTransition()
 
@@ -39,7 +41,7 @@ export function WorkspacePowerDialog({ action, onOpenChange }: { action: PowerAc
             try {
                 const result = await restartWorkspaceEngineAction()
                 if (result.ok) toast.success(t(`${next}.success`), { id: toastId })
-                else toast.error(result.error, { id: toastId })
+                else toast.error(errorText(result), { id: toastId })
             } catch {
                 toast.error(t('failed'), { id: toastId })
             }

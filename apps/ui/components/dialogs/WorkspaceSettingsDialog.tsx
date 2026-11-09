@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import type { ActionResult } from '@/app/api/_actions/space.actions'
@@ -87,6 +88,7 @@ export function WorkspaceSettingsForm({
 }) {
     const t = useTranslations('workspace.settings')
     const tCommon = useTranslations('common')
+    const errorText = useErrorText()
     const schema = useMemo(() => z.object({ name: z.string().trim().min(1, t('nameRequired')).max(WORKSPACE_NAME_MAX, t('nameTooLong', { max: WORKSPACE_NAME_MAX })) }), [t])
     const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { name: workspace.name ?? '' } })
     const {
@@ -144,7 +146,7 @@ export function WorkspaceSettingsForm({
         // The favicon service answers an unknown domain with a placeholder globe the browser shows
         // happily, so only the server can tell the link found nothing.
         if (logo.kind === 'link' && result.error === NO_LOGO_FOUND) setBrokenSrc(logoSrc)
-        else form.setError('root', { message: result.error })
+        else form.setError('root', { message: errorText(result) })
     })
 
     return (

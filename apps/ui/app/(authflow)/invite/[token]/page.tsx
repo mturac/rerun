@@ -21,6 +21,7 @@ function Shell({ title, message }: { title: string; message: string }) {
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
     const { token } = await params
     const t = await getTranslations('auth.invite')
+    const tErrors = await getTranslations('errors')
 
     const invite = await loadInvitationAction(token)
     if (invite.status === 'not_found') return <Shell title={t('notFound.title')} message={t('notFound.message')} />
@@ -37,7 +38,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
     if (session.email.toLowerCase() !== invite.email.toLowerCase()) return <InviteMismatch inviteEmail={invite.email} currentEmail={accountLabel(session.email) ?? session.email} workspaceName={invite.workspaceName} />
 
     const result = await acceptInvitationAction(token)
-    if (!result.ok) return <Shell title={t('joinFailed')} message={result.error} />
+    if (!result.ok) return <Shell title={t('joinFailed')} message={result.code ? tErrors(result.code, result.params as never) : result.error} />
 
     // Named in the URL so a tab already pinned on another workspace lands on the joined one.
     redirect(`${routes.home}?${WORKSPACE_PARAM}=${result.workspaceId}`)

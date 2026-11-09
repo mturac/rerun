@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { createImportKeyAction } from '@/app/api/_actions/api-keys.actions'
 import { CopyBlock } from '@/components/dialogs/CopyBlock'
 import { CopyLine } from '@/components/dialogs/CopyLine'
@@ -36,6 +37,7 @@ function PreparedSkeleton() {
 // it still expires on its own a day later.
 export function ImportAgentDialog({ open, onOpenChange, spaceId = null }: { open: boolean; onOpenChange: (open: boolean) => void; spaceId?: string | null }) {
     const t = useTranslations('dialogs.importAgent')
+    const errorText = useErrorText()
     const [source, setSource] = useState<ImportSourceId | null>(null)
     const [prepared, setPrepared] = useState<Prepared | null>(null)
     const latest = useRef<ImportSourceId | null>(null)
@@ -48,7 +50,7 @@ export function ImportAgentDialog({ open, onOpenChange, spaceId = null }: { open
         const result = await createImportKeyAction(next, spaceId)
         if (latest.current !== next) return
         if (!result.ok) {
-            toast.error(result.error)
+            toast.error(errorText(result))
             setSource(null)
             return
         }

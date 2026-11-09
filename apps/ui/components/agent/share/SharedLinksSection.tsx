@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import * as React from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@rerun/ui/primitives'
@@ -22,6 +23,7 @@ export function SharedLinksSection({ agentId }: { agentId: string }) {
     const [shares, setShares] = React.useState<WorkspaceShare[] | null>(null)
     const canManage = useCanManageAgent(agentId)
     const t = useTranslations('agent.sharedLinksSection')
+    const errorText = useErrorText()
     const tShared = useTranslations('agent.modelsShared')
 
     React.useEffect(() => {
@@ -39,7 +41,7 @@ export function SharedLinksSection({ agentId }: { agentId: string }) {
     async function revoke(shareId: string) {
         const result = await revokeAgentShareAction(shareId)
         if (!result.ok) {
-            toast.error(t('revokeFailed'), { description: result.error })
+            toast.error(t('revokeFailed'), { description: errorText(result) })
             return
         }
         setShares(current => (current ?? []).filter(share => share.id !== shareId))

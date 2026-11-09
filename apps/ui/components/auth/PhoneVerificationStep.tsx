@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { savePhoneNumberAction, skipPhoneStepAction } from '@/app/api/_actions/phone.actions'
 import { PhoneNumberForm, type PhoneNumberRequest } from '@/components/auth/PhoneNumberForm'
 import { useSession } from '@/supabase/session/SessionProvider'
@@ -14,6 +15,7 @@ import { useTranslations } from 'next-intl'
 // settings, so a mistyped one neither signs in nor gets a message.
 export function PhoneVerificationStep({ active }: { active: boolean }) {
     const t = useTranslations('auth.phoneStep')
+    const errorText = useErrorText()
     const { refreshPhoneStep, signOut } = useSession()
 
     const viewed = useRef(false)
@@ -25,7 +27,7 @@ export function PhoneVerificationStep({ active }: { active: boolean }) {
 
     const submit = async ({ phone, country }: PhoneNumberRequest) => {
         const result = await savePhoneNumberAction({ phone, country })
-        if (!result.ok) throw new Error(result.error)
+        if (!result.ok) throw new Error(errorText(result))
         track('phone_wall_submitted', { country })
         await refreshPhoneStep()
     }

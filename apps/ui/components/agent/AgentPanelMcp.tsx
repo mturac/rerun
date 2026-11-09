@@ -1,5 +1,6 @@
 'use client'
 
+import type { Refusal } from '@/hooks/useErrorText'
 import { getAgentDetailAction, patchAgentMcpServersAction } from '@/app/api/_actions/agent.actions'
 import { McpServerEditor } from '@/components/agent/McpServerEditor'
 import { Button } from '@/components/ui/button'
@@ -61,14 +62,14 @@ export function AgentPanelMcp({ agentId }: AgentPanelMcpProps) {
 
     // Mutate by delta: the engine merges by name under a per-agent lock, so a stale local
     // list can never clobber servers added elsewhere (other tabs, installs, the agent itself).
-    const mutate = useCallback(async (body: { upsert?: EngineMcpServer[]; remove?: string[] }): Promise<{ success: boolean; error?: string }> => {
+    const mutate = useCallback(async (body: { upsert?: EngineMcpServer[]; remove?: string[] }): Promise<{ success: boolean } & Refusal> => {
         const result = await patchAgentMcpServersAction(agentId, body)
         if (result.success && result.detail) {
             setServers((result.detail.config.mcpServers ?? []) as EngineMcpServer[])
             invalidateConnectorServices(agentId)
             refreshMcpServerStatuses(agentId)
         }
-        return { success: result.success, error: result.error }
+        return result
     }, [agentId])
 
     const stepKey = view.mode === 'edit' ? `edit:${view.index}` : view.mode

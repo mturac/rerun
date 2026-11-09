@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { Badge } from '@rerun/ui/primitives'
 import { useLocale, useTranslations } from 'next-intl'
 import { useState } from 'react'
@@ -66,6 +67,7 @@ export function BusinessDetailsRow({ business, onOpen }: { business: BusinessDet
 // Only reached with a billing country: the row stays disabled without one.
 export function BusinessDetailsPane({ business, onBack, onSaved }: { business: BusinessDetails; onBack: () => void; onSaved: () => Promise<void> }) {
     const t = useTranslations('billing.business')
+    const errorText = useErrorText()
     const locale = useLocale()
     const country = business.country ?? ''
     const types = taxIdTypesFor(country)
@@ -86,7 +88,7 @@ export function BusinessDetailsPane({ business, onBack, onSaved }: { business: B
         const result = await saveBusinessDetailsAction({ name, type, value })
         if (!result.ok) {
             setSaving(false)
-            return setError(result.error)
+            return setError(errorText(result))
         }
         await onSaved()
         setSaving(false)
@@ -99,7 +101,7 @@ export function BusinessDetailsPane({ business, onBack, onSaved }: { business: B
         const result = await removeTaxIdAction()
         if (!result.ok) {
             setRemoving(false)
-            return toast.error(t('removeFailed'), { description: result.error })
+            return toast.error(t('removeFailed'), { description: errorText(result) })
         }
         await onSaved()
         setRemoving(false)

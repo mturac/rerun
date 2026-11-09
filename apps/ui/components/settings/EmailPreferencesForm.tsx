@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { updateNotificationPrefsAction, updateNotificationPrefsByTokenAction } from '@/app/api/_actions/notifications.actions'
 import { Field } from '@/components/ui/field'
 import { Icon } from '@/components/ui/icon'
@@ -32,6 +33,7 @@ type SaveState = 'idle' | 'saving' | 'saved'
 export function EmailPreferencesForm({ initialPrefs, token }: { initialPrefs: EmailPrefs; token?: string }) {
     const t = useTranslations('notifications.emailPreferences')
     const tCategories = useTranslations('notifications.settings.accountEmails')
+    const errorText = useErrorText()
     const form = useForm<EmailPrefs>({ defaultValues: initialPrefs })
     const prefs = form.watch()
     const [saveState, setSaveState] = useState<SaveState>('idle')
@@ -46,7 +48,7 @@ export function EmailPreferencesForm({ initialPrefs, token }: { initialPrefs: Em
             savedTimer.current = setTimeout(() => setSaveState('idle'), 2000)
         } else {
             setSaveState('idle')
-            toast.error(t('saveFailed'), { description: res.error })
+            toast.error(t('saveFailed'), { description: errorText(res) })
         }
     }
 

@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useState } from 'react'
 
@@ -25,18 +26,19 @@ type AgentComputerThumbnailProps = {
  */
 export function AgentComputerThumbnail({ agentId, working, disabledReason, onOpen }: AgentComputerThumbnailProps) {
     const t = useTranslations('agent.agentComputerThumbnail')
+    const errorText = useErrorText()
     const [screen, setScreen] = useState<Screen>(disabledReason ? { status: 'unavailable', reason: disabledReason } : { status: 'loading' })
 
     useEffect(() => {
         if (disabledReason) return
         let alive = true
         void openDesktopAction(agentId, 'watch', Intl.DateTimeFormat().resolvedOptions().timeZone).then(opened => {
-            if (alive) setScreen(opened.ok ? { status: 'live', socketUrl: opened.socketUrl } : { status: 'unavailable', reason: opened.error })
+            if (alive) setScreen(opened.ok ? { status: 'live', socketUrl: opened.socketUrl } : { status: 'unavailable', reason: errorText(opened) })
         })
         return () => {
             alive = false
         }
-    }, [agentId, disabledReason])
+    }, [agentId, disabledReason, errorText])
 
     const onDisconnect = useCallback(() => setScreen({ status: 'unavailable', reason: t('wentAway') }), [t])
     const live = screen.status === 'live'

@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { DeleteTableDialog } from '@/components/dialogs/DeleteTableDialog'
 import { PurgeTableDialog } from '@/components/dialogs/PurgeTableDialog'
 import { ViewSettingsDialog } from '@/components/dialogs/ViewSettingsDialog'
@@ -52,6 +53,7 @@ const NO_ROWS: DbRow[] = []
 export function DataBrowser({ source, initial, onInitialConsumed, onExpand, table: pinnedTable, onTableDropped }: DataBrowserProps) {
     const locale = useLocale()
     const t = useTranslations('data.browser')
+    const errorText = useErrorText()
     const [requested] = useState(() => initial ?? null)
     const requestedTableRef = useRef(requested?.table ?? null)
     const requestedViewRef = useRef(requested?.view)
@@ -146,7 +148,7 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
             if (cancelled) return
             const list = result.success ? result.views : []
             setViews(list)
-            setViewsError(result.success ? null : result.error)
+            setViewsError(result.success ? null : errorText(result))
             const wanted = requestedViewRef.current
             requestedViewRef.current = undefined
             const remembered = readLastView(source.storageKey, selected)
@@ -156,7 +158,7 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
         return () => {
             cancelled = true
         }
-    }, [source, selected])
+    }, [source, selected, errorText])
 
     const activeView = activeId && activeId !== ALL_ROWS ? views.find(view => view.id === activeId) : undefined
     const boardView = activeView?.layout === 'board' && activeView.groupBy ? (activeView as TableView & { groupBy: string }) : undefined
@@ -289,14 +291,14 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
             const result = await source.deleteRows(selected, ids)
             setBusy(false)
             if (!result.success) {
-                setActionError(result.error ?? t('deleteRowsFailed'))
+                setActionError(errorText(result, t('deleteRowsFailed')))
                 return
             }
             setSelectedRowIds(new Set())
             setPageIndex(0)
             setRefreshKey(k => k + 1)
         },
-        [source, selected, t],
+        [source, selected, t, errorText],
     )
 
     const saveRow = useCallback(
@@ -305,13 +307,13 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
             if (!selected || id === null) return null
             const result = await source.updateRow(selected, id, values)
             if (!result.success) {
-                toast.error(t('saveRowFailed'), { description: result.error })
+                toast.error(t('saveRowFailed'), { description: errorText(result) })
                 return null
             }
             setData(current => current && { ...current, rows: current.rows.map(r => (rowKey(r as DbRow) === id ? result.row : r)) })
             return result.row as DbRow
         },
-        [source, selected, t],
+        [source, selected, t, errorText],
     )
 
     const editCell = useCallback(
@@ -327,12 +329,12 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
         const result = await source.dropTable(selected)
         setBusy(false)
         if (!result.success) {
-            setActionError(result.error ?? t('deleteTableFailed'))
+            setActionError(errorText(result, t('deleteTableFailed')))
             return
         }
         if (onTableDropped) onTableDropped()
         else await loadTables()
-    }, [source, selected, loadTables, onTableDropped, t])
+    }, [source, selected, loadTables, onTableDropped, t, errorText])
 
     const confirmPurgeTable = useCallback(async () => {
         setPurgeDialogOpen(false)
@@ -342,13 +344,13 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
         const result = await source.purgeTable(selected)
         setBusy(false)
         if (!result.success) {
-            setActionError(result.error ?? t('purgeTableFailed'))
+            setActionError(errorText(result, t('purgeTableFailed')))
             return
         }
         setSelectedRowIds(new Set())
         setPageIndex(0)
         setRefreshKey(k => k + 1)
-    }, [source, selected, t])
+    }, [source, selected, t, errorText])
 
     const exportTable = useCallback(
         (format: 'csv' | 'json') => {
@@ -390,7 +392,7 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
         const result = await source.saveView(selected, input)
         setAddingView(false)
         if (!result.success) {
-            toast.error(t('addViewFailed'), { description: result.error })
+            toast.error(t('addViewFailed'), { description: errorText(result) })
             return
         }
         onViewSaved(result.view)
@@ -400,7 +402,7 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
         if (!selected) return
         const result = await source.deleteView(selected, view.id)
         if (!result.success) {
-            toast.error(t('deleteViewFailed'), { description: result.error })
+            toast.error(t('deleteViewFailed'), { description: errorText(result) })
             return
         }
         setViews(current => current.filter(v => v.id !== view.id))

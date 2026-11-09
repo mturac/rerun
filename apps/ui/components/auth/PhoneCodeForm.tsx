@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { LastUsedBadge } from '@/components/auth/LastUsedBadge'
 import { PhoneSendError } from '@/components/auth/phone-send'
 import { CaptchaError } from '@/components/auth/captcha/captcha-error'
@@ -42,8 +43,9 @@ const codeSchemaFor = (t: PhoneTranslator) => z.object({ code: z.string().length
 const FALLBACK_COUNTRY = countryFromLocale(undefined)
 const neverChanges = () => () => {}
 
-const errorMessage = (error: unknown, t: PhoneTranslator, tCaptcha: ReturnType<typeof useTranslations<'auth.captcha'>>) => {
+const errorMessage = (error: unknown, t: PhoneTranslator, tCaptcha: ReturnType<typeof useTranslations<'auth.captcha'>>, errorText: ReturnType<typeof useErrorText>) => {
     if (error instanceof CaptchaError) return tCaptcha(error.inAppBrowser ? 'failedInApp' : 'failed')
+    if (error instanceof PhoneSendError) return errorText(error.refusal)
     return error instanceof Error ? error.message : t('errors.generic')
 }
 
@@ -88,6 +90,7 @@ export function PhoneCodeForm({
 }) {
     const t = useTranslations('auth.phone')
     const tCaptcha = useTranslations('auth.captcha')
+    const errorText = useErrorText()
     const phoneSchema = useMemo(() => phoneSchemaFor(t), [t])
     const codeSchema = useMemo(() => codeSchemaFor(t), [t])
     const [step, setStep] = useState<PhoneCodeStep>(initialSent ? 'code' : 'phone')
@@ -181,7 +184,7 @@ export function PhoneCodeForm({
                     setRetryAt(Date.now() + wait)
                     setNow(Date.now())
                 }
-                phoneForm.setError('phone', { message: errorMessage(error, t, tCaptcha) })
+                phoneForm.setError('phone', { message: errorMessage(error, t, tCaptcha, errorText) })
             }
         })()
 
@@ -191,7 +194,7 @@ export function PhoneCodeForm({
             await verifyCode(code, sent)
             if (persistKey) clearSentCode(persistKey)
         } catch (error) {
-            codeForm.setError('code', { message: errorMessage(error, t, tCaptcha) })
+            codeForm.setError('code', { message: errorMessage(error, t, tCaptcha, errorText) })
         }
     })
 
@@ -209,7 +212,7 @@ export function PhoneCodeForm({
         } catch (error) {
             const wait = retryAfterMs(error)
             if (wait) (switching ? setSwitchAt : setResendAt)(Date.now() + wait)
-            toast.error(errorMessage(error, t, tCaptcha))
+            toast.error(errorMessage(error, t, tCaptcha, errorText))
         }
     }
 

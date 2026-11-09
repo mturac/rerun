@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { isSetupAnswered } from '@rerun/contracts'
 import { getAgentDetailAction, updateAgentConfigAction } from '@/app/api/_actions/agent.actions'
 import { invalidateAgentContext } from '@/hooks/useAgentContext'
@@ -15,6 +16,7 @@ import { useEffect, useState } from 'react'
 
 export function AgentPanelSetup({ agentId }: { agentId: string }) {
     const t = useTranslations('agent.agentPanelSetup')
+    const errorText = useErrorText()
     const [draft, setDraft] = useState<AgentSetupDraft>({ required: null, prompt: '' })
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -52,7 +54,7 @@ export function AgentPanelSetup({ agentId }: { agentId: string }) {
         })
         setSaving(false)
         if (!result.success) {
-            setError(result.error ?? t('saveFailed'))
+            setError(errorText(result, t('saveFailed')))
             return
         }
         invalidateAgentContext(agentId)

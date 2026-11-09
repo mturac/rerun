@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { probeCustomEndpointAction } from '@/app/api/_actions/workspace-connection.actions'
 import { NoPlanNotice } from '@/components/connections/NoPlanNotice'
 import { ProviderHeader } from '@/components/connections/SourceBits'
@@ -34,6 +35,7 @@ type AddCustomProviderPageProps = {
 export function AddCustomProviderPage({ onBack, probe = probeCustomEndpointAction, onCreate, onOpen, takenNames, willBecomeBoxDefault }: AddCustomProviderPageProps) {
     const t = useTranslations('connections')
     const tCommon = useTranslations('common')
+    const errorText = useErrorText()
     const presets = presetsFor(RERUN_CLOUD)
     const id = useId()
     const [preset, setPreset] = useState<CustomPreset | null>(() => (RERUN_CLOUD ? null : (presets[0] ?? null)))
@@ -66,7 +68,7 @@ export function AddCustomProviderPage({ onBack, probe = probeCustomEndpointActio
             const probed = await probe({ baseUrl: baseUrl.trim(), apiKey: key || undefined, model })
             if (!probed.success) {
                 setNeedsPlan(probed.reason === 'no_plan')
-                return setError(probed.error)
+                return setError(errorText(probed))
             }
             const problem = probeProblemMessage(t, probed.result, model, RERUN_CLOUD)
             if (probed.result.problem === 'not_listed') setAsksModel(true)
@@ -82,7 +84,7 @@ export function AddCustomProviderPage({ onBack, probe = probeCustomEndpointActio
             })
             setNeedsPlan(!created.success && created.reason === 'no_plan')
             if (created.success) onOpen(created.connection.id)
-            else setError(created.error ?? t('errors.createFailed'))
+            else setError(errorText(created, t('errors.createFailed')))
         } catch {
             setError(tCommon('somethingWentWrong'))
         } finally {

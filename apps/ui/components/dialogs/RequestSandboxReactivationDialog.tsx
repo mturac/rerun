@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { requestSandboxReactivationAction } from '@/app/api/_actions/workspace-restore.actions'
 import { ExplainerPanel, type ExplainerPoint } from '@/components/dialogs/ExplainerPanel'
 import { SplitDialogContent } from '@/components/dialogs/SplitDialogContent'
@@ -17,6 +18,7 @@ const POINT_KEYS = ['archived', 'kept', 'reviewed', 'restored'] as const
 export function RequestSandboxReactivationDialog({ open, onOpenChange, onRequested }: { open: boolean; onOpenChange: (open: boolean) => void; onRequested: () => void }) {
     const t = useTranslations('dialogs.sandboxReactivation')
     const tCommon = useTranslations('common')
+    const errorText = useErrorText()
     const points: readonly ExplainerPoint[] = POINT_KEYS.map(key => ({ label: t(`points.${key}.label`), description: t(`points.${key}.description`) }))
     const [note, setNote] = useState('')
     const [error, setError] = useState<string | undefined>(undefined)
@@ -34,7 +36,7 @@ export function RequestSandboxReactivationDialog({ open, onOpenChange, onRequest
         setSubmitting(true)
         const result = await requestSandboxReactivationAction(note).catch(() => ({ ok: false, error: t('failed') }) as const)
         setSubmitting(false)
-        if (!result.ok) return setError(result.error)
+        if (!result.ok) return setError(errorText(result))
         onRequested()
         handleOpenChange(false)
     }

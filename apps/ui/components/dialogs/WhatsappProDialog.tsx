@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { formatNumber } from '@rerun/i18n/format'
@@ -27,6 +28,7 @@ function preferredMethod(): WhatsappLinkMethod {
 
 export function WhatsappProDialog() {
     const t = useTranslations('dialogs')
+    const errorText = useErrorText()
     const locale = useLocale()
     const open = usePaidAppsStore(s => s.openSlug === SLUG)
     const reconnectId = usePaidAppsStore(s => s.reconnectId)
@@ -45,9 +47,9 @@ export function WhatsappProDialog() {
     const load = useCallback(async () => {
         const result = await getAppsOverviewAction(SLUG)
         if (result.ok) setOverview(result.value)
-        else setError(result.error)
+        else setError(errorText(result))
         return result.ok ? result.value : null
-    }, [])
+    }, [errorText])
 
     // One checkpoint call at a time: two answers of "connected" landing together would finish the
     // connection twice, and the second one deletes the account.
@@ -77,8 +79,8 @@ export function WhatsappProDialog() {
             const result = await check(linkingId).catch(() => null)
             if (!active || !result) return
             if (!result.ok) {
-                if (result.code !== 'refused') return
-                setError(result.error)
+                if (result.reason !== 'refused') return
+                setError(errorText(result))
                 setScreen(current => (current.kind === 'link' ? { ...current, expired: true } : current))
                 return
             }
@@ -100,14 +102,14 @@ export function WhatsappProDialog() {
             clearInterval(timer)
             clearTimeout(expire)
         }
-    }, [linkingId, lifetimeMs, check, bumpRevision, load])
+    }, [linkingId, lifetimeMs, check, bumpRevision, load, errorText])
 
     useEffect(() => {
         if (!open) return
         let active = true
         void getAppsOverviewAction(SLUG).then(result => {
             if (!active) return
-            if (!result.ok) return setError(result.error)
+            if (!result.ok) return setError(errorText(result))
             setOverview(result.value)
             const target = reconnectId ? result.value.connections.find(connection => connection.id === reconnectId) : undefined
             if (target) {
@@ -118,7 +120,7 @@ export function WhatsappProDialog() {
         return () => {
             active = false
         }
-    }, [open, reconnectId])
+    }, [open, reconnectId, errorText])
 
     const abandonLink = () => {
         if (screen.kind === 'link') void cancelAppConnectAction(SLUG, screen.connectionId)
@@ -145,9 +147,9 @@ export function WhatsappProDialog() {
         await load()
     }
 
-    const fail = (message: string, code?: string) => {
+    const fail = (message: string, reason?: string) => {
         setError(message)
-        if (code === 'needs_slot' || code === 'not_entitled' || code === 'paused') setScreen(ACCOUNTS)
+        if (reason === 'needs_slot' || reason === 'not_entitled' || reason === 'paused') setScreen(ACCOUNTS)
     }
 
     const requestLink = async (request: LinkRequest) => {
@@ -160,7 +162,7 @@ export function WhatsappProDialog() {
         setPending(null)
         if (!result.ok) {
             if (screen.kind === 'link') setScreen({ kind: 'connect', reconnect: request.reconnect })
-            return fail(result.error, result.code)
+            return fail(errorText(result), result.reason)
         }
         await settle(result.value, request)
     }
@@ -187,7 +189,7 @@ export function WhatsappProDialog() {
         setPending(connection.id)
         const result = await disconnectAppConnectionAction(SLUG, connection.id)
         setPending(null)
-        if (!result.ok) return setError(result.error)
+        if (!result.ok) return setError(errorText(result))
         bumpRevision()
         await load()
     }
@@ -197,7 +199,7 @@ export function WhatsappProDialog() {
         setError(null)
         const result = await addAppSlotAction(SLUG, randomUuid())
         setPending(null)
-        if (!result.ok) return setError(result.error)
+        if (!result.ok) return setError(errorText(result))
         toast.success(result.value.trialSlot ? t('paidApp.slotAddedTrial', { price: formatNumber(0, locale, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) }) : t('paidApp.slotAdded'))
         // The webhook moves the slot count, a moment after Stripe answers.
         setTimeout(() => void load(), 1500)

@@ -2,6 +2,7 @@ import type { TemplateCategory, TemplateFaqItem } from '@rerun/contracts'
 import { z } from 'zod'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { slugify } from '@/lib/slugify'
+import type { ActionFailure } from '@/lib/i18n/action-error'
 import { loadServiceCatalog } from './catalog'
 import { templateBriefSchema, withConnectorNames } from './describe'
 import { uploadTemplateImageBytes, type TemplateImageFolder } from './images'
@@ -12,14 +13,14 @@ import { uniqueTemplateSlug } from './write'
 // the same prefill and the same image upload. What differs is who
 // is allowed to, so the guard stays in the action files and everything below is auth-free.
 
-export type UploadResult = { ok: true; url: string } | { ok: false; error: string }
-export type ContentPrefillResult = { ok: true; tagline: string; longDescription: string } | { ok: false; error: string }
+export type UploadResult = { ok: true; url: string } | ActionFailure
+export type ContentPrefillResult = { ok: true; tagline: string; longDescription: string } | ActionFailure
 // `slug` is absent for an author: they do not own the URL of the page, so their prefill leaves it alone.
 export type MetaPrefillResult =
     | { ok: true; title: string; slug?: string; category: TemplateCategory; tags: string[]; metaTitle: string; metaDescription: string }
-    | { ok: false; error: string }
-export type FaqPrefillResult = { ok: true; faq: TemplateFaqItem[] } | { ok: false; error: string }
-export type AltTextResult = { ok: true; alt: string } | { ok: false; error: string }
+    | ActionFailure
+export type FaqPrefillResult = { ok: true; faq: TemplateFaqItem[] } | ActionFailure
+export type AltTextResult = { ok: true; alt: string } | ActionFailure
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
 

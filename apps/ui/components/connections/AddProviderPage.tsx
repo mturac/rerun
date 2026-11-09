@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { NoPlanNotice } from '@/components/connections/NoPlanNotice'
 import { nameStep } from '@/components/connections/plan-connect/NameStep'
 import { PlanConnect } from '@/components/connections/plan-connect/PlanConnect'
@@ -33,6 +34,7 @@ type AddProviderPageProps = {
 export function AddProviderPage({ provider, onBack, onCreate, onOpen, onRename, takenNames, willBecomeBoxDefault }: AddProviderPageProps) {
     const t = useTranslations('connections')
     const tCommon = useTranslations('common')
+    const errorText = useErrorText()
     const [suggestedName] = useState(() => suggestName(provider, takenNames))
     const [name, setName] = useState(suggestedName)
     const [apiKey, setApiKey] = useState('')
@@ -52,7 +54,7 @@ export function AddProviderPage({ provider, onBack, onCreate, onOpen, onRename, 
         try {
             const result = await onCreate({ name: trimmed, provider, models: DEFAULT_CONNECTION_MODELS[provider], extraModels: [], keys })
             setNeedsPlan(!result.success && result.reason === 'no_plan')
-            setError(result.success ? null : (result.error ?? t('errors.createFailed')))
+            setError(result.success ? null : errorText(result, t('errors.createFailed')))
             if (result.success && isPlan) setCreated(result.connection)
             else if (result.success) onOpen(result.connection.id)
             return result
@@ -71,7 +73,7 @@ export function AddProviderPage({ provider, onBack, onCreate, onOpen, onRename, 
             setRenaming(true)
             const result = await onRename(created.id, trimmed).catch(() => ({ success: false, error: tCommon('somethingWentWrong') }))
             setRenaming(false)
-            if (!result.success) return setRenameError(result.error ?? t('errors.renameFailed'))
+            if (!result.success) return setRenameError(errorText(result, t('errors.renameFailed')))
         }
         onOpen(created.id)
     }

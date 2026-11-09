@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { track } from '@rerun/analytics/client'
 import { RERUN_CONNECTION_ID } from '@rerun/contracts'
 import { useTranslations } from 'next-intl'
@@ -31,7 +32,7 @@ function openLeadChat(agentId: string, conversationId: string, runId: string | n
 }
 
 /** Starts the lead's install and opens its chat already attached to the run. */
-export async function startLeadInstall(agentId: string, installFailedText: string): Promise<boolean> {
+export async function startLeadInstall(agentId: string, installFailedText: string, errorText: ReturnType<typeof useErrorText>): Promise<boolean> {
     track('agent_install_started', { agent_id: agentId })
     // A run picks its connection the moment it starts and keeps it to the end: started beside the
     // offer, the first install would always bill Rerun credits, whatever plan gets connected.
@@ -41,7 +42,7 @@ export async function startLeadInstall(agentId: string, installFailedText: strin
     const result = await startLeadSetupAction(agentId)
     if (!result.ok) {
         if (result.inactive) useBillingStore.getState().openBilling(undefined, AGENT_LIMIT_TRIGGER)
-        else toast.error(installFailedText, { description: result.error })
+        else toast.error(installFailedText, { description: errorText(result) })
         return false
     }
     useForemanStore.getState().setStartedLead({ agentId, conversationId: result.conversationId })
@@ -58,6 +59,7 @@ export async function startLeadInstall(agentId: string, installFailedText: strin
 // else would take it off a column reopened later.
 function StartLeadButton({ step }: { step: StartLeadStep }) {
     const t = useTranslations('foreman.nextSteps')
+    const errorText = useErrorText()
     const [starting, setStarting] = useState(false)
     const [checkedAgentId, setCheckedAgentId] = useState<string | null>(null)
     const startedLead = useForemanStore(state => state.startedLead)
@@ -78,7 +80,7 @@ function StartLeadButton({ step }: { step: StartLeadStep }) {
     const start = async () => {
         track('onboarding_next_step_clicked', { step: step.kind })
         setStarting(true)
-        await startLeadInstall(step.agentId, t('installFailed'))
+        await startLeadInstall(step.agentId, t('installFailed'), errorText)
         setStarting(false)
     }
 

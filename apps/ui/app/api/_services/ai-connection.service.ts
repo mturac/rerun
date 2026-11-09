@@ -49,6 +49,7 @@ import type { BoxConnection, BoxConnectionsList, BoxConnectionUsage, BoxDefault,
 import { providerKeyProblem } from '@/lib/engine/verify-provider-key'
 import { assertPublicUrl } from '@/lib/net/public-fetch'
 import { OPENCODE_ENABLED } from '@/lib/features'
+import { AppError, type ErrorCode, type ErrorParams } from '@/lib/i18n/action-error'
 import { CONNECTION_TOKEN_KEY, DEFAULT_CONNECTION_MODELS, RERUN_CONNECTION_ID, canonicalModelId, canonicalModelIds, claudeTokenProblem, type AddableProvider, type AiConnectionView, type AiConnectionsView, type CustomProbeInput, type CustomProbeResult } from '@rerun/contracts'
 
 // The AI providers of a workspace, for both the web dialog's server actions and the app's /api/v1
@@ -56,9 +57,9 @@ import { CONNECTION_TOKEN_KEY, DEFAULT_CONNECTION_MODELS, RERUN_CONNECTION_ID, c
 // whole scope.
 
 // A credential the user handed in that cannot be stored: the message is for them, as is.
-export class ConnectionInputError extends Error {
-    constructor(message: string) {
-        super(message)
+export class ConnectionInputError extends AppError {
+    constructor(code: ErrorCode, params?: ErrorParams) {
+        super(code, params)
         this.name = 'ConnectionInputError'
     }
 }
@@ -109,8 +110,8 @@ export async function setWorkspaceDefaultModel(workspaceId: number, pick: BoxDef
 // The widget already refuses these; this is the guard for every other caller.
 function assertValidClaudeToken(keys: Record<string, string> | undefined): void {
     const token = keys?.[CONNECTION_TOKEN_KEY.claude]
-    const problem = token === undefined ? null : claudeTokenProblem(token)
-    if (problem) throw new ConnectionInputError(problem)
+    if (token === undefined || !claudeTokenProblem(token)) return
+    throw new ConnectionInputError(token.trim().startsWith('sk-ant-api') ? 'claudeTokenIsApiKey' : 'claudeTokenIsCode')
 }
 
 // The machine sends the user's key to this address: on Rerun Cloud a private one would turn the Box
@@ -121,7 +122,7 @@ async function assertPublicBaseUrl(baseUrl: string | undefined): Promise<void> {
     try {
         await assertPublicUrl(baseUrl)
     } catch {
-        throw new ConnectionInputError('The base URL must be a public web address.')
+        throw new ConnectionInputError('baseUrlNotPublic')
     }
 }
 
@@ -146,13 +147,12 @@ export async function isCustomOfferedTo(workspaceId: number): Promise<boolean> {
     return isCustomOffered((await findWorkspaceEngine(workspaceId))?.conn)
 }
 
-const CUSTOM_NEEDS_UPDATE = 'Custom endpoints arrive with the next update of this machine. Try again in a little while.'
 
 async function assertProviderOffered(provider: CreateBoxConnectionInput['provider'], conn: EngineConnection): Promise<void> {
-    if (provider === 'custom' && !(await supportsCustomProvider(conn))) throw new ConnectionInputError(CUSTOM_NEEDS_UPDATE)
+    if (provider === 'custom' && !(await supportsCustomProvider(conn))) throw new ConnectionInputError('customNeedsUpdate')
     if (provider !== 'opencode') return
-    if (!OPENCODE_ENABLED) throw new ConnectionInputError('OpenCode is not available yet.')
-    if (!(await supportsOpencode(conn))) throw new ConnectionInputError('OpenCode arrives with the next update of this machine. Try again in a little while.')
+    if (!OPENCODE_ENABLED) throw new ConnectionInputError('opencodeNotAvailable')
+    if (!(await supportsOpencode(conn))) throw new ConnectionInputError('opencodeNeedsUpdate')
 }
 
 // Throws NoPlanError (capacity.service) when the workspace has no plan: without one there is no machine to hold a
@@ -163,7 +163,7 @@ export async function createAiConnection(workspaceId: number, params: CreateBoxC
     const conn = await connectionForCreate(workspaceId)
     await assertProviderOffered(params.provider, conn)
     const keyProblem = await providerKeyProblem(params.provider, params.keys, params.baseUrl)
-    if (keyProblem) throw new ConnectionInputError(keyProblem)
+    if (keyProblem) throw new ConnectionInputError(keyProblem.code, keyProblem.params)
     return engineCreateConnection(conn, params)
 }
 
@@ -172,7 +172,7 @@ export async function createAiConnection(workspaceId: number, params: CreateBoxC
 export async function probeCustomEndpoint(workspaceId: number, input: CustomProbeInput): Promise<CustomProbeResult> {
     await assertPublicBaseUrl(input.baseUrl)
     const conn = await connectionForCreate(workspaceId)
-    if (!(await supportsCustomProvider(conn))) throw new ConnectionInputError(CUSTOM_NEEDS_UPDATE)
+    if (!(await supportsCustomProvider(conn))) throw new ConnectionInputError('customNeedsUpdate')
     return engineProbeCustomEndpoint(conn, input)
 }
 
@@ -187,7 +187,7 @@ export async function updateAiConnectionKeys(workspaceId: number, id: string, bo
     if (body.set && Object.keys(body.set).length > 0) {
         const target = (await engineListConnections(conn)).connections.find(c => c.id === id)
         const keyProblem = target ? await providerKeyProblem(target.provider, body.set, target.baseUrl) : null
-        if (keyProblem) throw new ConnectionInputError(keyProblem)
+        if (keyProblem) throw new ConnectionInputError(keyProblem.code, keyProblem.params)
     }
     await engineUpdateConnectionKeys(conn, id, body)
 }
@@ -249,7 +249,7 @@ export async function addAiConnection(workspaceId: number, provider: AddableProv
 export async function storeSignInKeys(workspaceId: number, provider: AddableProvider, keys: Record<string, string>, target: { connectionId?: string; name?: string }): Promise<string> {
     if (!target.connectionId) return addAiConnection(workspaceId, provider, keys, { name: target.name })
     const existing = (await listAiConnections(workspaceId)).connections.find(connection => connection.id === target.connectionId)
-    if (existing?.provider !== provider) throw new ConnectionInputError('This sign-in belongs to another provider.')
+    if (existing?.provider !== provider) throw new ConnectionInputError('signInOtherProvider')
     await updateAiConnectionKeys(workspaceId, existing.id, { set: keys })
     return existing.id
 }

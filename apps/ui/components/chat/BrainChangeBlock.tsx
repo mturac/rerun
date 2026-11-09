@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { revertBrainPageAction } from '@/app/api/_actions/brain.actions'
 import { BrainIcon } from '@/lib/icons'
 import { useBrainStore } from '@/stores/brain.store'
@@ -17,6 +18,7 @@ export { brainChangeOf, type BrainChange, type BrainChangeStatus } from '@rerun/
 export function BrainChangeBlock({ change }: { change: BrainChange }) {
     const openBrainPage = useWorkspaceSettingsStore(s => s.openBrainPage)
     const brainChanged = useBrainStore(s => s.brainChanged)
+    const errorText = useErrorText()
 
     const [undo, setUndo] = useState<BrainChangeUndo>('idle')
     const undoRevisionId = change.status === 'saved' && change.mode === 'edit' ? change.undoRevisionId : null
@@ -31,7 +33,7 @@ export function BrainChangeBlock({ change }: { change: BrainChange }) {
         const result = await revertBrainPageAction(change.slug, undoRevisionId, change.hash)
         if (!result.ok) {
             setUndo('idle')
-            toast.error(result.error)
+            toast.error(errorText(result))
             return
         }
         setUndo('done')

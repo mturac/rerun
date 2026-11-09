@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { requestConnectorAction } from '@/app/api/_actions/connector-requests.actions'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -30,6 +31,7 @@ type FormValues = z.infer<ReturnType<typeof requestSchema>>
 // persisted server-side via requestConnectorAction. Generic by design: no search term.
 export function RequestConnectorDialog({ children, agentId }: RequestConnectorDialogProps) {
     const t = useTranslations('services.requestApp')
+    const errorText = useErrorText()
     const [open, setOpen] = useState(false)
     const schema = useMemo(() => requestSchema(t('required')), [t])
 
@@ -46,7 +48,7 @@ export function RequestConnectorDialog({ children, agentId }: RequestConnectorDi
     const onSubmit = form.handleSubmit(async ({ description }) => {
         const res = await requestConnectorAction({ description, agentId })
         if (!res.ok) {
-            toast.error(res.error)
+            toast.error(errorText(res))
             return
         }
         toast.success(t('sent'))

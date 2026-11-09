@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { attachAgentToConnectionAction, getAgentAppBindingAction, getAppsOverviewAction, setAgentWakeEventsAction } from '@/app/api/_actions/apps.actions'
@@ -155,6 +156,7 @@ function AppAccountPickerBody({
 
 export function AppAccountPicker({ slug, title, agentId, onAuthorized }: { slug: AppSlug; title: string; agentId: string; onAuthorized: () => void }) {
     const t = useTranslations('services.appAccount')
+    const errorText = useErrorText()
     const enabled = usePaidAppEnabled(slug)
     const revision = usePaidAppsStore(s => s.revision)
     const openApp = usePaidAppsStore(s => s.openApp)
@@ -165,9 +167,9 @@ export function AppAccountPicker({ slug, title, agentId, onAuthorized }: { slug:
 
     const apply = useCallback((apps: Awaited<ReturnType<typeof getAppsOverviewAction>>, current: Awaited<ReturnType<typeof getAgentAppBindingAction>>) => {
         if (apps.ok) setOverview(apps.value)
-        else setError(apps.error)
+        else setError(errorText(apps))
         if (current.ok) setBinding(current.value)
-    }, [])
+    }, [errorText])
 
     const load = useCallback(async () => {
         const [apps, current] = await Promise.all([getAppsOverviewAction(slug), getAgentAppBindingAction(slug, agentId)])
@@ -198,7 +200,7 @@ export function AppAccountPicker({ slug, title, agentId, onAuthorized }: { slug:
         setError(null)
         const result = await attachAgentToConnectionAction(slug, agentId, connectionId)
         setPending(null)
-        if (!result.ok) return setError(result.error)
+        if (!result.ok) return setError(errorText(result))
         await load()
         onAuthorized()
     }
@@ -208,7 +210,7 @@ export function AppAccountPicker({ slug, title, agentId, onAuthorized }: { slug:
         setError(null)
         const result = await setAgentWakeEventsAction(slug, agentId, events)
         setPending(null)
-        if (!result.ok) return setError(result.error)
+        if (!result.ok) return setError(errorText(result))
         await load()
     }
 

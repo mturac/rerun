@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { parseServiceRegistryKey } from '@rerun/contracts'
 
 import { getServiceAlternativesAction, getServiceDetailsAction, installServiceAction, listCatalogServicesAction, resetServiceConnectionAction, searchServicesAction, uninstallServiceAction } from '@/app/api/_actions/services.actions'
@@ -99,6 +100,7 @@ const BROWSE_PAGE_SIZE = 60
 // same ServiceConfigForm shown inline in chat, so config is identical on both sides.
 export function AgentPanelServices({ agentId }: AgentPanelServicesProps) {
     const t = useTranslations('agent.agentPanelServices')
+    const errorText = useErrorText()
     const [installed, setInstalled] = useState<InstalledService[]>([])
     const [custom, setCustom] = useState<CustomMcpServer[]>([])
     const [customStep, setCustomStep] = useState<CustomStep | null>(null)
@@ -259,13 +261,13 @@ export function AgentPanelServices({ agentId }: AgentPanelServicesProps) {
                     setSetupTarget({ ...target, key: res.result.key, newInstance: false, initialAuthTarget: pendingAuthTarget(res.result) })
                     return
                 }
-                if (!res.ok) setError(res.error)
+                if (!res.ok) setError(errorText(res))
                 await load()
                 return
             }
             setSetupTarget(target)
         },
-        [agentId, load, installed, browseServices, searchResults],
+        [agentId, load, installed, browseServices, searchResults, errorText],
     )
 
 
@@ -279,23 +281,23 @@ export function AgentPanelServices({ agentId }: AgentPanelServicesProps) {
             const res = await resetServiceConnectionAction(agentId, key)
             setReconnecting(null)
             if (!res.ok) {
-                setError(res.error)
+                setError(errorText(res))
                 return
             }
             await onInstall(key, res.result.mode === 'auth' && res.result.app ? { app: res.result.app } : undefined)
             await load()
         },
-        [agentId, onInstall, load],
+        [agentId, onInstall, load, errorText],
     )
 
     const onUninstall = useCallback(
         async (key: string) => {
             setError(null)
             const res = await uninstallServiceAction(agentId, key)
-            if (!res.success) setError(res.error ?? t('uninstallFailed'))
+            if (!res.success) setError(errorText(res, t('uninstallFailed')))
             await load()
         },
-        [agentId, load, t],
+        [agentId, load, t, errorText],
     )
 
     const afterCustomChange = useCallback(async () => {
@@ -308,10 +310,10 @@ export function AgentPanelServices({ agentId }: AgentPanelServicesProps) {
         async (name: string) => {
             setError(null)
             const res = await removeCustomMcpServerAction(agentId, name)
-            if (!res.success) setError(res.error ?? t('removeServerFailed'))
+            if (!res.success) setError(errorText(res, t('removeServerFailed')))
             await afterCustomChange()
         },
-        [agentId, afterCustomChange, t],
+        [agentId, afterCustomChange, t, errorText],
     )
 
     const onEditCustom = useCallback(

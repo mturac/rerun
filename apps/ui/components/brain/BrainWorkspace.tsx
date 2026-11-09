@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { listWorkspaceTablesAction } from '@/app/api/_actions/workspace-db.actions'
 import { deleteBrainPageAction, listBrainProposalsAction, loadBrainAction, readBrainPageAction, revertBrainPageAction, type BrainOverview } from '@/app/api/_actions/brain.actions'
 import { BrainFileView, BrainFolderView } from '@/components/brain/BrainFiles'
@@ -75,6 +76,7 @@ const toSummary = ({ slug, title, type, hash, updatedAt, updatedBy }: BrainPageD
 // whatever is selected in it, open in the main panel.
 export function BrainWorkspace({ request, publishedEnabled, onRequestConsumed, onClose }: { request: BrainRequest | null; publishedEnabled: boolean; onRequestConsumed: () => void; onClose: () => void }) {
     const t = useTranslations('brain')
+    const errorText = useErrorText()
     const sharedTablesEmpty = useSharedTablesEmpty()
     const setOpenProposals = useBrainStore(s => s.setOpenProposals)
     const isMobile = useIsMobile()
@@ -261,7 +263,7 @@ export function BrainWorkspace({ request, publishedEnabled, onRequestConsumed, o
         async (slug: string) => {
             const result = await deleteBrainPageAction(slug)
             if (!result.ok) {
-                toast.error(result.error ?? t('workspace.deleteFailed'))
+                toast.error(errorText(result, t('workspace.deleteFailed')))
                 return
             }
             const next = await reloadOverview()
@@ -272,21 +274,21 @@ export function BrainWorkspace({ request, publishedEnabled, onRequestConsumed, o
                 setPageState(null)
             }
         },
-        [reloadOverview, select, t],
+        [reloadOverview, select, t, errorText],
     )
 
     const restore = useCallback(
         async (slug: string, revisionId: string) => {
             const result = await revertBrainPageAction(slug, revisionId)
             if (!result.ok) {
-                toast.error(result.error)
+                toast.error(errorText(result))
                 return
             }
             setPageState(current => ({ slug, detail: result.detail, missing: false, version: (current?.version ?? 0) + 1 }))
             setSelection({ kind: 'page', slug })
             void reloadOverview()
         },
-        [reloadOverview],
+        [reloadOverview, errorText],
     )
 
     const tableDropped = useCallback(

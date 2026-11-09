@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { LayoutTile } from '@/components/data/LayoutTile'
 import { SplitDialogContent } from '@/components/dialogs/SplitDialogContent'
 import { ViewSettingsPreview } from '@/components/dialogs/ViewSettingsPreview'
@@ -42,6 +43,7 @@ type ViewSettingsDialogProps = {
 export function ViewSettingsDialog({ open, onOpenChange, source, table, columns, sample, view, initialLayout, onSaved }: ViewSettingsDialogProps) {
     const t = useTranslations('dialogs.viewSettings')
     const tCommon = useTranslations('common')
+    const errorText = useErrorText()
     const form = useForm<ViewFormValues>({ resolver: zodResolver(viewFormSchema), defaultValues: viewToFormValues(view, columns) })
 
     useEffect(() => {
@@ -60,7 +62,7 @@ export function ViewSettingsDialog({ open, onOpenChange, source, table, columns,
     const onSubmit = form.handleSubmit(async submitted => {
         const result = await source.saveView(table, formValuesToInput(submitted, view), view?.id)
         if (!result.success) {
-            form.setError('root', { message: result.error })
+            form.setError('root', { message: errorText(result) })
             return
         }
         onSaved(result.view)

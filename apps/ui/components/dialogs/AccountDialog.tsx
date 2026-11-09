@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { resendLiveSignInCode } from '@/app/(authflow)/auth/actions'
 import {
     deleteMyAccountAction,
@@ -44,8 +45,8 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 
-function unwrap(result: ActionResult) {
-    if (!result.ok) throw new Error(result.error)
+function unwrap(result: ActionResult, errorText: ReturnType<typeof useErrorText>) {
+    if (!result.ok) throw new Error(errorText(result))
 }
 
 // The name and the photo ride on the session's user, so reading them back is a token refresh.
@@ -55,6 +56,7 @@ async function refreshSession() {
 
 function ProfileTab() {
     const { session } = useSession()
+    const errorText = useErrorText()
     const authUser = session?.user
     if (!authUser) return null
     const profile = readProfile(authUser)
@@ -62,17 +64,17 @@ function ProfileTab() {
     const uploadAvatar = async (file: File) => {
         const formData = new FormData()
         formData.append('file', file)
-        unwrap(await uploadMyAvatarAction(formData))
+        unwrap(await uploadMyAvatarAction(formData), errorText)
         await refreshSession()
     }
 
     const removeAvatar = async () => {
-        unwrap(await removeMyAvatarAction())
+        unwrap(await removeMyAvatarAction(), errorText)
         await refreshSession()
     }
 
     const saveName = async (name: string) => {
-        unwrap(await updateMyNameAction({ name }))
+        unwrap(await updateMyNameAction({ name }), errorText)
         await refreshSession()
     }
 
@@ -83,6 +85,7 @@ type SignInStep = 'list' | 'email' | 'phone'
 
 function SignInTab() {
     const t = useTranslations('dialogs.account')
+    const errorText = useErrorText()
     const { refreshPhoneStep } = useSession()
     const [methods, setMethods] = useState<SignInMethods | null>(null)
     const [step, setStep] = useState<SignInStep>(() => useAccountStore.getState().signInStart)
@@ -91,7 +94,7 @@ function SignInTab() {
 
     const show = (result: Awaited<ReturnType<typeof getSignInMethodsAction>>) => {
         if (result.ok) setMethods(result.methods)
-        else toast.error(result.error)
+        else toast.error(errorText(result))
     }
     const load = async () => show(await getSignInMethodsAction())
 
@@ -111,7 +114,7 @@ function SignInTab() {
     }
 
     const sendEmailCode = async (email: string) => {
-        unwrap(await prepareEmailChangeAction({ email }))
+        unwrap(await prepareEmailChangeAction({ email }), errorText)
         const live = await resendLiveSignInCode(email)
         if (live.resent) return live.held ? 'held' : undefined
         const { error } = await createClient().auth.updateUser({ email })
@@ -217,6 +220,7 @@ function SignInTab() {
 
 function DeleteAccountTab() {
     const { workspace, signOut } = useSession()
+    const errorText = useErrorText()
     const setOpen = useAccountStore(state => state.setOpen)
     const openBilling = useBillingStore(state => state.openBilling)
     const [blockers, setBlockers] = useState<AccountDeletionBlocker[] | null>(null)
@@ -226,7 +230,7 @@ function DeleteAccountTab() {
         void getAccountDeletionStatusAction().then(result => {
             if (!mounted) return
             if (result.ok) setBlockers(result.blockers)
-            else toast.error(result.error)
+            else toast.error(errorText(result))
         })
         return () => {
             mounted = false
@@ -239,7 +243,7 @@ function DeleteAccountTab() {
     }
 
     const deleteAccount = async (confirmation: string) => {
-        unwrap(await deleteMyAccountAction({ confirmation }))
+        unwrap(await deleteMyAccountAction({ confirmation }), errorText)
         setOpen(false)
         await signOut()
     }

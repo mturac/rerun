@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { getAiConnectionUsageAction } from '@/app/api/_actions/workspace-connection.actions'
 import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog'
 import { Button } from '@/components/ui/button'
@@ -23,6 +24,7 @@ type ConnectionsT = ReturnType<typeof useTranslations<'connections'>>
 // nothing destructive should sit one stray click away from a list you only meant to scan.
 export function DeleteConnectionButton({ connection, onDelete, onDeleted }: DeleteConnectionButtonProps) {
     const t = useTranslations('connections')
+    const errorText = useErrorText()
     const [usage, setUsage] = useState<BoxConnectionUsage | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [pending, setPending] = useState(false)
@@ -32,7 +34,7 @@ export function DeleteConnectionButton({ connection, onDelete, onDeleted }: Dele
         const result = await onDelete(connection.id)
         setPending(false)
         if (!result.success) {
-            setError(result.error ?? t('errors.deleteFailed'))
+            setError(errorText(result, t('errors.deleteFailed')))
             return
         }
         toast.success(t('remove.removed', { name: connection.name }), { description: describeReleased(t, result.released) })

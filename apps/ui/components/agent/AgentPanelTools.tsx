@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { getAgentDetailAction, listAgentToolsAction, updateAgentConfigAction } from '@/app/api/_actions/agent.actions'
 import { Icon } from '@/components/ui/icon'
 import { Switch } from '@/components/ui/switch'
@@ -78,6 +79,7 @@ function metaFor(family: EngineToolFamily, capabilities: Record<string, Capabili
 
 export function AgentPanelTools({ agentId }: AgentPanelToolsProps) {
     const t = useTranslations('agent.agentPanelTools')
+    const errorText = useErrorText()
     const capabilities = useCapabilityMeta()
     const [families, setFamilies] = useState<EngineToolFamily[]>([])
     const [selfImprovement, setSelfImprovement] = useState<EngineSelfImprovement | null>(null)
@@ -109,14 +111,14 @@ export function AgentPanelTools({ agentId }: AgentPanelToolsProps) {
         const result = await updateAgentConfigAction(agentId, patch)
         if (!result.success) {
             revert()
-            setError(result.error ?? t('updateFailed'))
+            setError(errorText(result, t('updateFailed')))
         }
         setPending(prev => {
             const s = new Set(prev)
             s.delete(key)
             return s
         })
-    }, [agentId, t])
+    }, [agentId, t, errorText])
 
     const handleToggle = useCallback(
         async (family: string, value: boolean) => {

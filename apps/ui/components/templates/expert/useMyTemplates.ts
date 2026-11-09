@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
@@ -22,17 +23,18 @@ type ListResult = Awaited<ReturnType<typeof listMyTemplatesAction>>
 // does `detail === null` while an id is selected.
 export function useMyTemplates(open: boolean, selectedId: string | null) {
     const t = useTranslations('templates.expert.toasts')
+    const errorText = useErrorText()
     const [templates, setTemplates] = useState<ExpertTemplate[] | null>(null)
     const [detail, setDetail] = useState<ExpertTemplateDetail | null>(null)
 
     const apply = useCallback((result: ListResult) => {
         if (!result.ok) {
-            toast.error(result.error)
+            toast.error(errorText(result))
             setTemplates([])
             return
         }
         setTemplates(result.templates)
-    }, [])
+    }, [errorText])
 
     const load = useCallback(() => listMyTemplatesAction().then(apply), [apply])
 
@@ -45,12 +47,12 @@ export function useMyTemplates(open: boolean, selectedId: string | null) {
         return getMyTemplateAction(id).then(result => {
             if (requestedRef.current !== id) return
             if (!result.ok) {
-                toast.error(result.error)
+                toast.error(errorText(result))
                 return
             }
             setDetail(result.template)
         })
-    }, [])
+    }, [errorText])
 
     useEffect(() => {
         if (open) void load()
@@ -70,67 +72,67 @@ export function useMyTemplates(open: boolean, selectedId: string | null) {
         async (title: string): Promise<string | null> => {
             const result = await createMyTemplateDraftAction(title)
             if (!result.ok) {
-                toast.error(result.error)
+                toast.error(errorText(result))
                 return null
             }
             await load()
             return result.id
         },
-        [load],
+        [load, errorText],
     )
 
     const save = useCallback(
         async (id: string, values: TemplateAuthorInput): Promise<boolean> => {
             const result = await updateMyTemplateAction({ id, ...values })
             if (!result.ok) {
-                toast.error(result.error)
+                toast.error(errorText(result))
                 return false
             }
             toast.success(t('saved'))
             await reload()
             return true
         },
-        [reload, t],
+        [reload, t, errorText],
     )
 
     const submit = useCallback(
         async (id: string): Promise<boolean> => {
             const result = await submitMyTemplateAction(id)
             if (!result.ok) {
-                toast.error(result.error)
+                toast.error(errorText(result))
                 return false
             }
             toast.success(t('submitted'))
             await reload()
             return true
         },
-        [reload, t],
+        [reload, t, errorText],
     )
 
     const withdraw = useCallback(
         async (id: string): Promise<boolean> => {
             const result = await withdrawMyTemplateAction(id)
             if (!result.ok) {
-                toast.error(result.error)
+                toast.error(errorText(result))
                 return false
             }
             await reload()
             return true
         },
-        [reload],
+        [reload, errorText],
     )
 
     const remove = useCallback(
         async (id: string): Promise<boolean> => {
             const result = await deleteMyTemplateAction(id)
             if (!result.ok) {
-                toast.error(result.error)
+                toast.error(errorText(result))
                 return false
             }
             await load()
             return true
         },
-        [load],
+        [load, errorText],
     )
 
     // Capture and removal rewrite the row out of band, so the panel picks the change up the same way
@@ -139,13 +141,13 @@ export function useMyTemplates(open: boolean, selectedId: string | null) {
         async (templateId: string, agentKey: string): Promise<boolean> => {
             const result = await removeMyTemplateAgentAction({ templateId, agentKey })
             if (!result.ok) {
-                toast.error(result.error)
+                toast.error(errorText(result))
                 return false
             }
             await reload()
             return true
         },
-        [reload],
+        [reload, errorText],
     )
 
     // Matched on identity rather than cleared on selection: the editor never renders the previous

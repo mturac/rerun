@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { createApiKeyAction, listApiKeysAction, revokeApiKeyAction, type ApiKeyView } from '@/app/api/_actions/api-keys.actions'
 import { ApiKeyList } from '@/components/dialogs/ApiKeyList'
 import { CreatedApiKey } from '@/components/dialogs/CreatedApiKey'
@@ -30,6 +31,7 @@ function SectionTitle({ children, action }: { children: string; action?: ReactNo
 
 export function ApiKeysDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
     const t = useTranslations('dialogs.apiKeys')
+    const errorText = useErrorText()
     const [keys, setKeys] = useState<ApiKeyView[]>([])
     const [mcpUrl, setMcpUrl] = useState('')
     const [loading, setLoading] = useState(true)
@@ -43,14 +45,14 @@ export function ApiKeysDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     const refresh = useCallback(async () => {
         const result = await listApiKeysAction()
         if (!result.ok) {
-            toast.error(result.error)
+            toast.error(errorText(result))
             setLoading(false)
             return
         }
         setKeys(result.keys)
         setMcpUrl(result.mcpUrl)
         setLoading(false)
-    }, [])
+    }, [errorText])
 
     useEffect(() => {
         if (!open) return
@@ -71,7 +73,7 @@ export function ApiKeysDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         const result = await createApiKeyAction(name)
         setCreating(false)
         if (!result.ok) {
-            toast.error(result.error)
+            toast.error(errorText(result))
             return
         }
         track('api_key_created', {})
@@ -88,7 +90,7 @@ export function ApiKeysDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         setBusy(true)
         const result = await revokeApiKeyAction(key.id)
         setBusy(false)
-        if (!result.ok) return toast.error(result.error)
+        if (!result.ok) return toast.error(errorText(result))
         toast.success(t('revoked', { name: key.name }))
         setRevoking(null)
         refresh()

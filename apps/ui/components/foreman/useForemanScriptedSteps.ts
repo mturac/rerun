@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import type { ChatStatus, UIMessage } from 'ai'
 import { useTranslations } from 'next-intl'
 import { useEffect, useRef } from 'react'
@@ -70,8 +71,11 @@ export function useForemanScriptedSteps({ messages, status, guided, restoreDone,
     const t = useTranslations('foreman.nextSteps')
     const installFailedText = t('installFailed')
     const installFailedRef = useRef(installFailedText)
+    const errorText = useErrorText()
+    const errorTextRef = useRef(errorText)
     useEffect(() => {
         installFailedRef.current = installFailedText
+        errorTextRef.current = errorText
     })
 
     // Seeded once the transcript is back, so a build already on screen from a previous visit does
@@ -115,7 +119,7 @@ export function useForemanScriptedSteps({ messages, status, guided, restoreDone,
         void settleBuiltFunnel().then(next => {
             const lead = freshLead.current
             freshLead.current = null
-            if (next === 'skipped' && lead) void startLeadInstall(lead, installFailedRef.current)
+            if (next === 'skipped' && lead) void startLeadInstall(lead, installFailedRef.current, errorTextRef.current)
         })
     }, [finished])
 

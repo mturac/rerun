@@ -19,7 +19,7 @@ async function resolveTarget(agentId: string | null, shared: boolean): Promise<{
     if (shared) {
         return { conn: await requireWorkspaceConnection(), base: '/shared/files' }
     }
-    throw new AuthorizationError('Missing agentId or scope=shared')
+    throw new AuthorizationError('missingFileTarget')
 }
 
 async function upload(req: Request) {

@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { saveBrainPageAction } from '@/app/api/_actions/brain.actions'
 import { BrainEditor, type BrainEditorHandle } from '@/components/brain/editor/BrainEditor'
 import { PageColumn, PageProperty, PageTitle, PageTypeIcon, PageTypeSelect } from '@/components/brain/BrainPageParts'
@@ -26,6 +27,7 @@ type BrainNewPageProps = {
 // the title, so the [[links]] other pages hold keep working.
 export function BrainNewPage({ pages, titles, files, onOpenPage, onOpenFile, onCreated }: BrainNewPageProps) {
     const t = useTranslations('brain')
+    const errorText = useErrorText()
     const [title, setTitle] = useState('')
     const [type, setType] = useState<BrainPageType>('note')
     const [error, setError] = useState<string | null>(null)
@@ -54,7 +56,7 @@ export function BrainNewPage({ pages, titles, files, onOpenPage, onOpenFile, onC
         setCreating(false)
         if (!result.ok) {
             started.current = false
-            setError(result.error)
+            setError(errorText(result))
             return
         }
         onCreated(result.detail)

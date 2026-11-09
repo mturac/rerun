@@ -6,7 +6,13 @@ import { vi } from 'vitest'
 vi.mock('next-intl', async () => {
     const { createTranslator } = await import('use-intl')
     const { ENGLISH_MESSAGES } = await import('@rerun/i18n/messages/en')
-    const translator = (namespace?: string) => createTranslator({ locale: 'en', messages: ENGLISH_MESSAGES, namespace: namespace as never })
+    // One translator per namespace, stable across renders as next-intl's own: a hook that lists `t`
+    // in its dependencies would otherwise run again on every render.
+    const translators = new Map<string | undefined, ReturnType<typeof createTranslator>>()
+    const translator = (namespace?: string) => {
+        if (!translators.has(namespace)) translators.set(namespace, createTranslator({ locale: 'en', messages: ENGLISH_MESSAGES, namespace: namespace as never }))
+        return translators.get(namespace)!
+    }
     return {
         useTranslations: (namespace?: string) => translator(namespace),
         useLocale: () => 'en',

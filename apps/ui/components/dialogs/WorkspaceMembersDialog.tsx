@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import {
     inviteToWorkspaceAction,
     listWorkspaceMembersAction,
@@ -27,6 +28,7 @@ type Result = { ok: true } | { ok: false; error: string }
 
 export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
     const t = useTranslations('dialogs.members')
+    const errorText = useErrorText()
     const [members, setMembers] = useState<WorkspaceMember[]>([])
     const [inviteLink, setInviteLink] = useState<{ email: string; url: string } | null>(null)
     const [invites, setInvites] = useState<WorkspaceInviteRow[]>([])
@@ -41,7 +43,7 @@ export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; 
     const refresh = useCallback(async () => {
         const result = await listWorkspaceMembersAction()
         if (!result.ok) {
-            toast.error(result.error)
+            toast.error(errorText(result))
             setLoading(false)
             return
         }
@@ -50,7 +52,7 @@ export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; 
         setCurrentUserId(result.currentUserId)
         setCurrentRole(result.currentRole)
         setLoading(false)
-    }, [])
+    }, [errorText])
 
     useEffect(() => {
         if (!open) return
@@ -60,12 +62,12 @@ export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; 
     const loadAccess = useCallback(async (member: WorkspaceMember) => {
         const result = await listMemberAccessAction(member.userId)
         if (!result.ok) {
-            toast.error(result.error)
+            toast.error(errorText(result))
             setOpened(current => (current?.member.userId === member.userId ? null : current))
             return
         }
         setOpened(current => (current?.member.userId === member.userId ? { member, access: result } : current))
-    }, [])
+    }, [errorText])
 
     const openMember = (member: WorkspaceMember) => {
         setOpened({ member, access: null })
@@ -78,7 +80,7 @@ export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; 
         if (busy) return
         setBusy(true)
         const result = await action()
-        if (!result.ok) toast.error(result.error)
+        if (!result.ok) toast.error(errorText(result))
         await loadAccess(member)
         setBusy(false)
     }
@@ -113,7 +115,7 @@ export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; 
     const invite = async (email: string, boxScope: BoxScope) => {
         const result = await inviteToWorkspaceAction(email, boxScope)
         if (!result.ok) {
-            toast.error(result.error)
+            toast.error(errorText(result))
             return false
         }
         if (result.inviteUrl) setInviteLink({ email, url: result.inviteUrl })
@@ -127,7 +129,7 @@ export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; 
         setBusy(true)
         const result = await action()
         setBusy(false)
-        if (!result.ok) return toast.error(result.error)
+        if (!result.ok) return toast.error(errorText(result))
         if (success) toast.success(success)
         refresh()
     }

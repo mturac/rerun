@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText, type Refusal } from '@/hooks/useErrorText'
 import { pollCodexDeviceAuthAction, startCodexDeviceAuthAction } from '@/app/api/_actions/workspace-connection.actions'
 import { trackAiConnectionFailed } from '@/lib/engine/ai-connection-analytics'
 import type { AiConnectionSurface } from '@rerun/analytics'
@@ -23,7 +24,7 @@ export type CodexDeviceAuth = {
     copy: () => void
 }
 
-type KeysHandler = (keys: Record<string, string>) => Promise<{ success: boolean; error?: string }>
+type KeysHandler = (keys: Record<string, string>) => Promise<{ success: boolean } & Refusal>
 
 // A second click asks OpenAI for a second code and opens a second tab, the first code then goes
 // nowhere.
@@ -35,6 +36,7 @@ const OPEN_LOCK_MS = 5000
 export function useCodexDeviceAuth(onKeys: KeysHandler, surface: AiConnectionSurface): CodexDeviceAuth {
     const t = useTranslations('connections.errors')
     const tCommon = useTranslations('common')
+    const errorText = useErrorText()
     const [pending, setPending] = useState<PendingCodexAuth | null>(null)
     const [busy, setBusy] = useState(false)
     const [connected, setConnected] = useState(false)
@@ -113,7 +115,7 @@ export function useCodexDeviceAuth(onKeys: KeysHandler, surface: AiConnectionSur
             clearInterval(timer)
             if (res.status === 'error') {
                 setPending(null)
-                setError(res.error)
+                setError(errorText(res))
                 trackAiConnectionFailed('codex', 'oauth', surface, 'device_auth_failed', res.error)
                 return
             }
@@ -121,14 +123,14 @@ export function useCodexDeviceAuth(onKeys: KeysHandler, surface: AiConnectionSur
             if (cancelled) return
             setPending(null)
             if (applied.success) setConnected(true)
-            else setError(applied.error ?? t('saveConnectionFailed'))
+            else setError(errorText(applied, t('saveConnectionFailed')))
         }, pending.pollIntervalMs)
 
         return () => {
             cancelled = true
             clearInterval(timer)
         }
-    }, [pending, surface, t, tCommon])
+    }, [pending, surface, t, tCommon, errorText])
 
     const phase: CodexDeviceAuthPhase = connected ? 'connected' : pending ? 'waiting' : busy ? 'starting' : 'idle'
 

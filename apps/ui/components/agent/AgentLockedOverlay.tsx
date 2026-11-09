@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { activateAgentAction } from '@/app/api/_actions/agent.actions'
 import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
@@ -81,6 +82,7 @@ export function WorkspaceRestoringOverlay({ name }: { name: string }) {
 
 function AgentSlotOverlay({ agent }: { agent: IsoAgent }) {
     const t = useTranslations('agent.agentLockedOverlay')
+    const errorText = useErrorText()
     const { noFreeAgentSlot, activeAgentsCount, maxAgents, gate } = useEntitlements()
     const { workspace } = useSession()
     const localActivateAgent = useBoardStore(s => s._localActivateAgent)
@@ -95,7 +97,7 @@ function AgentSlotOverlay({ agent }: { agent: IsoAgent }) {
         const res = await activateAgentAction(agent.id)
         setActivating(false)
         if (!res.ok) {
-            toast.error(t('slot.activateFailed'), { description: res.error })
+            toast.error(t('slot.activateFailed'), { description: errorText(res) })
             return
         }
         localActivateAgent(agent.id)

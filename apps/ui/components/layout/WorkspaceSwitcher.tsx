@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { accountLabel } from '@/lib/auth/placeholder-email'
 import { enterSandboxAction, switchWorkspaceAction } from '@/app/api/_actions/workspace.actions'
 import { AccountDialog } from '@/components/dialogs/AccountDialog'
@@ -75,6 +76,7 @@ function workspaceSummary(workspace: SessionWorkspace, t: WorkspaceMenuTranslato
 
 export function WorkspaceSwitcher() {
     const t = useTranslations('layout.workspaceMenu')
+    const errorText = useErrorText()
     const { user, workspace, workspaces, session, isAnonymous, signOut } = useSession()
     const openBilling = useBillingStore(s => s.openBilling)
     const paidApps = useEnabledPaidApps()
@@ -152,7 +154,7 @@ export function WorkspaceSwitcher() {
         const result = await switchWorkspaceAction(workspaceId)
         if (result.ok) return enterActiveWorkspace()
         abortWorkspaceSwitch()
-        toast.error(result.error)
+        toast.error(errorText(result))
         setBusy(false)
     }
 
@@ -166,7 +168,7 @@ export function WorkspaceSwitcher() {
         const result = await enterSandboxAction()
         if (result.ok) return enterActiveWorkspace()
         abortWorkspaceSwitch()
-        toast.error(result.error)
+        toast.error(errorText(result))
         setEntering(false)
     }
 

@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -18,6 +19,7 @@ type Loaded = { expert: OwnerExpert; bannerOptions: string[] }
 
 export function ExpertProfileDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
     const t = useTranslations('dialogs.expertProfile')
+    const errorText = useErrorText()
     const [loaded, setLoaded] = useState<Loaded | null>(null)
     const [error, setError] = useState<string | null>(null)
 
@@ -27,12 +29,12 @@ export function ExpertProfileDialog({ open, onOpenChange }: { open: boolean; onO
         getMyExpertProfileAction().then(result => {
             if (cancelled) return
             if (result.ok) setLoaded({ expert: result.expert, bannerOptions: result.bannerOptions })
-            else setError(result.error)
+            else setError(errorText(result))
         })
         return () => {
             cancelled = true
         }
-    }, [open, loaded, error])
+    }, [open, loaded, error, errorText])
 
     // Dropped on close so the next open refetches: a save rewrites the row, and a cached copy would
     // come back stale.

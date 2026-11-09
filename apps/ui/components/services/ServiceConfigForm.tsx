@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { McpOAuthAuthorize } from '@/components/agent/McpOAuthAuthorize'
 import { AppAccountPicker } from '@rerun/cloud/apps.client'
 import { AuthMethodPicker, methodKindKey } from '@/components/services/AuthMethodPicker'
@@ -72,6 +73,7 @@ export function connectsInOneClick(authMethods: AuthMethodSummary[], initialMeth
 // so the form handles both credential and browser-sign-in flows end-to-end.
 export function ServiceConfigForm({ agentId, slug, instanceKey, newInstance, name, authMethods, initialMethodId, initialAuthTarget, onInstalled, autoConnect }: ServiceConfigFormProps) {
     const t = useTranslations('services')
+    const errorText = useErrorText()
     const driver = useServiceSetupDriver()
     // Null until the install allocated the new account's key, so a retry reuses it.
     const [activeKey, setActiveKey] = useState<string | null>(() => (newInstance ? null : (instanceKey ?? slug)))
@@ -148,7 +150,7 @@ export function ServiceConfigForm({ agentId, slug, instanceKey, newInstance, nam
         }
         popup?.close()
         if (!res.ok) {
-            setError(res.error)
+            setError(errorText(res))
             return
         }
         if (res.result.status === 'installed') {

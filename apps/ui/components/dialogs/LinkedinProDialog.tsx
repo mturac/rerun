@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { formatNumber } from '@rerun/i18n/format'
@@ -22,6 +23,7 @@ type CheckpointResult = Awaited<ReturnType<typeof submitAppCheckpointAction>>
 
 export function LinkedinProDialog() {
     const t = useTranslations('dialogs')
+    const errorText = useErrorText()
     const locale = useLocale()
     const open = usePaidAppsStore(s => s.openSlug === SLUG)
     const reconnectId = usePaidAppsStore(s => s.reconnectId)
@@ -39,9 +41,9 @@ export function LinkedinProDialog() {
     const load = useCallback(async () => {
         const result = await getAppsOverviewAction(SLUG)
         if (result.ok) setOverview(result.value)
-        else setError(result.error)
+        else setError(errorText(result))
         return result.ok ? result.value : null
-    }, [])
+    }, [errorText])
 
     // One checkpoint call at a time, shared by the poll and the button: two answers of "connected"
     // landing together would finish the connection twice, and the second one deletes the account.
@@ -86,7 +88,7 @@ export function LinkedinProDialog() {
         let active = true
         void getAppsOverviewAction(SLUG).then(result => {
             if (!active) return
-            if (!result.ok) return setError(result.error)
+            if (!result.ok) return setError(errorText(result))
             setOverview(result.value)
             const target = reconnectId ? result.value.connections.find(connection => connection.id === reconnectId) : undefined
             if (target) setScreen({ kind: 'connect', reconnect: { id: target.id, label: target.label } })
@@ -94,7 +96,7 @@ export function LinkedinProDialog() {
         return () => {
             active = false
         }
-    }, [open, reconnectId])
+    }, [open, reconnectId, errorText])
 
     // Everything a closed dialog leaves behind is reset here, so the next opening starts clean.
     const close = (next: boolean) => {
@@ -116,9 +118,9 @@ export function LinkedinProDialog() {
         await load()
     }
 
-    const fail = (message: string, code?: string) => {
+    const fail = (message: string, reason?: string) => {
         setError(message)
-        if (code === 'needs_slot' || code === 'not_entitled' || code === 'paused') setScreen(ACCOUNTS)
+        if (reason === 'needs_slot' || reason === 'not_entitled' || reason === 'paused') setScreen(ACCOUNTS)
     }
 
     const submitCredentials = async (credentials: LinkedinCredentials) => {
@@ -127,7 +129,7 @@ export function LinkedinProDialog() {
         const reconnect = screen.kind === 'connect' ? screen.reconnect : null
         const result = await connectLinkedinAction({ ...credentials, ...(reconnect ? { connectionId: reconnect.id } : {}) })
         setPending(null)
-        if (!result.ok) return fail(result.error, result.code)
+        if (!result.ok) return fail(errorText(result), result.reason)
         await settle(result.value)
     }
 
@@ -137,7 +139,7 @@ export function LinkedinProDialog() {
         setError(null)
         const result = await check(screen.connectionId, code)
         setPending(null)
-        if (!result.ok) return fail(result.error, result.code)
+        if (!result.ok) return fail(errorText(result), result.reason)
         if (result.value.status === 'checkpoint' && screen.checkpointType === 'app_approval') setError(t('linkedinPro.approvalNotSeen'))
         await settle(result.value)
     }
@@ -146,7 +148,7 @@ export function LinkedinProDialog() {
         if (screen.kind !== 'checkpoint') return
         const result = await resendAppCodeAction(SLUG, screen.connectionId)
         if (result.ok) toast.success(t('linkedinPro.codeResent'))
-        else setError(result.error)
+        else setError(errorText(result))
     }
 
     const back = () => {
@@ -159,7 +161,7 @@ export function LinkedinProDialog() {
         setPending(connection.id)
         const result = await disconnectAppConnectionAction(SLUG, connection.id)
         setPending(null)
-        if (!result.ok) return setError(result.error)
+        if (!result.ok) return setError(errorText(result))
         bumpRevision()
         await load()
     }
@@ -169,7 +171,7 @@ export function LinkedinProDialog() {
         setError(null)
         const result = await addAppSlotAction(SLUG, randomUuid())
         setPending(null)
-        if (!result.ok) return setError(result.error)
+        if (!result.ok) return setError(errorText(result))
         toast.success(result.value.trialSlot ? t('paidApp.slotAddedTrial', { price: formatNumber(0, locale, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) }) : t('paidApp.slotAdded'))
         // The webhook moves the slot count, a moment after Stripe answers.
         setTimeout(() => void load(), 1500)

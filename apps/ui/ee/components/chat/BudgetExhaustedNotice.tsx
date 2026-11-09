@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
@@ -56,11 +57,12 @@ export function BudgetExhaustedNotice({
 }: { onConnectProvider?: (provider: SubscriptionProvider) => void; ownConnection?: BudgetNoticeOwnConnection; preTrial?: boolean; trialing?: boolean; paused?: boolean; noCredit?: boolean } & TrialUpgrade) {
     const t = useTranslations('chat.budget')
     const openBilling = useBillingStore(s => s.openBilling)
+    const errorText = useErrorText()
 
     if (paused) {
         const resume = async () => {
             const result = await setRerunCreditPausedAction(false)
-            if (!result.ok) toast.error(result.error)
+            if (!result.ok) toast.error(errorText(result))
         }
         return (
             <div className="relative mb-2 space-y-2.5 overflow-hidden rounded-lg px-4 pt-3 pb-4">

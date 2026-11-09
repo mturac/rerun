@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { track } from '@rerun/analytics/client'
 import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -76,6 +77,7 @@ export function CheckoutOutcome({ result, entitled, onReopen }: { result: Checko
 
 export function CheckoutWidget({ output, onDone }: CheckoutWidgetProps) {
     const { workspace } = useSession()
+    const errorText = useErrorText()
     const openBilling = useBillingStore(state => state.openBilling)
     const billingOpen = useBillingStore(state => state.open)
     const [stage, setStage] = useState<Stage>('offer')
@@ -124,7 +126,7 @@ export function CheckoutWidget({ output, onDone }: CheckoutWidgetProps) {
         const trial = await startTrialAction()
         setSubmitting(false)
         if (!trial.ok) {
-            setTrialError(trial.error)
+            setTrialError(errorText(trial))
             return
         }
         if (!trial.entitled) {
@@ -133,7 +135,7 @@ export function CheckoutWidget({ output, onDone }: CheckoutWidgetProps) {
         }
         setReopened(true)
         setStartedWithoutCard(true)
-    }, [openCheckout])
+    }, [openCheckout, errorText])
 
     const recorded = settled && !reopened ? (output as CheckoutResult) : null
     // Entitlement is written by the webhook, so the workspace row is the fastest truthful signal:

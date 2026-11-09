@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { APP_INFO } from '@/lib/apps/catalog'
 import { APP_ADDON_KEYS, APP_SLUGS } from '@/lib/apps/types'
 import { useCheckout } from '@stripe/react-stripe-js/checkout'
@@ -289,13 +290,14 @@ type PlanSessionState = { clientSecret: string; sessionId: string; trial: boolea
 
 function SubscribePane({ selection, priceArm, copy, onDone, onTrialRefused }: { selection: PlanSelection; priceArm: PriceArm; copy: PaneCopy; onDone: (trialStarted: boolean) => void; onTrialRefused: () => void }) {
     const [session, setSession] = useState<PlanSessionState>(null)
+    const errorText = useErrorText()
     const [sessionSelection] = useState(selection)
 
     useEffect(() => {
         let cancelled = false
         createPlanCheckoutAction(sessionSelection).then(result => {
             if (cancelled) return
-            setSession(result.ok ? { clientSecret: result.clientSecret, sessionId: result.sessionId, trial: result.trial } : { error: result.error })
+            setSession(result.ok ? { clientSecret: result.clientSecret, sessionId: result.sessionId, trial: result.trial } : { error: errorText(result) })
         })
         return () => {
             cancelled = true
@@ -333,6 +335,7 @@ function SubscribeForm({
     onTrialRefused: () => void
 }) {
     const t = useTranslations('billing')
+    const errorText = useErrorText()
     const checkout = useCheckout()
     const [accepted, setAccepted] = useState(false)
     const [recordingTerms, setRecordingTerms] = useState(false)
@@ -358,7 +361,7 @@ function SubscribeForm({
             setUpdating(true)
             const result = await checkout.checkout.runServerUpdate(async () => {
                 const update = await updatePlanCheckoutAction(sessionId, JSON.parse(key) as PlanSelection)
-                if (!update.ok) throw new Error(update.error)
+                if (!update.ok) throw new Error(errorText(update))
             })
             inFlight.current = null
             setUpdating(false)
@@ -398,7 +401,7 @@ function SubscribeForm({
         setRecordingTerms(false)
         if (terms.ok) return
         setAccepted(false)
-        setError(terms.error)
+        setError(errorText(terms))
     }
 
     const pay = async (expressCheckoutConfirmEvent?: StripeExpressCheckoutElementConfirmEvent) => {
@@ -469,12 +472,13 @@ async function awaitOutcome(sessionId: string): Promise<'entitled' | 'trial_refu
 
 function CardFormPane({ selection, priceArm, copy, trialEnds, onDone }: { selection: PlanSelection; priceArm: PriceArm; copy: PaneCopy; trialEnds: string | null; onDone: (outcome: 'paid' | 'card_saved') => void }) {
     const [session, setSession] = useState<SessionState>(null)
+    const errorText = useErrorText()
 
     useEffect(() => {
         let cancelled = false
         createPlanCardSetupAction().then(result => {
             if (cancelled) return
-            setSession(result.ok ? { clientSecret: result.clientSecret, sessionId: result.sessionId } : { error: result.error })
+            setSession(result.ok ? { clientSecret: result.clientSecret, sessionId: result.sessionId } : { error: errorText(result) })
         })
         return () => {
             cancelled = true
@@ -493,6 +497,7 @@ function CardFormPane({ selection, priceArm, copy, trialEnds, onDone }: { select
 
 function CardForm({ sessionId, selection, priceArm, copy, trialEnds, onDone }: { sessionId: string; selection: PlanSelection; priceArm: PriceArm; copy: PaneCopy; trialEnds: string | null; onDone: (outcome: 'paid' | 'card_saved') => void }) {
     const t = useTranslations('billing')
+    const errorText = useErrorText()
     const checkout = useCheckout()
     const loaded = checkout.type === 'success' ? checkout.checkout : null
     const [accepted, setAccepted] = useState(false)
@@ -508,11 +513,11 @@ function CardForm({ sessionId, selection, priceArm, copy, trialEnds, onDone }: {
             const result = await loaded.confirm({ redirect: 'if_required', expressCheckoutConfirmEvent })
             if (result.type === 'error') throw new Error(result.error.message)
             const saved = await confirmCardSetupAction(sessionId)
-            if (!saved.ok) throw new Error(saved.error)
+            if (!saved.ok) throw new Error(errorText(saved))
             if (when === 'later') return onDone('card_saved')
 
             const changed = await runPlanChange(selection)
-            if (!changed.ok) throw new Error(copy.refusal ? copy.refusal(changed.error) : changed.error)
+            if (!changed.ok) throw new Error(copy.refusal ? copy.refusal(errorText(changed)) : errorText(changed))
             onDone('paid')
         } catch (err) {
             setError(errorMessage(err, t('checkout.pay.genericError')))
@@ -575,6 +580,7 @@ function CardOnFilePane({
     onResumed: () => void
 }) {
     const t = useTranslations('billing')
+    const errorText = useErrorText()
     const quote = usePlanQuote(selection, true)
     const [accepted, setAccepted] = useState(false)
     const [submitting, setSubmitting] = useState(false)
@@ -587,7 +593,7 @@ function CardOnFilePane({
         setError(null)
         const result = await runPlanChange(selection)
         setSubmitting(false)
-        if (!result.ok) return setError(copy.refusal ? copy.refusal(result.error) : result.error)
+        if (!result.ok) return setError(copy.refusal ? copy.refusal(errorText(result)) : errorText(result))
         onDone()
     }
 
@@ -710,13 +716,14 @@ function TrialPane({
 
 function TrialCancelledPane({ trialEnds, onResumed }: { trialEnds: string | null; onResumed: () => void }) {
     const t = useTranslations('billing')
+    const errorText = useErrorText()
     const [resuming, setResuming] = useState(false)
 
     const resume = async () => {
         setResuming(true)
         const result = await resumeSubscriptionAction()
         setResuming(false)
-        if (!result.ok) return toast.error(t('checkout.trialCancelled.resumeFailed'), { description: result.error })
+        if (!result.ok) return toast.error(t('checkout.trialCancelled.resumeFailed'), { description: errorText(result) })
         onResumed()
     }
 

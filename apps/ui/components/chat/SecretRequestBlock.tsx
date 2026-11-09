@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { answerSecretRequestAction, getAgentKeysAction, updateAgentKeysAction } from '@/app/api/_actions/agent.actions'
 import { serializeSecretResult } from '@/lib/chat-hitl'
 import { SecretRequestBlock as SecretRequestBlockBase, type SecretRequestItem } from '@rerun/ui/chat'
@@ -22,6 +23,7 @@ type SecretRequestBlockProps = {
 
 export function SecretRequestBlock({ agentId, sessionId, secrets, reason, onDone, onSkip, onDismiss, inline }: SecretRequestBlockProps) {
     const t = useTranslations('chat.secretRequest')
+    const errorText = useErrorText()
     const [existingKeys, setExistingKeys] = useState<string[]>([])
 
     useEffect(() => {
@@ -42,7 +44,7 @@ export function SecretRequestBlock({ agentId, sessionId, secrets, reason, onDone
             inline={inline}
             onSubmit={async values => {
                 const result = sessionId ? await answerSecretRequestAction(sessionId, values) : await updateAgentKeysAction(agentId, { set: values })
-                if (!result.success) throw new Error(result.error ?? t('saveFailed'))
+                if (!result.success) throw new Error(errorText(result, t('saveFailed')))
                 onDone(serializeSecretResult(secrets, Object.keys(values)))
             }}
             onSkip={onSkip}

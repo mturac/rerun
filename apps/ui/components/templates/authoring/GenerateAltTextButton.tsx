@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import * as React from 'react'
 import { useFormContext } from 'react-hook-form'
 import { useTranslations } from 'next-intl'
@@ -16,6 +17,7 @@ type Props = {
 
 export function GenerateAltTextButton({ imageUrl, isCover, onGenerated }: Props) {
     const t = useTranslations('templates.authoring')
+    const errorText = useErrorText()
     const { getValues } = useFormContext<TemplateFormValues>()
     const { actions } = useTemplateAuthoring()
     const [pending, startTransition] = React.useTransition()
@@ -26,7 +28,7 @@ export function GenerateAltTextButton({ imageUrl, isCover, onGenerated }: Props)
         startTransition(async () => {
             const result = await actions.prefillAltText({ brief: toTemplateBrief(getValues()), imageUrl, isCover })
             if (!result.ok) {
-                setError(result.error)
+                setError(errorText(result))
                 return
             }
             onGenerated(result.alt)

@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { decideBrainProposalAction } from '@/app/api/_actions/brain.actions'
 import { PageColumn } from '@/components/brain/BrainPageParts'
 import { BrainTopBar } from '@/components/brain/BrainTopBar'
@@ -20,6 +21,7 @@ type BrainProposalsPanelProps = {
 // person accepts it here.
 export function BrainProposalsPanel({ proposals, onDecided, onOpenPage }: BrainProposalsPanelProps) {
     const t = useTranslations('brain.proposals')
+    const errorText = useErrorText()
     const [busyId, setBusyId] = useState<string | null>(null)
 
     const decide = async (proposal: BrainProposal, decision: 'accept' | 'dismiss') => {
@@ -27,7 +29,7 @@ export function BrainProposalsPanel({ proposals, onDecided, onOpenPage }: BrainP
         const result = await decideBrainProposalAction(proposal.id, decision)
         setBusyId(null)
         if (!result.ok) {
-            toast.error(result.error)
+            toast.error(errorText(result))
             return
         }
         if (decision === 'accept') toast.success(t('accepted', { title: proposal.title }), { action: { label: t('open'), onClick: () => onOpenPage(proposal.slug) } })

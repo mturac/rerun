@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { inviteToWorkspaceAction } from '@/app/api/_actions/members.actions'
 import { createWorkspaceAction } from '@/app/api/_actions/workspace.actions'
 import { CreateWorkspacePreview } from '@/components/dialogs/CreateWorkspacePreview'
@@ -33,6 +34,7 @@ const defaultValues: FormValues = { name: '', iconFile: '', members: [], memberD
 export function CreateWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
     const t = useTranslations('dialogs.createWorkspace')
     const tCommon = useTranslations('common')
+    const errorText = useErrorText()
     const { index: step, direction, goForward, back, reset: resetStepper } = useStepper(STEPS.length)
     const current = STEPS[step]
     // Already the active workspace server-side: the dialog is only still open to report the
@@ -85,7 +87,7 @@ export function CreateWorkspaceDialog({ open, onOpenChange }: { open: boolean; o
         const result = await createWorkspaceAction(name, iconUrl)
         if (!result.ok) {
             abortWorkspaceSwitch()
-            form.setError('root', { message: result.error })
+            form.setError('root', { message: errorText(result) })
             return
         }
         setCreated(true)

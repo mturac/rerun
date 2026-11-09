@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { attachServerManuallyAction, createPairingTokenAction, detachServerAction, getWorkspaceServerAction } from '@/app/api/_actions/servers.actions'
 import type { WorkspaceServer } from '@/app/api/_services/servers.service'
 import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog'
@@ -74,6 +75,7 @@ function ServerRow({ server, onRemove }: { server: WorkspaceServer; onRemove: ()
 
 function Pairing({ onConnected }: { onConnected: () => void }) {
     const t = useTranslations('dialogs.servers')
+    const errorText = useErrorText()
     const [token, setToken] = useState<string | null>(null)
     const [address, setAddress] = useState('')
     const [creating, setCreating] = useState(false)
@@ -86,7 +88,7 @@ function Pairing({ onConnected }: { onConnected: () => void }) {
         setCreating(true)
         const result = await createPairingTokenAction()
         setCreating(false)
-        if (!result.ok) return toast.error(result.error)
+        if (!result.ok) return toast.error(errorText(result))
         setToken(result.token)
     }
 
@@ -94,7 +96,7 @@ function Pairing({ onConnected }: { onConnected: () => void }) {
         setAttaching(true)
         const result = await attachServerManuallyAction({ url: manualUrl, apiKey: manualKey })
         setAttaching(false)
-        if (!result.ok) return toast.error(result.error)
+        if (!result.ok) return toast.error(errorText(result))
         onConnected()
     }
 
@@ -152,6 +154,7 @@ function Pairing({ onConnected }: { onConnected: () => void }) {
 
 export function ServersDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
     const t = useTranslations('dialogs.servers')
+    const errorText = useErrorText()
     const [server, setServer] = useState<WorkspaceServer | null>(null)
     const [loading, setLoading] = useState(true)
     const [removing, setRemoving] = useState(false)
@@ -160,9 +163,9 @@ export function ServersDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     const refresh = useCallback(async () => {
         const result = await getWorkspaceServerAction()
         setLoading(false)
-        if (!result.ok) return toast.error(result.error)
+        if (!result.ok) return toast.error(errorText(result))
         setServer(result.server)
-    }, [])
+    }, [errorText])
 
     useEffect(() => {
         if (!open) return
@@ -177,7 +180,7 @@ export function ServersDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         const result = await detachServerAction()
         setRemoving(false)
         setConfirmRemove(false)
-        if (!result.ok) return toast.error(result.error)
+        if (!result.ok) return toast.error(errorText(result))
         toast.success(t('removed'))
         void refresh()
     }

@@ -320,7 +320,7 @@ export async function adoptEngineSession(agentId: string, engineSessionId: strin
     const session = (await getSession(target.conn, target.engineAgentId, engineSessionId)) ?? (await listSessions(target.conn, target.engineAgentId)).find(s => s.id === engineSessionId)
     // A row is only ever a mirror of a session this agent holds: the column is unique across
     // workspaces, so a made-up id would otherwise squat another workspace's session.
-    if (!session) throw new AuthorizationError('Conversation not found')
+    if (!session) throw new AuthorizationError('conversationNotFound')
 
     let originAgentId: string | null = null
     if (session?.originAgentId) {

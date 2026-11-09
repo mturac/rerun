@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { getCatalogServicesBySlugsAction, getServiceAlternativesAction, getServiceDetailsAction } from '@/app/api/_actions/services.actions'
 import { ServiceAlternatives } from '@/components/services/ServiceAlternatives'
 import { connectsInOneClick, ServiceConfigForm } from '@/components/services/ServiceConfigForm'
@@ -152,6 +153,7 @@ type ServiceSuggestionCardProps = {
 
 export function ServiceSuggestionCard({ agentId, services, onDone, inline, defaultOpen }: ServiceSuggestionCardProps) {
     const t = useTranslations('services')
+    const errorText = useErrorText()
     const driver = useServiceSetupDriver()
     const [resolved, setResolved] = useState(services)
     const [statuses, setStatuses] = useState(() => initialStatuses(services))
@@ -235,7 +237,7 @@ export function ServiceSuggestionCard({ agentId, services, onDone, inline, defau
         const res = await driver.reset(agentId, s.slug)
         setResetting(null)
         if (!res.ok) {
-            setResetError(res.error)
+            setResetError(errorText(res))
             return
         }
         const reset = res.result

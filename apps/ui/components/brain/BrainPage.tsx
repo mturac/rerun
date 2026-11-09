@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { BrainEditor, type BrainEditorHandle } from '@/components/brain/editor/BrainEditor'
 import { PageColumn, PageProperty, PageTitle, PageTypeIcon, PageTypeSelect, UnconfirmedSections } from '@/components/brain/BrainPageParts'
 import { BrainTopBar } from '@/components/brain/BrainTopBar'
@@ -73,6 +74,7 @@ function Backlinks({ links, onOpenPage }: { links: BrainPageData['backlinks']; o
 export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, onOpenFile, onReviewProposals, onSaved, onHistory, onDelete }: BrainPageProps) {
     const t = useTranslations('brain')
     const tPage = useTranslations('brain.page')
+    const errorText = useErrorText()
     const locale = useLocale()
     const page = detail.page
     const autosave = useBrainAutosave({ page, onSaved })
@@ -106,7 +108,7 @@ export function BrainPage({ detail, pages, titles, files, proposal, onOpenPage, 
         const result = await confirmBrainSectionsAction(page.slug, null)
         setConfirming(false)
         if (result.ok) onSaved(result.detail)
-        else toast.error(result.error)
+        else toast.error(errorText(result))
     }
 
     const section = isCardType(type) ? t('crumbs.company') : t('crumbs.pages')

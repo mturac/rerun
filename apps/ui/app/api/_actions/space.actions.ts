@@ -1,6 +1,6 @@
 'use server'
 
-import type { ActionFailure } from '@/lib/i18n/action-error'
+import { AppError, failureOf, type ActionFailure } from '@/lib/i18n/action-error'
 import { assertAdminUser } from '@/lib/auth/admin'
 import { actorFromContext, requireLightSessionActor } from '@/app/api/_auth/access'
 import { requireWorkspaceContext, requireWorkspaceId } from '@/app/api/_auth/ownership'
@@ -22,7 +22,7 @@ export async function claimSpaceAction(params: { workspaceId: number; name?: str
         const ctx = await requireWorkspaceContext()
         return await createBox({ workspaceId: ctx.workspace.id, userId: ctx.userId, actor: actorFromContext(ctx), name: params.name, from: params.from })
     } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : 'Failed to create the Box' }
+        return failureOf(err, 'createBoxFailed')
     }
 }
 
@@ -35,11 +35,9 @@ export async function deleteSpaceAction(spaceId: string): Promise<ActionResult> 
         await deleteBox(await requireLightSessionActor(), spaceId)
         return { ok: true }
     } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : 'Failed to delete the Box' }
+        return failureOf(err, 'deleteBoxFailed')
     }
 }
-
-const NOT_MANAGED_ERROR = 'This workspace runs on an engine Rerun does not host, so it cannot power it on or off'
 
 // The machine belongs to the workspace, so these two act on the workspace, whichever Box the
 // button was pressed from.
@@ -47,7 +45,7 @@ async function managedInstanceId(): Promise<string> {
     await assertAdminUser()
     const engine = await findWorkspaceEngine(await requireWorkspaceId())
     if (!engine) throw new NoEngineError()
-    if (!engine.managed) throw new Error(NOT_MANAGED_ERROR)
+    if (!engine.managed) throw new AppError('engineNotManaged')
     return engine.instanceId
 }
 
@@ -58,6 +56,6 @@ export async function restartWorkspaceEngineAction(): Promise<ActionResult> {
         await restartManagedEngine(await managedInstanceId())
         return { ok: true }
     } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : 'Failed to restart the workspace machine' }
+        return failureOf(err, 'restartMachineFailed')
     }
 }

@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { createSkillAction, deleteSkillAction, downloadSkillArchiveAction, getSkillAction, updateSkillAction } from '@/app/api/_actions/agent.actions'
 import { PanelDeleteButton, PanelEditorBody, PanelEditorFooter, PanelEditorHeader, PanelEditorShell } from '@/components/ui/panel-editor'
 import { PanelSteps } from '@/components/ui/panel-steps'
@@ -27,6 +28,7 @@ type SkillEditorProps = {
 
 export function SkillEditor({ agentId, slug, readOnly: readOnlyProp, onDone, onBack }: SkillEditorProps) {
     const t = useTranslations('agent.skillEditor')
+    const errorText = useErrorText()
     const tShared = useTranslations('agent.modelsShared')
     const isEdit = !!slug
     // Only an existing skill is sealed: writing a new one on a template's agent stays open, and an
@@ -72,8 +74,8 @@ export function SkillEditor({ agentId, slug, readOnly: readOnlyProp, onDone, onB
         const result = isEdit ? await updateSkillAction(agentId, slug!, { description, body }) : await createSkillAction(agentId, { name, description, body })
         setSaving(false)
         if (result.success) onDone()
-        else setError(result.error ?? t('saveFailed'))
-    }, [agentId, slug, isEdit, name, description, body, onDone, t])
+        else setError(errorText(result, t('saveFailed')))
+    }, [agentId, slug, isEdit, name, description, body, onDone, t, errorText])
 
     const handleDownload = useCallback(async () => {
         if (files.length === 0) {
@@ -86,20 +88,20 @@ export function SkillEditor({ agentId, slug, readOnly: readOnlyProp, onDone, onB
         const result = await downloadSkillArchiveAction(agentId, slug!)
         setDownloading(false)
         if (!result.success || !result.base64) {
-            setError(result.error ?? t('downloadFailed'))
+            setError(errorText(result, t('downloadFailed')))
             return
         }
         const bytes = Uint8Array.from(atob(result.base64), char => char.charCodeAt(0))
         downloadBlob(new Blob([bytes], { type: 'application/gzip' }), `${slug}.tar.gz`)
-    }, [agentId, slug, name, description, body, files.length, t])
+    }, [agentId, slug, name, description, body, files.length, t, errorText])
 
     const handleDelete = useCallback(async () => {
         setDeleting(true)
         const result = await deleteSkillAction(agentId, slug!)
         setDeleting(false)
         if (result.success) onDone()
-        else setError(result.error ?? t('deleteFailed'))
-    }, [agentId, slug, onDone, t])
+        else setError(errorText(result, t('deleteFailed')))
+    }, [agentId, slug, onDone, t, errorText])
 
     if (loading) {
         return (

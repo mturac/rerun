@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useState, useTransition } from 'react'
@@ -24,6 +25,7 @@ export function CreatorOnboarding({ invite, token }: { invite: CreatorInvite; to
     const firstName = invite.name.trim().split(/\s+/)[0]
 
     const [claimError, setClaimError] = useState<string | null>(null)
+    const errorText = useErrorText()
     const [claiming, startClaim] = useTransition()
 
     const claim = useCallback(() => {
@@ -31,9 +33,9 @@ export function CreatorOnboarding({ invite, token }: { invite: CreatorInvite; to
         startClaim(async () => {
             const result = await claimCreatorSandboxAction(token)
             if (result.ok) goTo(2)
-            else setClaimError(result.error)
+            else setClaimError(errorText(result))
         })
-    }, [token, goTo])
+    }, [token, goTo, errorText])
 
     // The claim runs on arrival at its own step rather than on the button, so a failed pool grab is
     // retried from where it failed instead of sending people back to the welcome screen.
@@ -109,6 +111,7 @@ function TermsStep({ onDone }: { onDone: () => void }) {
     const t = useTranslations('auth.creatorOnboarding')
     const [checked, setChecked] = useState<Set<string>>(new Set())
     const [error, setError] = useState<string | null>(null)
+    const errorText = useErrorText()
     const [pending, startTransition] = useTransition()
     const allChecked = CREATOR_TERMS.every(term => checked.has(term.id))
 
@@ -126,7 +129,7 @@ function TermsStep({ onDone }: { onDone: () => void }) {
         startTransition(async () => {
             const result = await acceptCreatorTermsAction()
             if (result.ok) onDone()
-            else setError(result.error)
+            else setError(errorText(result))
         })
     }
 

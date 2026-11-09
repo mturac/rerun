@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText, type Refusal } from '@/hooks/useErrorText'
 import { exchangeClaudeSubscriptionAction, startClaudeOAuthAction } from '@/app/api/_actions/workspace-connection.actions'
 import { trackAiConnectionFailed } from '@/lib/engine/ai-connection-analytics'
 import type { AiConnectionSurface } from '@rerun/analytics'
@@ -18,7 +19,7 @@ export type ClaudeOAuth = {
     submit: (text: string) => Promise<boolean>
 }
 
-type KeysHandler = (keys: Record<string, string>) => Promise<{ success: boolean; error?: string }>
+type KeysHandler = (keys: Record<string, string>) => Promise<{ success: boolean } & Refusal>
 
 // A second click re-arms the flow and opens a second Claude tab: the code pasted from the first one
 // is then refused, and Safari iOS can cut the request short.
@@ -29,6 +30,7 @@ const OPEN_LOCK_MS = 5000
 export function useClaudeOAuth(onKeys: KeysHandler, surface: AiConnectionSurface): ClaudeOAuth {
     const t = useTranslations('connections.errors')
     const tCommon = useTranslations('common')
+    const errorText = useErrorText()
     const [pkce, setPkce] = useState<{ verifier: string; state: string } | null>(null)
     const [busy, setBusy] = useState(false)
     const [connected, setConnected] = useState(false)
@@ -62,7 +64,7 @@ export function useClaudeOAuth(onKeys: KeysHandler, surface: AiConnectionSurface
             try {
                 const res = await onKeys(keys)
                 if (!res.success) {
-                    setError(res.error ?? t('saveTokenFailed'))
+                    setError(errorText(res, t('saveTokenFailed')))
                     return false
                 }
                 setPkce(null)
@@ -73,7 +75,7 @@ export function useClaudeOAuth(onKeys: KeysHandler, surface: AiConnectionSurface
                 return false
             }
         },
-        [onKeys, t, tCommon]
+        [onKeys, t, tCommon, errorText]
     )
 
     const submit = useCallback(
@@ -104,7 +106,7 @@ export function useClaudeOAuth(onKeys: KeysHandler, surface: AiConnectionSurface
             const exchanged = await exchangeClaudeSubscriptionAction(text, pkce.verifier, pkce.state).catch(() => ({ success: false as const, error: tCommon('somethingWentWrong') }))
             if (!exchanged.success) {
                 setBusy(false)
-                setError(exchanged.error)
+                setError(errorText(exchanged))
                 trackAiConnectionFailed('claude', 'oauth', surface, 'oauth_exchange_failed', exchanged.error)
                 return false
             }
@@ -112,7 +114,7 @@ export function useClaudeOAuth(onKeys: KeysHandler, surface: AiConnectionSurface
             setBusy(false)
             return saved
         },
-        [busy, pkce, apply, surface, tCommon]
+        [busy, pkce, apply, surface, tCommon, errorText]
     )
 
     const phase: ClaudeOAuthPhase = connected ? 'connected' : busy ? 'checking' : pkce ? 'waiting' : 'idle'

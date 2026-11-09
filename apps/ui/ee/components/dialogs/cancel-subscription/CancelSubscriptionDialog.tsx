@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText, type Refusal } from '@/hooks/useErrorText'
 import { cancelSubscriptionAction, checkCancelReasonAction, claimRetentionOfferAction, getCancelFlowActivityAction, getCancelFlowStateAction, requestRenewalReminderAction, resumeSubscriptionAction } from '@/ee/actions/billing.actions'
 import type { CancelFlowState } from '@/ee/services/billing.service'
 import type { CancelFlowActivity } from '@/ee/services/cancel-flow-activity.service'
@@ -54,6 +55,7 @@ function CancelFlowLoader({
 }) {
     const locale = useLocale()
     const t = useTranslations('billing')
+    const errorText = useErrorText()
     const [state, setState] = useState<CancelFlowState | null>(null)
     const [activity, setActivity] = useState<CancelFlowActivity | null>(null)
     const [activityLoading, setActivityLoading] = useState(true)
@@ -71,7 +73,7 @@ function CancelFlowLoader({
         let cancelled = false
         void getCancelFlowStateAction().then(res => {
             if (cancelled) return
-            if (!res.ok) return failed(res.error)
+            if (!res.ok) return failed(errorText(res))
             setState(res.state)
             track('cancel_flow_started', { phase: res.state.phase })
         })
@@ -90,9 +92,9 @@ function CancelFlowLoader({
         if (phase) onStepChange({ phase, step: next })
     }, [phase, onStepChange])
 
-    const settle = async (res: { ok: true } | { ok: false; error: string }, failure: string): Promise<boolean> => {
+    const settle = async (res: { ok: true } | ({ ok: false; error: string } & Refusal), failure: string): Promise<boolean> => {
         if (!res.ok) {
-            toast.error(failure, { description: res.error })
+            toast.error(failure, { description: errorText(res) })
             return false
         }
         onChanged()
@@ -104,7 +106,7 @@ function CancelFlowLoader({
         if (state.phase === 'paid') {
             const res = await requestRenewalReminderAction()
             if (!res.ok) {
-                toast.error(t('cancel.toasts.remindFailed'), { description: res.error })
+                toast.error(t('cancel.toasts.remindFailed'), { description: errorText(res) })
                 return false
             }
         }

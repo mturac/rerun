@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -14,6 +15,7 @@ import { CopyIcon, EllipsisIcon, ExternalLinkIcon, Share2Icon, Trash2Icon } from
 
 export function PublishedRowMenu({ file, onShare, onUnpublished }: { file: PublishedFile; onShare: () => void; onUnpublished: (slug: string) => void }) {
     const t = useTranslations('published')
+    const errorText = useErrorText()
     const [confirming, setConfirming] = useState(false)
     const [pending, setPending] = useState(false)
 
@@ -23,7 +25,7 @@ export function PublishedRowMenu({ file, onShare, onUnpublished }: { file: Publi
         setPending(false)
         setConfirming(false)
         if (!result.ok) {
-            toast.error(t('row.unpublishFailed'), { description: result.error })
+            toast.error(t('row.unpublishFailed'), { description: errorText(result) })
             return
         }
         onUnpublished(file.slug)

@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useCheckout } from '@stripe/react-stripe-js/checkout'
 import type { StripeExpressCheckoutElementConfirmEvent } from '@stripe/stripe-js'
 import { useLocale, useTranslations } from 'next-intl'
@@ -227,13 +228,14 @@ function OverviewPane({
 }) {
     const locale = useLocale()
     const t = useTranslations('billing')
+    const errorText = useErrorText()
     const [keeping, setKeeping] = useState(false)
 
     const keepYearly = async () => {
         setKeeping(true)
         const result = await cancelPendingSwitchAction()
         setKeeping(false)
-        if (!result.ok) return toast.error(t('plan.overview.keepYearlyFailed'), { description: result.error })
+        if (!result.ok) return toast.error(t('plan.overview.keepYearlyFailed'), { description: errorText(result) })
         await onChanged()
     }
 
@@ -311,6 +313,7 @@ function ChangePane({
 }) {
     const locale = useLocale()
     const t = useTranslations('billing')
+    const errorText = useErrorText()
     const [accepted, setAccepted] = useState(false)
     const [submitting, setSubmitting] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -335,7 +338,7 @@ function ChangePane({
         setError(null)
         const result = await runPlanChange(selection)
         setSubmitting(false)
-        if (!result.ok) return setError(result.error)
+        if (!result.ok) return setError(errorText(result))
         if (result.switchAt) return onDone({ title: t('plan.change.switchScheduledTitle'), body: t('plan.change.switchScheduledBody', { date: shortDate(result.switchAt, locale) }) })
         if (!chargesToday) return onDone({ title: t('plan.change.changeScheduledTitle'), body: t('plan.change.changeScheduledBody', { current: planLabel(currentSlots), renewal, next: planLabel(slots), price: newBill }) })
         onDone({ title: t('plan.change.planUpdatedTitle'), body: t(interval === 'yearly' ? 'plan.change.planUpdatedBodyYearly' : 'plan.change.planUpdatedBodyMonthly', { plan: planLabel(slots) }) })
@@ -415,6 +418,7 @@ function ChangePane({
 function CancelPendingPane({ state, currentBillCents, onResumed }: { state: SubscriptionState; currentBillCents: number; onResumed: () => void }) {
     const locale = useLocale()
     const t = useTranslations('billing')
+    const errorText = useErrorText()
     const [resuming, setResuming] = useState(false)
     const ends = state.periodEnd ? shortDate(state.periodEnd, locale) : t('plan.cancelPending.endOfPeriod')
 
@@ -422,7 +426,7 @@ function CancelPendingPane({ state, currentBillCents, onResumed }: { state: Subs
         setResuming(true)
         const result = await resumeSubscriptionAction()
         setResuming(false)
-        if (!result.ok) return toast.error(t('plan.cancelPending.resumeFailed'), { description: result.error })
+        if (!result.ok) return toast.error(t('plan.cancelPending.resumeFailed'), { description: errorText(result) })
         onResumed()
     }
 
@@ -442,21 +446,23 @@ function CancelPendingPane({ state, currentBillCents, onResumed }: { state: Subs
 
 function useSetupSession(): { clientSecret: string; sessionId: string } | { error: string } | null {
     const [session, setSession] = useState<{ clientSecret: string; sessionId: string } | { error: string } | null>(null)
+    const errorText = useErrorText()
     useEffect(() => {
         let cancelled = false
         createPlanCardSetupAction().then(result => {
             if (cancelled) return
-            setSession(result.ok ? { clientSecret: result.clientSecret, sessionId: result.sessionId } : { error: result.error })
+            setSession(result.ok ? { clientSecret: result.clientSecret, sessionId: result.sessionId } : { error: errorText(result) })
         })
         return () => {
             cancelled = true
         }
-    }, [])
+    }, [errorText])
     return session
 }
 
 function SetupForm({ sessionId, cta, footnote, onSaved }: { sessionId: string; cta: string; footnote?: string; onSaved: () => void }) {
     const t = useTranslations('billing')
+    const errorText = useErrorText()
     const checkout = useCheckout()
     const loaded = checkout.type === 'success' ? checkout.checkout : null
     const [submitting, setSubmitting] = useState(false)
@@ -470,7 +476,7 @@ function SetupForm({ sessionId, cta, footnote, onSaved }: { sessionId: string; c
             const result = await loaded.confirm({ redirect: 'if_required', expressCheckoutConfirmEvent })
             if (result.type === 'error') throw new Error(result.error.message)
             const saved = await confirmCardSetupAction(sessionId)
-            if (!saved.ok) throw new Error(saved.error)
+            if (!saved.ok) throw new Error(errorText(saved))
             onSaved()
         } catch (err) {
             setError(err instanceof Error ? err.message : t('plan.card.notSaved'))
@@ -532,13 +538,14 @@ function PastDuePane({ state, onDone }: { state: SubscriptionState; onDone: () =
 function InvoicesPane({ onBack }: { onBack: () => void }) {
     const locale = useLocale()
     const t = useTranslations('billing.plan.invoices')
+    const errorText = useErrorText()
     const [invoices, setInvoices] = useState<InvoiceSummary[] | null>(null)
 
     useEffect(() => {
         let cancelled = false
         listInvoicesAction().then(result => {
             if (cancelled) return
-            if (!result.ok) toast.error(t('loadFailed'), { description: result.error })
+            if (!result.ok) toast.error(t('loadFailed'), { description: errorText(result) })
             setInvoices(result.ok ? result.invoices : [])
         })
         return () => {
@@ -590,6 +597,7 @@ function invoiceStatusLabel(status: string, t: ReturnType<typeof useTranslations
 // Rerun credit is a monthly quantity on the plan: each pack adds its credit every month.
 function CreditPane({ state, onBack, onDone }: { state: SubscriptionState; onBack: () => void; onDone: (success: Success) => void }) {
     const t = useTranslations('billing')
+    const errorText = useErrorText()
     const current = state.quantities.credit_pack
     const [packs, setPacks] = useState(current + 1)
     const [accepted, setAccepted] = useState(false)
@@ -605,7 +613,7 @@ function CreditPane({ state, onBack, onDone }: { state: SubscriptionState; onBac
         setError(null)
         const result = await runPlanChange(selection)
         setSubmitting(false)
-        if (!result.ok) return setError(result.error)
+        if (!result.ok) return setError(errorText(result))
         onDone({
             title: increase ? t('plan.credit.addedTitle') : t('plan.change.changeScheduledTitle'),
             body: increase ? t('plan.credit.addedBody', { count: BASE_PLAN_CREDITS + packs * CREDITS_PER_PACK }) : t('plan.credit.unchangedBody'),

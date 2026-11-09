@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { getAgentDetailAction, updateAgentConfigAction } from '@/app/api/_actions/agent.actions'
 import { PanelDeleteButton, PanelEditorBody, PanelEditorFooter, PanelEditorShell } from '@/components/ui/panel-editor'
 import { AgentAccessRow } from '@/components/agent/AgentAccessRow'
@@ -39,6 +40,7 @@ const SETTINGS_FORM_ID = 'agent-settings-form'
 
 export function AgentPanelSettings({ agent }: AgentPanelSettingsProps) {
     const t = useTranslations('agent.agentPanelSettings')
+    const errorText = useErrorText()
     const verbosityOptions = useMemo(() => VERBOSITY_LEVELS.map((value: EngineVerbosity) => ({ value, label: t(`verbosity.${value}`) })), [t])
     const renameAgent = useBoardStore(s => s.renameAgent)
     const openNotifications = useNotificationsStore(s => s.openNotifications)
@@ -97,7 +99,7 @@ export function AgentPanelSettings({ agent }: AgentPanelSettingsProps) {
             setSaved(true)
             setTimeout(() => setSaved(false), 2000)
         } else {
-            setError(result.error ?? t('saveFailed'))
+            setError(errorText(result, t('saveFailed')))
         }
     })
 

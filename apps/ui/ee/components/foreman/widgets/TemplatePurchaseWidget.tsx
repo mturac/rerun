@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { formatAmount, isPaid, priceLabel, type TemplatePricing } from '@rerun/contracts'
 import { track } from '@rerun/analytics/client'
 import { Badge } from '@rerun/ui/primitives'
@@ -33,6 +34,7 @@ function readInput(input: unknown): PurchaseInput | null {
 
 export function TemplatePurchaseWidget({ input, output, onDone }: { input: unknown; output?: unknown; onDone: (result: TemplatePurchaseResult) => void }) {
     const t = useTranslations('foreman.purchase')
+    const errorText = useErrorText()
     const { workspace } = useSession()
     const purchase = readInput(input)
     const bought = (output as TemplatePurchaseResult | null | undefined)?.ok === true
@@ -90,7 +92,7 @@ export function TemplatePurchaseWidget({ input, output, onDone }: { input: unkno
         const result = await startTemplateCheckoutAction(purchase.slug)
         if (!result.ok) {
             setOpening(false)
-            setError(result.error)
+            setError(errorText(result))
             return
         }
         if (result.outcome.kind === 'checkout') {

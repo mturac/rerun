@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -12,6 +13,7 @@ import { Switch } from '@/components/ui/switch'
 // a member turns it back on. The workspace row follows over realtime, the switch only holds the click.
 export function RerunCreditSwitch({ paused }: { paused: boolean }) {
     const t = useTranslations('billing')
+    const errorText = useErrorText()
     const [optimistic, setOptimistic] = useState<boolean | null>(null)
     const [saving, setSaving] = useState(false)
     const on = optimistic ?? !paused
@@ -25,7 +27,7 @@ export function RerunCreditSwitch({ paused }: { paused: boolean }) {
         setSaving(false)
         if (result.ok) return
         setOptimistic(null)
-        toast.error(result.error)
+        toast.error(errorText(result))
     }
 
     return (

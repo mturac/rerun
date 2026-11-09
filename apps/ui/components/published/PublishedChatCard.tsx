@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -30,6 +31,7 @@ function withDefaults(result: PublishResult): PublishResult {
 // at that moment: the card reads it again, so a change made since (here or anywhere else) shows.
 export function PublishedChatCard({ agentId, result: raw }: { agentId?: string; result: PublishResult }) {
     const t = useTranslations('published.chat')
+    const errorText = useErrorText()
     const accessCopy = useAccessCopy()
     const result = withDefaults(raw)
     const workspaceName = useWorkspaceName()
@@ -70,12 +72,12 @@ export function PublishedChatCard({ agentId, result: raw }: { agentId?: string; 
         if (choice === 'public') {
             const outcome = await updatePublishedAccessAction(slug, { access: 'public' })
             setAnswering(null)
-            if (!outcome.ok) return toast.error(t('updateFailed'), { description: outcome.error })
+            if (!outcome.ok) return toast.error(t('updateFailed'), { description: errorText(outcome) })
             setLive(outcome.file)
         } else {
             const outcome = await dismissAccessRequestAction(slug)
             setAnswering(null)
-            if (!outcome.ok) return toast.error(t('updateFailed'), { description: outcome.error })
+            if (!outcome.ok) return toast.error(t('updateFailed'), { description: errorText(outcome) })
         }
         setAnswer(choice)
     }

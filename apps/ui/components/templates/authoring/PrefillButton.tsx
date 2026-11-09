@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { Button } from '@rerun/ui/primitives'
 import * as React from 'react'
 import { useFormContext } from 'react-hook-form'
@@ -17,6 +18,7 @@ type Props = {
 
 export function PrefillButton({ run, label }: Props) {
     const t = useTranslations('templates.authoring')
+    const errorText = useErrorText()
     const { getValues } = useFormContext<TemplateFormValues>()
     const [pending, startTransition] = React.useTransition()
     const [error, setError] = React.useState<string | null>(null)
@@ -25,7 +27,7 @@ export function PrefillButton({ run, label }: Props) {
         setError(null)
         startTransition(async () => {
             const result = await run(toTemplateBrief(getValues()))
-            if (!result.ok) setError(result.error)
+            if (!result.ok) setError(errorText(result))
         })
     }
 

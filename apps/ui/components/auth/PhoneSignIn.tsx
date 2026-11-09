@@ -1,5 +1,6 @@
 'use client'
 
+import { useErrorText } from '@/hooks/useErrorText'
 import { sendPhoneSignInCodeAction, verifyPhoneSignInCodeAction } from '@/app/api/_actions/phone.actions'
 import { PhoneCodeForm, type PhoneCodeRequest, type PhoneCodeStep } from '@/components/auth/PhoneCodeForm'
 import { sendPhoneCode } from '@/components/auth/phone-send'
@@ -29,6 +30,7 @@ export function PhoneSignIn({
     phoneLastUsed?: boolean
 }) {
     const t = useTranslations('auth.phone')
+    const errorText = useErrorText()
     const { containerRef, challenging, getToken } = useCaptcha()
 
     const sendCode = async (request: PhoneCodeRequest) => {
@@ -38,7 +40,7 @@ export function PhoneSignIn({
 
     const verifyCode = async (code: string, request: PhoneCodeRequest) => {
         const result = await verifyPhoneSignInCodeAction({ ...request, code })
-        if (!result.ok) throw new Error(result.error)
+        if (!result.ok) throw new Error(errorText(result))
         track('phone_verification_completed', { channel: request.channel, context: 'sign_in' })
         // The server opened the session in the cookies, but an in-app browser may not show them to
         // the page yet: reading them back found the anonymous visitor and wrote it over the account.
