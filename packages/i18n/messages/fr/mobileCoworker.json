@@ -3,7 +3,7 @@
         "boxManage": "Seul un admin ou un gestionnaire de cette Box peut modifier ceci.",
         "aiProvidersAdminOnly": "Seul un admin peut modifier les fournisseurs d'IA.",
         "noManagedBox": "Il vous faut une Box que vous gérez pour ajouter un coworker. Créez-en une sur rerun.build, ou demandez à un admin.",
-        "boxesFailed": "Impossible de charger vos Box. Réessayez dans un instant.",
+        "boxesFailed": "Impossible de charger vos Boxes. Réessayez dans un instant.",
         "noBoxYet": "Ce workspace n'a pas encore de Box. Créez-en une sur rerun.build."
     },
     "page": {
