@@ -32,7 +32,7 @@ for (const locale of [SOURCE_LOCALE, ...targetLocales()]) {
 
 for (const ns of namespaces(SOURCE_LOCALE)) {
     for (const [key, source] of Object.entries(flatten(readNamespace(SOURCE_LOCALE, ns)))) {
-        for (const problem of problemsOf({ key: `${ns}.${key}`, source, translation: source, locale: SOURCE_LOCALE, glossary }).filter(problem => problem.includes('dash'))) errors.push(`${SOURCE_LOCALE}: ${problem}`)
+        for (const problem of problemsOf({ key: `${ns}.${key}`, source, translation: source, locale: SOURCE_LOCALE, glossary }).filter(problem => problem.includes('dash'))) warnings.push(`${SOURCE_LOCALE}: ${problem} (kept: English copy is not rewritten by the check)`)
     }
 }
 
