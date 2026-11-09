@@ -1,5 +1,5 @@
 import type { ExternalAgentProvider } from './types.js'
-import { claudeCliProvider, codexCliProvider } from './cli.js'
+import { claudeCliProvider, codexCliProvider, cursorCliProvider } from './cli.js'
 import { codexProvider } from './codex.js'
 import { cursorProvider } from './cursor.js'
 
@@ -10,7 +10,7 @@ export type { ExternalAgentLaunch, ExternalAgentProvider, ExternalAgentStatus, E
 // a global key, and a self-hosted engine can still set one for every agent.
 export function externalAgentProviders(agentId: string, agentEnv: Record<string, string>, env: NodeJS.ProcessEnv = process.env): ExternalAgentProvider[] {
     const cursorKey = agentEnv.CURSOR_API_KEY || env.CURSOR_API_KEY || ''
-    return [cursorProvider(cursorKey), codexProvider({ agentEnv, env }), codexCliProvider(agentId, agentEnv, env), claudeCliProvider(agentId, agentEnv, env)]
+    return [cursorProvider(cursorKey), codexProvider({ agentEnv, env }), codexCliProvider(agentId, agentEnv, env), claudeCliProvider(agentId, agentEnv, env), cursorCliProvider(agentId, agentEnv, env)]
 }
 
 export function configuredProviders(agentId: string, agentEnv: Record<string, string>, env: NodeJS.ProcessEnv = process.env): ExternalAgentProvider[] {

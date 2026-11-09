@@ -267,6 +267,7 @@ describe('provider resolution', () => {
     function stubCliPathsMissing() {
         vi.stubEnv('RERUN_CODEX_CLI_PATH', '/nonexistent/codex')
         vi.stubEnv('RERUN_CLAUDE_CLI_PATH', '/nonexistent/claude')
+        vi.stubEnv('RERUN_CURSOR_CLI_PATH', '/nonexistent/cursor-agent')
     }
 
     it('reads CURSOR_API_KEY from agent env before process env', () => {
@@ -287,6 +288,7 @@ describe('provider resolution', () => {
             CODEX_HOME: '/nonexistent-codex-home',
             RERUN_CODEX_CLI_PATH: '/nonexistent/codex',
             RERUN_CLAUDE_CLI_PATH: '/nonexistent/claude',
+            RERUN_CURSOR_CLI_PATH: '/nonexistent/cursor-agent',
         } as unknown as NodeJS.ProcessEnv
         expect(configuredProviders('agent-1', {}, emptyEnv).length).toBe(0)
     })
@@ -306,6 +308,7 @@ describe('externalAgentTools', () => {
         vi.stubEnv('CODEX_HOME', '/nonexistent-codex-home')
         vi.stubEnv('RERUN_CODEX_CLI_PATH', '/nonexistent/codex')
         vi.stubEnv('RERUN_CLAUDE_CLI_PATH', '/nonexistent/claude')
+        vi.stubEnv('RERUN_CURSOR_CLI_PATH', '/nonexistent/cursor-agent')
         const tools = externalAgentTools(ctx())
         const result = await call(tools, 'external_agent_start', { prompt: 'x' })
         expect(result.error).toContain('CURSOR_API_KEY')

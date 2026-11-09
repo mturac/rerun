@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { agentDir } from '../config/paths.js'
-import { claudeCliProvider, cliProvider, codexCliProvider } from './cli.js'
+import { claudeCliProvider, cliProvider, codexCliProvider, cursorCliProvider } from './cli.js'
 import { configuredProviders, externalAgentProviders } from './index.js'
 
 process.env.RERUN_DATA_DIR = mkdtempSync(join(tmpdir(), 'rerun-cli-agents-'))
@@ -162,6 +162,17 @@ describe('codexCliProvider and claudeCliProvider', () => {
         expect(argv).toContain('claude-test')
         expect(argv.join(' ')).not.toContain('--dangerously')
     })
+
+    it('cursor-agent gets -p --force --trust and the prompt last', async () => {
+        const calls: any[] = []
+        const provider = cursorCliProvider('test-agent', { RERUN_CURSOR_CLI_PATH: '/bin/echo', RERUN_CURSOR_MODEL: 'auto' }, {}, { spawnImpl: fakeSpawn(calls) })
+        const task = await provider.launch({ prompt: 'fix the bug' })
+        const argv = calls[0].args.slice(4)
+        expect(argv.slice(0, 5)).toEqual(['-p', '--output-format', 'text', '--force', '--trust'])
+        expect(argv).toContain('--model')
+        expect(argv.at(-1)).toContain('fix the bug')
+        expect(task.provider).toBe('cursor-cli')
+    })
 })
 
 describe('cli provider resolution', () => {
@@ -170,10 +181,11 @@ describe('cli provider resolution', () => {
         const agentEnv = {
             RERUN_CODEX_CLI_PATH: '/bin/echo',
             RERUN_CLAUDE_CLI_PATH: '/nonexistent/claude',
+            RERUN_CURSOR_CLI_PATH: '/bin/echo',
         }
         const names = externalAgentProviders('test-agent', agentEnv, env).map(p => p.name)
-        expect(names).toEqual(['cursor', 'codex', 'codex-cli', 'claude-cli'])
+        expect(names).toEqual(['cursor', 'codex', 'codex-cli', 'claude-cli', 'cursor-cli'])
         const configured = configuredProviders('test-agent', agentEnv, env).map(p => p.name)
-        expect(configured).toEqual(['codex-cli'])
+        expect(configured).toEqual(['codex-cli', 'cursor-cli'])
     })
 })

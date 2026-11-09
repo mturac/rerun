@@ -183,6 +183,30 @@ export function codexCliProvider(
     })
 }
 
+export function cursorCliProvider(
+    agentId: string,
+    agentEnv: Record<string, string>,
+    env: NodeJS.ProcessEnv = process.env,
+    seams: Pick<CliProviderOptions, 'spawnImpl' | 'killImpl' | 'pidAlive'> = {},
+): ExternalAgentProvider {
+    return cliProvider({
+        name: 'cursor-cli',
+        agentId,
+        agentEnv,
+        env,
+        extraEnvArgs: 'RERUN_CURSOR_CLI_ARGS',
+        command: () => {
+            const override = agentEnv.RERUN_CURSOR_CLI_PATH || env.RERUN_CURSOR_CLI_PATH
+            return override ? { cmd: override, args: [] } : { cmd: 'cursor-agent', args: [] }
+        },
+        buildArgs: input => {
+            const model = input.model || agentEnv.RERUN_CURSOR_MODEL || env.RERUN_CURSOR_MODEL
+            return ['-p', '--output-format', 'text', '--force', '--trust', ...(model ? ['--model', model] : []), input.prompt]
+        },
+        ...seams,
+    })
+}
+
 export function claudeCliProvider(
     agentId: string,
     agentEnv: Record<string, string>,
