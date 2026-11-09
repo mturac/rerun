@@ -114,7 +114,7 @@ export function AgentChatsList({ agentId, agentName, activeSessionId, initialFil
                         description={`${attention.length} conversation${attention.length !== 1 ? 's' : ''} will leave this list. Requests still waiting on an answer are cleared too, without being answered.`}
                         confirmLabel="Mark all as read"
                         confirmVariant="default"
-                        onConfirm={() => markSessionsHandled(attention.map(item => item.id))}
+                        onConfirm={() => markSessionsHandled(attention.map(item => ({ id: item.id, observation: item.observation })))}
                     >
                         <Button size="xs" variant="ghost" className="ml-auto text-muted-foreground">
                             <CheckCheckIcon className="size-3.5" />
@@ -125,7 +125,7 @@ export function AgentChatsList({ agentId, agentName, activeSessionId, initialFil
             </div>
             <div className="max-h-[420px] min-h-0 space-y-0.5 overflow-y-auto px-2 pb-2">
                 {(filter === 'all' || filter === 'needs') &&
-                    inboxItems.map(item => <InboxRow key={item.id} item={item} onOpen={() => onSelect(item.id, item.title)} onMarkRead={() => setSessionStatus(item.id, 'idle')} />)}
+                    inboxItems.map(item => <InboxRow key={item.id} item={item} onOpen={() => onSelect(item.id, item.title)} onMarkRead={() => setSessionStatus(item.id, 'idle', item.observation)} />)}
                 {filter === 'needs' && inboxItems.length === 0 && <p className="px-3 py-6 text-center text-xs text-muted-foreground">Nothing waits on you.</p>}
                 {listsHistory && history === null && <ChatsSkeleton />}
                 {listsHistory &&

@@ -4,11 +4,11 @@ import { recipientReason, type NotificationReason } from '@/lib/notifications/ro
 
 export type AttentionDetail = { engineSessionId: string | null; title: string; message: string | null; updatedAt: string | null; reason: NotificationReason | 'legacy' | null }
 
-export type AttentionSessionRow = { id: string; agent_id: string; engine_session_id: string | null; title: string; updated_at: string }
+export type AttentionSessionRow = { id: string; agent_id: string; engine_session_id: string | null; title: string; updated_at: string; execution_revision?: number; execution_attention_revision?: number | null }
 
-export type AttentionNotificationRow = { agent_id: string | null; engine_session_id: string | null; kind: string; message: string; metadata: Json | null; recipients: Json | null }
+export type AttentionNotificationRow = { agent_id: string | null; engine_session_id: string | null; kind: string; message: string; metadata: Json | null; recipients: Json | null; execution_revision?: number | null }
 
-export const ATTENTION_NOTIFICATION_COLUMNS = ['agent_id', 'engine_session_id', 'kind', 'message', 'metadata', 'recipients'] as const
+export const ATTENTION_NOTIFICATION_COLUMNS = ['agent_id', 'engine_session_id', 'kind', 'message', 'metadata', 'recipients', 'execution_revision'] as const
 
 // A cron that called notify_user ends with a "Schedule … completed" a few seconds later: a finished run
 // never says what waits on the user, and taking it would bury the heads-up under the same line every time.
@@ -24,9 +24,12 @@ export function attentionNotificationsFilter(sessions: AttentionSessionRow[]) {
  * flipped the status, and it only links back through the agent and the engine session id. `notifications` comes newest first.
  */
 export function attentionDetailsOf(sessions: AttentionSessionRow[], notifications: AttentionNotificationRow[], userId: string | null | undefined): Record<string, AttentionDetail> {
+    const expected = new Map(sessions.map(s => [`${s.agent_id}:${s.engine_session_id}`, s.execution_attention_revision ?? s.execution_revision ?? 0]))
     const latest = new Map<string, { message: string; reason: NotificationReason | 'legacy' | null }>()
     for (const n of notifications) {
         const key = `${n.agent_id}:${n.engine_session_id}`
+        const revision = expected.get(key) ?? 0
+        if (revision > 0 && n.execution_revision !== revision) continue
         if (!latest.has(key)) latest.set(key, { message: n.kind === 'error' ? errorHeadline(n) : n.message, reason: recipientReason(n.recipients, userId) })
     }
 

@@ -11,11 +11,13 @@ import { refreshForemanSurface } from '@/components/foreman/useForemanKickoff'
 import { getRunAction } from '@/app/api/_actions/agent.actions'
 import type { SessionUsageSeed } from '@/app/api/_services/chat.service'
 import { readAgentModel, useAgentModel } from '@/hooks/useAgentModel'
+import { useStopRequestState } from '@/hooks/useQueuedMessage'
 import { useRunReconnect } from '@/hooks/useRunReconnect'
 import { contextStatsOf } from '@/lib/chat/context-stats'
 import { historyCovers, needsReconcile } from '@/lib/chat/transcript-reconcile'
 import { isWorkspaceApiEntitled } from '@rerun/cloud/billing'
 import { lastUserText } from '@/lib/chat-payload'
+import { canAttemptAfterStop, LOCAL_REQUEST_HEADER, localRequestHeaders, messageAcceptance, type MessageAcceptanceHandler } from '@/lib/chat/queued-message'
 import { PHONE_REQUIRED_MESSAGE } from '@rerun/cloud/phone'
 import { findPendingEngineHitl, findPendingWidget, resumesAfterAnswer } from '@/lib/foreman/pending-widget'
 import type { ForemanBackend } from '@/lib/foreman/phase'
@@ -48,6 +50,34 @@ const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 export function useForemanChat() {
     const sessionId = useForemanStore(state => state.sessionId)
     const backend = useForemanStore(selectForemanBackend)
+    const stopControl = useStopRequestState(`foreman-${sessionId}`)
+    const stopRequest = useRef<Promise<boolean> | null>(null)
+    const stopPending = stopControl.stop !== null
+    const stopping = stopControl.stop?.phase === 'requesting'
+    const sequence = useRef(0)
+    const pendingSend = useRef(false)
+    const lastRequest = useRef<{ id: number; sessionId: string; stopId?: string; onAcceptance?: MessageAcceptanceHandler } | null>(null)
+    const sending = useRef(false)
+    const interceptFetch = useCallback(async (url: string | URL | Request, init?: RequestInit) => {
+        if (useForemanStore.getState().sessionId !== sessionId) throw new DOMException('Conversation changed', 'AbortError')
+        const headers = new Headers(init?.headers)
+        const request = init?.method === 'POST' && lastRequest.current?.sessionId === sessionId && headers.get(LOCAL_REQUEST_HEADER) === String(lastRequest.current.id) ? lastRequest.current : null
+        headers.delete(LOCAL_REQUEST_HEADER)
+        if (request) lastRequest.current = null
+        let response: Response
+        try { response = await fetch(url, { ...init, headers }) } catch (error) {
+            request?.onAcceptance?.('uncertain')
+            throw error
+        }
+        if (request) {
+            const outcome = messageAcceptance(response, String(url).includes('/foreman/engine'))
+            if (outcome !== 'uncertain') pendingSend.current = false
+            request.onAcceptance?.(outcome)
+            if (outcome === 'accepted') stopControl.release(request.stopId)
+        }
+        if (useForemanStore.getState().sessionId !== sessionId) throw new DOMException('Conversation changed', 'AbortError')
+        return response
+    }, [sessionId, stopControl.release])
     const surface = useForemanStore(state => state.surface)
     const setActivity = useForemanStore(state => state.setActivity)
     const open = useForemanStore(selectForemanOpen)
@@ -68,8 +98,10 @@ export function useForemanChat() {
             new DefaultChatTransport<UIMessage>({
                 api: '/api/chat/foreman',
                 body: () => ({ sessionId }),
+                prepareSendMessagesRequest: ({ id, messages, trigger, messageId, body, headers, requestMetadata }) => ({ body: { ...body, id, messages, trigger, messageId }, headers: localRequestHeaders(headers, requestMetadata) }),
+                fetch: interceptFetch as typeof globalThis.fetch,
             }),
-        [sessionId]
+        [sessionId, interceptFetch]
     )
 
     // The SDK decides on the automatic resume right after it flips the status to ready, then starts it
@@ -85,6 +117,7 @@ export function useForemanChat() {
         // the turn resumes on its own.
         sendAutomaticallyWhen: chat => (autoResumePending.current = resumesAfterAnswer(chat)),
         onToolCall: ({ toolCall }) => {
+            if (useForemanStore.getState().sessionId !== sessionId) return
             // Widgets are deliberately not here: they are drawn in the message stream and answered
             // by the user, not resolved on arrival.
             if (!isForemanClientTool(toolCall.toolName)) return
@@ -108,17 +141,17 @@ export function useForemanChat() {
                 // Read at send time: the transport lives as long as the conversation, and a model picked in
                 // the composer has to reach the very next message.
                 body: () => ({ sessionId, ...readAgentModel(FOREMAN_AGENT_ID) }),
-                prepareSendMessagesRequest: ({ body, messages }) => ({ body: { ...body, text: lastUserText(messages) } }),
+                prepareSendMessagesRequest: ({ body, messages, headers, requestMetadata }) => ({ body: { ...body, text: lastUserText(messages) }, headers: localRequestHeaders(headers, requestMetadata) }),
                 prepareReconnectToStreamRequest: () => ({ api: `/api/chat/resume?agentId=${FOREMAN_AGENT_ID}&runId=${encodeURIComponent(useForemanStore.getState().engineRunId ?? '')}` }),
                 fetch: (async (url: string | URL | Request, init?: RequestInit) => {
-                    const res = await fetch(url, init)
+                    const res = await interceptFetch(url, init)
                     // Only a send names a run. A send the route refused names none, and letting go
                     // of the previous one keeps its failure from being chased as a dropped stream.
-                    if (init?.method === 'POST') holdRun(res.headers.get('X-Run-Id'))
+                    if (init?.method === 'POST' && res.ok && res.headers.get('X-Run-Id')) holdRun(res.headers.get('X-Run-Id'))
                     return res
                 }) as typeof globalThis.fetch,
             }),
-        [sessionId, holdRun]
+        [sessionId, holdRun, interceptFetch]
     )
 
     const engineChat = useChat<UIMessage>({
@@ -128,12 +161,14 @@ export function useForemanChat() {
         // A gesture the engine foreman makes on the board. Its tool already answered on the engine,
         // so what the browser makes of it goes nowhere.
         onData: part => {
+            if (useForemanStore.getState().sessionId !== sessionId) return
             if (part.type !== FOREMAN_INTENT_PART) return
             const { tool, input } = part.data as ForemanIntent
             if (isForemanClientTool(tool)) runForemanClientTool(tool, input, gates.current)
         },
         onFinish: ({ isAbort, isDisconnect, isError }) => {
             if (isAbort || isDisconnect || isError) return
+            if (useForemanStore.getState().sessionId !== sessionId || stopControl.current() !== null) return
             completedRef.current = true
             holdRun(null)
         },
@@ -142,6 +177,9 @@ export function useForemanChat() {
     const onEngine = backend === 'engine'
     const chat = onEngine ? engineChat : hubChat
     const { status, messages } = chat
+    useEffect(() => {
+        if (status === 'ready' || status === 'error') sending.current = false
+    }, [status, sessionId])
     const { setMessages: setHubMessages, sendMessage: sendHubMessage, addToolResult, status: hubStatus } = hubChat
 
     useEffect(() => {
@@ -167,12 +205,13 @@ export function useForemanChat() {
         completedRef,
         start: () => {
             const runId = useForemanStore.getState().engineRunId
-            if (!runId) return null
+            if (!runId || stopControl.current() !== null) return null
             return {
                 runId,
                 getRun: () => getRunAction(FOREMAN_AGENT_ID, runId),
                 fetchMessages: () => fetchEngineTranscript(sessionId),
                 onSettled: ({ errorText }) => {
+                    if (useForemanStore.getState().sessionId !== sessionId || stopControl.current() !== null) return
                     holdRun(null)
                     if (errorText) setRunError(errorText)
                 },
@@ -203,7 +242,9 @@ export function useForemanChat() {
     //
     // False when the hub is about to resume the turn on its own: the caller keeps the message.
     const send = useCallback(
-        (message: { text: string }, options?: { queued?: boolean }): boolean => {
+        (message: { text: string }, options?: { queued?: boolean; onAcceptance?: MessageAcceptanceHandler; manual?: boolean }): boolean => {
+            const pendingStop = stopControl.current()
+            if ((pendingStop && !(options?.manual && canAttemptAfterStop(pendingStop))) || sending.current || status === 'submitted' || status === 'streaming') return false
             const store = useForemanStore.getState()
             // The onboarding is over under this conversation: it stays where it is, and what they
             // say next starts with the foreman on the engine, sent once the new chat is in place.
@@ -213,17 +254,21 @@ export function useForemanChat() {
                 return true
             }
             if (!onEngine && autoResumePending.current) return false
+            sending.current = true
+            const requestId = ++sequence.current
+            lastRequest.current = { id: requestId, sessionId, stopId: pendingStop?.id, onAcceptance: options?.onAcceptance }
             store.pinBackend()
             setRunErrorOf(null)
             if (onEngine) {
-                void sendEngineMessage(message, options?.queued ? { body: { queued: true } } : undefined)
+                pendingSend.current = true
+                void sendEngineMessage(message, { body: { queued: options?.queued === true }, metadata: { localRequestId: requestId } })
                 return true
             }
             setHubMessages(current => withTypedAnswer(current, message.text))
-            void sendHubMessage()
+            void sendHubMessage(undefined, { metadata: { localRequestId: requestId } })
             return true
         },
-        [onEngine, sendEngineMessage, sendHubMessage, setHubMessages]
+        [onEngine, sessionId, status, sendEngineMessage, sendHubMessage, setHubMessages, holdRun, stopControl.current]
     )
 
     // A second answer to the same call would fire a second automatic resume next to the first: a
@@ -252,21 +297,32 @@ export function useForemanChat() {
         return pending?.toolCallId === dismissedCallId ? null : pending
     }, [onEngine, messages, status, dismissedCallId])
 
-    // Closing the stream alone would leave the engine run going, still answering nobody. The session
-    // rides along because a tab reloaded mid-run may not hold the id of the run it is looking at.
-    const stop = useCallback(async () => {
+    const stop = useCallback((): Promise<boolean> => {
+        if (stopRequest.current && stopControl.current()?.phase === 'requesting') return stopRequest.current
         if (!onEngine) {
             autoResumePending.current = false
-            return hubChat.stop()
+            return hubChat.stop().then(() => true)
         }
-        await stopEngineStream()
-        const params = new URLSearchParams({ sessionId })
-        const runId = useForemanStore.getState().engineRunId
-        if (runId) params.set('runId', runId)
-        holdRun(null)
-        clearEngineError()
-        await fetch(`/api/chat/foreman/engine?${params}`, { method: 'DELETE' }).catch(() => {})
-    }, [onEngine, hubChat, stopEngineStream, clearEngineError, holdRun, sessionId])
+        const conversationId = sessionId
+        const runId = pendingSend.current ? null : useForemanStore.getState().engineRunId
+        const record = stopControl.begin(runId)
+        const request = Promise.resolve().then(async () => {
+            await stopEngineStream()
+            if (!runId) return false
+            const params = new URLSearchParams({ sessionId: conversationId, runId })
+            const response = await fetch(`/api/chat/foreman/engine?${params}`, { method: 'DELETE' })
+            return response.ok
+        }).catch(() => false).then(accepted => {
+            if (mounted.current && useForemanStore.getState().sessionId === conversationId) {
+                clearEngineError()
+                stopControl.finish(record, accepted)
+            }
+            if (stopRequest.current === request) stopRequest.current = null
+            return accepted
+        })
+        stopRequest.current = request
+        return request
+    }, [onEngine, hubChat, stopEngineStream, clearEngineError, sessionId, stopControl.current, stopControl.begin, stopControl.finish])
 
     // Closing a question ends the turn without answering it, the way an agent's chat does. On the
     // hub it is sealed through setMessages for the same reason as in `send`: addToolResult would
@@ -340,15 +396,16 @@ export function useForemanChat() {
     // by minutes, and replaying a finished run onto its own persisted answer lands every call twice.
     const attachToRun = useCallback(
         async (conversationId: string, runId: string) => {
+            const current = () => mounted.current && useForemanStore.getState().sessionId === conversationId && stopControl.current() === null
             const run = await getRunAction(FOREMAN_AGENT_ID, runId).catch(() => null)
-            if (!mounted.current) return
+            if (!current()) return
             if (run?.status === 'error' && run.error) setRunError(run.error)
             if (!run || run.status === 'running') await resumeEngineStream().catch(() => {})
-            for (let i = 0; i < 5 && mounted.current; i++) {
+            for (let i = 0; i < 5 && current(); i++) {
                 const data = await fetchEngineTranscript(conversationId).catch(() => [])
                 const live = engineLive.current
                 // A message sent from this tab meanwhile owns the transcript.
-                if (!mounted.current || live.status === 'submitted' || live.status === 'streaming') return
+                if (!current() || live.status === 'submitted' || live.status === 'streaming') return
                 if (!needsReconcile(live.messages)) return
                 if (historyCovers(live.messages, data)) {
                     setEngineMessages(data)
@@ -393,5 +450,7 @@ export function useForemanChat() {
     // A stream being chased is not a failure yet: the error only shows once the chase gave up.
     const error = onEngine && reconnecting ? undefined : chat.error
 
-    return { ...chat, error, stop, sendMessage: send, regenerate, answerWidget, dismissWidget, pendingWidget, restoreDone, composerBackend, backend, contextStats, runError, reconnecting: onEngine && reconnecting, activeRunId: onEngine ? activeRunId : null }
+    const stopNotice = stopPending ? stopping ? 'Requesting stop. Messages stay saved.' : stopControl.manualAllowed ? 'Stop requested. Use Send now to try your saved message. The engine may still be busy.' : 'Stop outcome is unknown. Messages stay saved; open a new conversation to continue.' : null
+
+    return { ...chat, error, stop, stopping, stopPending, stopNotice, manualSendAllowed: stopControl.manualAllowed, stopStorageError: stopControl.storageError, sendMessage: send, regenerate, answerWidget, dismissWidget, pendingWidget, restoreDone, composerBackend, backend, contextStats, runError, reconnecting: onEngine && reconnecting, activeRunId: onEngine ? activeRunId : null }
 }

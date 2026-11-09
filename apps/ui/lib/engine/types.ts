@@ -43,6 +43,7 @@ import {
     runStepsListSchema,
     toolCallSchema,
     toolCallsListSchema,
+    externalAgentTaskSchema,
 } from '@rerun/contracts'
 import type {
     Tools,
@@ -81,6 +82,7 @@ import type {
     RunStepsList,
     ToolCall,
     ToolCallsList,
+    ExternalAgentTask,
 } from '@rerun/contracts'
 
 // How to reach a box's engine. Not to be confused with a `BoxConnection`, which is an AI provider
@@ -134,6 +136,12 @@ export const engineRunStepsListSchema = runStepsListSchema
 export const engineToolCallSchema = toolCallSchema
 export const engineToolCallsListSchema = toolCallsListSchema
 
+export const engineExternalAgentTaskResponseSchema = z.object({
+    ok: z.literal(true),
+    provider: z.string(),
+    task: externalAgentTaskSchema,
+})
+
 export type EngineTools = Tools
 export type EngineToolDescriptor = ToolDescriptor
 export type EngineToolFamily = ToolFamily
@@ -180,6 +188,7 @@ export type EngineRunStep = RunStep
 export type EngineRunStepsList = RunStepsList
 export type EngineToolCall = ToolCall
 export type EngineToolCallsList = ToolCallsList
+export type EngineExternalAgentTask = ExternalAgentTask
 
 export const engineUploadResultSchema = z.object({ path: z.string(), bytes: z.number() })
 export type EngineUploadResult = z.infer<typeof engineUploadResultSchema>
@@ -272,8 +281,19 @@ export type NotificationKind = z.infer<typeof notificationKindSchema>
 export const RETIRED_NOTIFICATION_KIND = 'progress'
 const wireNotificationKindSchema = z.union([notificationKindSchema, z.literal(RETIRED_NOTIFICATION_KIND)])
 
+export const sessionExecutionSchema = z.object({
+    agentId: z.string().min(1),
+    sessionId: z.string().min(1),
+    runId: z.string().min(1),
+    revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    state: z.enum(['working', 'idle', 'error']),
+    attention: z.object({ revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), kind: z.enum(['ack', 'question', 'approval', 'connector']) }).nullable(),
+}).refine(value => value.attention === null || value.attention.revision <= value.revision, { message: 'Attention revision exceeds execution revision' })
+export type SessionExecution = z.infer<typeof sessionExecutionSchema>
+export const sessionExecutionResponseSchema = z.object({ execution: sessionExecutionSchema.nullable() })
+
 export const notificationPayloadSchema = z.object({
-    event: z.enum(['agent.notification', 'agent.message.completed', 'agent.schedule.completed', 'agent.trigger.completed', 'agent.session.created']),
+    event: z.enum(['agent.notification', 'agent.message.completed', 'agent.schedule.completed', 'agent.trigger.completed', 'agent.session.created', 'agent.execution.updated']),
     kind: wireNotificationKindSchema,
     agentId: z.string().min(1),
     sessionId: z.string().nullable().optional(),
@@ -284,7 +304,9 @@ export const notificationPayloadSchema = z.object({
     source: z.enum(['dashboard', 'builder', 'schedule', 'agent', 'delegate', 'api', 'trigger']).nullable().optional(),
     originAgentId: z.string().nullable().optional(),
     timestamp: z.string(),
-})
+    execution: sessionExecutionSchema.nullable().optional(),
+}).refine(value => !value.execution || (value.execution.agentId === value.agentId && value.execution.sessionId === value.sessionId && value.execution.runId === value.runId), { message: 'Execution snapshot identity differs from its notification' })
+    .refine(value => value.event !== 'agent.execution.updated' || value.execution !== null && value.execution !== undefined, { message: 'Execution update is missing its snapshot' })
 export type NotificationPayload = z.infer<typeof notificationPayloadSchema>
 
 // A box telling the hub that something was just created on it. It is news for nobody, so it stays
@@ -297,3 +319,34 @@ export const engineCreatedEventSchema = z.object({
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 })
 export type EngineCreatedEvent = z.infer<typeof engineCreatedEventSchema>
+
+// --- Local runner approvals ---
+// Ask-mode tasks a `rerun local-runner` daemon parked until someone approves or denies them. The
+// engine proxies each runner's list and tags every entry with the runner that holds it.
+export const runnerPendingApprovalSchema = z.object({
+    id: z.string(),
+    approvalText: z.string().optional(),
+    taskKey: z.string().optional(),
+    action: z.string().optional(),
+    kind: z.string().optional(),
+    subject: z.string().nullable().optional(),
+    expiresAt: z.string().optional(),
+    runnerId: z.string(),
+    runnerName: z.string(),
+})
+export type RunnerPendingApproval = z.infer<typeof runnerPendingApprovalSchema>
+
+export const runnerPendingApprovalsSchema = z.object({
+    approvals: z.array(runnerPendingApprovalSchema),
+    errors: z.array(z.string()),
+})
+export type RunnerPendingApprovals = z.infer<typeof runnerPendingApprovalsSchema>
+
+// A decision answers with whatever the runner returned: an executed task result or a denial.
+export const runnerApprovalResolutionSchema = z.looseObject({
+    status: z.string().optional(),
+    reason: z.string().optional(),
+    error: z.string().optional(),
+    taskKey: z.string().optional(),
+})
+export type RunnerApprovalResolution = z.infer<typeof runnerApprovalResolutionSchema>

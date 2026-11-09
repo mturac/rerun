@@ -1,11 +1,10 @@
 import { actorFromContext, callableEngineAgentIds } from '@/app/api/_auth/access'
 import { requireWorkspaceContext } from '@/app/api/_auth/ownership'
-import { createSessionRow, ensureSessionRow, getAgentChatTarget, getExistingSession, updateSessionStatus } from '@/app/api/_services/chat.service'
+import { createSessionRow, ensureSessionRow, getAgentChatTarget, getExistingSession, projectChatAdmission } from '@/app/api/_services/chat.service'
 import { messageAuthorOf } from '@/app/api/_services/me.service'
 import { recordSessionParticipant, recordSessionRead } from '@/app/api/_services/notification-audience.service'
 import type { Database } from '@/app/api/database.types'
 import { generateSessionTitle } from '@/lib/ai/generate-title'
-import { reconnectRun } from '@/lib/engine/client'
 import { QUEUED_RETRY_DELAYS_MS, startChat } from '@/lib/chat/start-chat'
 import { stripAttachmentsRef } from '@/lib/chat/attachments-marker'
 import { installSessionTitle, parseInstallMessage } from '@/lib/chat/install-marker'
@@ -31,10 +30,12 @@ const sessionNotFound = () => Response.json({ error: SESSION_NOT_FOUND }, { stat
 export async function POST(request: Request) {
     // Reject unauthenticated callers up front. getAgentChatTarget below also
     // enforces that the agent belongs to this workspace (defense in depth).
+    let workspaceId: number
     let author: MessageAuthor
     let callablePromise: Promise<string[] | undefined>
     try {
         const ctx = await requireWorkspaceContext()
+        workspaceId = ctx.workspace.id
         author = messageAuthorOf(ctx)
         // Read alongside the body and awaited inside the engine call's try: a failure fails the send
         // rather than letting it through with every coworker callable.
@@ -98,15 +99,13 @@ export async function POST(request: Request) {
     let engineRes: Response
     try {
         console.log(`[CHAT START] agent=${agentId} session=${sessionId ?? '(new)'} inputLength=${text.length}${queued ? ' queued' : ''}`)
-        engineRes = await startChat(target.conn, target.engineAgentId, { sessionId: engineSessionId, message: text, connectionId, model, source, author, callableAgentIds: await callablePromise, install: !!install && !sessionId, userLanguage: install && !sessionId ? (preferredLanguage(request.headers.get('accept-language')) ?? undefined) : undefined }, queued ? QUEUED_RETRY_DELAYS_MS : null)
+        engineRes = await startChat(target.conn, target.engineAgentId, { sessionId: engineSessionId, message: text, connectionId, model, source, author, callableAgentIds: await callablePromise, install: !!install && !sessionId, userLanguage: install && !sessionId ? (preferredLanguage(request.headers.get('accept-language')) ?? undefined) : undefined }, queued ? QUEUED_RETRY_DELAYS_MS : null, request.signal)
     } catch (err) {
         return Response.json({ error: `Engine error: ${err instanceof Error ? err.message : 'Failed to start chat'}` }, { status: 502 })
     }
 
-    // The engine allows a single live run per conversation. A 409 means this send raced one that
-    // is already under way — nearly always the same answer delivered twice by an interactive block.
-    // Tail the run in flight instead of starting a second one: the caller gets a normal stream, and
-    // the duplicate text is dropped on purpose (it would only repeat what the agent is answering).
+    // A shared author does not identify a message. Return busy sends so the client can preserve
+    // their text, even when the same person started the run from another tab.
     if (engineRes.status === 409) {
         const busy = (await engineRes.json().catch(() => null)) as { code?: string; sessionId?: string; runId?: string; startedAt?: string | null; authorId?: string | null } | null
         // The agent's install already runs in another conversation: the chat opens that one rather
@@ -117,25 +116,8 @@ export async function POST(request: Request) {
             return Response.json({ error: 'install_in_flight', sessionId: installSessionId }, { status: 409 })
         }
         console.warn(`[CHAT BUSY] agent=${agentId} session=${sessionId ?? '(new)'} run=${busy?.runId ?? '?'} input=${JSON.stringify(text.slice(0, 200))}`)
-        // `run_in_flight` rather than a sentence: the chat turns it into a notice with a Stop
-        // button and puts the text back in the composer, instead of a red box with nothing to click.
-        // A run a teammate started is answering their message, not this one: tailing it would drop
-        // text nobody has read. The chat queues it behind that run instead.
         const heldByTeammate = Boolean(busy?.authorId) && busy?.authorId !== author.id
-        const busyResponse = () => Response.json({ error: 'run_in_flight', runId: busy?.runId ?? null, startedAt: busy?.startedAt ?? null, heldByTeammate }, { status: 409 })
-        // A queued message carries text nobody has read yet, so it is never dropped: the chat puts
-        // it back in the queue and sends it again once the conversation frees up.
-        if (queued || heldByTeammate || !busy?.runId) return busyResponse()
-        engineRes = await reconnectRun(target.conn, target.engineAgentId, busy.runId).catch(() => new Response(null, { status: 204 }))
-        if (engineRes.status === 204 || !engineRes.ok || !engineRes.body) {
-            return busyResponse()
-        }
-        const headers = new Headers()
-        headers.set('Content-Type', engineRes.headers.get('content-type') ?? 'text/event-stream')
-        headers.set('x-vercel-ai-ui-message-stream', engineRes.headers.get('x-vercel-ai-ui-message-stream') ?? 'v1')
-        if (sessionId) headers.set('X-Session-Id', sessionId)
-        headers.set('X-Run-Id', busy.runId)
-        return new Response(engineRes.body, { headers })
+        return Response.json({ error: 'run_in_flight', runId: busy?.runId ?? null, startedAt: busy?.startedAt ?? null, heldByTeammate }, { status: 409 })
     }
 
     if (!engineRes.ok || !engineRes.body) {
@@ -175,7 +157,8 @@ export async function POST(request: Request) {
         await supabase.from('sessions').update<Database['public']['Tables']['sessions']['Update']>({ engine_session_id: resolvedEngineSessionId }).eq('id', supabaseSessionId).then()
     }
 
-    await updateSessionStatus(supabaseSessionId, 'working')
+    if (!resolvedEngineSessionId) return Response.json({ error: 'Engine did not return a session id' }, { status: 502 })
+    try { await projectChatAdmission(workspaceId, agentId, target.engineAgentId, resolvedEngineSessionId, engineRes) } catch { return Response.json({ error: 'Invalid engine execution' }, { status: 502 }) }
     await Promise.all([recordSessionParticipant(supabaseSessionId, author.id), recordSessionRead(supabaseSessionId, author.id)])
 
     const headers = new Headers()

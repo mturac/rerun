@@ -122,17 +122,25 @@ import {
     engineRunsListSchema,
     engineRunStepsListSchema,
     engineToolCallsListSchema,
+    engineExternalAgentTaskResponseSchema,
+    type EngineExternalAgentTask,
     engineScheduleSchema,
     engineSchedulesListSchema,
     engineTriggerSchema,
     engineTriggersListSchema,
     engineSessionSchema,
+    sessionExecutionResponseSchema,
+    type SessionExecution,
     engineSessionsListSchema,
     engineSkillSchema,
     engineSkillsListSchema,
     engineSkillSummariesListSchema,
     engineSkillProposalSchema,
     engineSkillProposalsListSchema,
+    runnerPendingApprovalsSchema,
+    runnerApprovalResolutionSchema,
+    type RunnerPendingApprovals,
+    type RunnerApprovalResolution,
 } from './types'
 
 const CHAT_TIMEOUT_MS = Number(process.env.ENGINE_CHAT_TIMEOUT_MS) || 60 * 60 * 1000
@@ -491,10 +499,24 @@ export async function getSession(conn: EngineConnection, agentId: string, sessio
     return engineSessionSchema.parse(await res.json())
 }
 
+export async function getSessionExecution(conn: EngineConnection, agentId: string, sessionId: string): Promise<SessionExecution | null> {
+    const result = await request(conn, `/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}/execution`, { method: 'GET' }, data => sessionExecutionResponseSchema.parse(data))
+    if (result.execution && (result.execution.agentId !== agentId || result.execution.sessionId !== sessionId)) throw new Error('Engine returned another session execution')
+    return result.execution
+}
+
 export async function getSessionMessages(conn: EngineConnection, agentId: string, sessionId: string): Promise<EngineMessage[]> {
     const res = await fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}/messages`, { headers: buildHeaders(conn) })
     if (!res.ok) return []
     return engineMessagesListSchema.parse(await res.json()).messages
+}
+
+// The live read behind an external-agent card: the tool output it was drawn from is a snapshot.
+export async function getExternalAgentTask(conn: EngineConnection, agentId: string, provider: string, taskId: string): Promise<EngineExternalAgentTask | null> {
+    return request(conn, `/agents/${encodeURIComponent(agentId)}/external-agents/${encodeURIComponent(provider)}/${encodeURIComponent(taskId)}`, { method: 'GET' }, d => {
+        const parsed = engineExternalAgentTaskResponseSchema.safeParse(d)
+        return parsed.success ? parsed.data.task : null
+    })
 }
 
 // --- Chat (SSE, AI-SDK UI message stream protocol) ---
@@ -985,4 +1007,18 @@ export async function decideBrainProposal(conn: EngineConnection, proposalId: st
 // still writes a dozen files: a longer timeout than the default.
 export async function seedBrain(conn: EngineConnection, pages: BrainSeedPage[]): Promise<BrainSeedResult> {
     return request(conn, '/brain/seed', { method: 'POST', body: JSON.stringify({ pages }), signal: AbortSignal.timeout(60_000) }, d => brainSeedResultSchema.parse(d))
+}
+
+// --- Local runner approvals ---
+// Ask-mode tasks parked on a `rerun local-runner` daemon. The engine proxies the list across the
+// announced runners and forwards a decision to whichever holds the approval.
+
+export async function listRunnerApprovals(conn: EngineConnection): Promise<RunnerPendingApprovals> {
+    return request(conn, '/local-runner/pending', { method: 'GET' }, d => runnerPendingApprovalsSchema.parse(d))
+}
+
+export type RunnerApprovalDecision = { runner?: string; decision: 'approve' | 'deny'; scope?: 'once' | 'always' }
+
+export async function resolveRunnerApproval(conn: EngineConnection, id: string, body: RunnerApprovalDecision): Promise<RunnerApprovalResolution> {
+    return request(conn, `/local-runner/approvals/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify(body) }, d => runnerApprovalResolutionSchema.parse(d))
 }

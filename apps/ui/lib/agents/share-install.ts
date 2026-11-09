@@ -6,7 +6,7 @@ import { downloadPrivateFile } from '@/lib/storage/private'
 import { selectMaybeSingle } from '@/supabase/supabase-helpers'
 import { isOpaqueToken } from '@/lib/opaque-token'
 import type { GridPosition } from '@/lib/board/types'
-import { STALE_IMPORT_HINT } from './capture-archive'
+import { importedArchiveWarnings, STALE_IMPORT_HINT } from './capture-archive'
 import { AGENT_SHARE_BUCKET, AGENT_SHARE_TOKEN_LENGTH } from './share-create'
 
 // The mirror of `installTemplate`, for a link that carries exactly one agent. Nothing here opens
@@ -48,20 +48,7 @@ export async function installAgentShare(
         .update<Database['public']['Tables']['agent_shares']['Update']>({ install_count: share.install_count + 1 })
         .eq('id', share.id)
 
-    const warnings: string[] = []
-    // The engine is the only side that opened the tarball, so a refused entry is the one thing the
-    // recipient cannot see for themselves.
-    if (imported.imported.skippedPaths.length > 0) {
-        warnings.push(`${imported.imported.skippedPaths.length} file(s) in the archive were refused (${imported.imported.skippedPaths.slice(0, 3).join(', ')}).`)
-    }
-    // The copy answers to webhook addresses of its own, and nothing else will say so: the sender's
-    // URLs stayed on their box.
-    if (imported.imported.triggers.length > 0) {
-        warnings.push(`${imported.imported.triggers.length} webhook(s) were created with a new URL each (${imported.imported.triggers.join(', ')}). Read them in the coworker panel and point your services at them.`)
-    }
-    if (imported.imported.envKeys.length > 0) {
-        warnings.push(`${imported.imported.envKeys.length} API key(s) have to be filled in again before it can run.`)
-    }
+    const warnings = importedArchiveWarnings(imported.imported)
 
     return { agentId: imported.agent.id, agentName: name, inactive: Boolean(imported.agent.disabled_at), warnings }
 }

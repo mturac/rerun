@@ -1,12 +1,12 @@
+import { acceptsSessionObservation, sameSessionObservation, type SessionObservation } from '@/lib/board/session-execution'
 import { deleteAgentAction, duplicateAgentAction, moveAgentAction, renameAgentAction } from '@/app/api/_actions/agent.actions'
 import { BOX_MANAGE_ACTION_REASON, boxAccessFor, type BoxViewer, type SpaceGrant } from '@/lib/board/box-access'
 import { duplicateAgentName } from '@/lib/copy-name'
 import { startKickoffAction } from '@/app/api/_actions/chat.actions'
 import type { KickoffResult } from '@/app/api/_services/kickoff.service'
 import { createAgentWithSetupAction } from '@/app/api/_actions/services.actions'
-import { findIdleSessionsAction } from '@/app/api/_actions/session.actions'
+import { acknowledgeSessionAlertAction, findIdleSessionsAction } from '@/app/api/_actions/session.actions'
 import { claimSpaceAction, deleteSpaceAction, renameSpaceAction } from '@/app/api/_actions/space.actions'
-import { ATTENTION_STATUSES } from '@/lib/board/attention'
 import type { SpaceRect, SpaceSide } from '@/lib/board/space-layout'
 import { installSharedAgentAction } from '@/app/api/_actions/agent-share.actions'
 import { installTemplateAction } from '@/app/api/_actions/template.actions'
@@ -82,6 +82,7 @@ export function placementLabel(queue: PlacementQueue): string {
 type BoardState = {
     agents: IsoAgent[]
     spaces: SpacePublic[]
+    sessionProjectionWatermarks: Record<string, SessionObservation>
     sessions: SessionEntry[]
     liveLinks: AgentLink[]
     agentOnlineMap: Record<string, boolean>
@@ -130,8 +131,8 @@ type BoardState = {
     moveAgentToBox: (id: string, spaceId: string, viewer: BoxViewer) => void
     renameAgent: (id: string, name: string) => void
     removeAgent: (id: string) => void
-    setSessionStatus: (sessionId: string, status: SessionStatus) => void
-    markSessionsHandled: (sessionIds: string[]) => void
+    setSessionStatus: (sessionId: string, status: SessionStatus, observation?: SessionObservation | null) => void
+    markSessionsHandled: (sessions: { id: string; observation?: SessionObservation | null }[]) => void
     setLiveLinks: (links: AgentLink[]) => void
     setAgentOnline: (agentId: string, online: boolean) => void
     setAgentEngineBusy: (agentId: string, busy: boolean) => void
@@ -215,12 +216,33 @@ function deliverKickoff(pending: PendingKickoff): Promise<KickoffResult> {
 // se re-rend sur ce seul changement de référence. Les mutations du store sortent donc {} tant que
 // la valeur est identique.
 function sameSession(a: SessionEntry, b: SessionEntry): boolean {
-    return a.id === b.id && a.agentId === b.agentId && a.originAgentId === b.originAgentId && a.status === b.status
+    return a.id === b.id && a.agentId === b.agentId && a.originAgentId === b.originAgentId && a.status === b.status && sameSessionObservation(a.observation, b.observation)
+}
+
+function mergeSessionSnapshots(state: Pick<BoardState, 'sessions' | 'sessionProjectionWatermarks'>, incoming: SessionEntry[], started: Map<string, SessionEntry>) {
+    const watermarks = { ...state.sessionProjectionWatermarks }
+    const sessions: SessionEntry[] = []
+    for (const row of incoming) {
+        const current = state.sessions.find(s => s.id === row.id)
+        const watermark = watermarks[row.id] ?? current?.observation
+        if (!acceptsSessionObservation(watermark, row.observation)) {
+            if (current) sessions.push(current)
+            continue
+        }
+        sessions.push(row)
+        if (row.observation?.kind === 'execution') watermarks[row.id] = row.observation
+    }
+    for (const current of state.sessions) {
+        if (current.observation?.kind === 'execution' && acceptsSessionObservation(watermarks[current.id], current.observation)) watermarks[current.id] = current.observation
+        if (!sessions.some(s => s.id === current.id) && !sameSessionObservation(started.get(current.id)?.observation, current.observation)) sessions.push(current)
+    }
+    return { sessions, sessionProjectionWatermarks: watermarks }
 }
 
 const initialState = {
     agents: [] as IsoAgent[],
     spaces: [] as SpacePublic[],
+    sessionProjectionWatermarks: {} as Record<string, SessionObservation>,
     sessions: [] as SessionEntry[],
     liveLinks: [] as AgentLink[],
     agentOnlineMap: {} as Record<string, boolean>,
@@ -257,6 +279,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     reset: () => set({ ...initialState }),
 
     hydrate: async (workspaceId: number) => {
+        const started = new Map(get().sessions.map(s => [s.id, s]))
         const [agentsResult, spacesResult, grantsResult] = await Promise.all([
             selectMany(supabase, 'agents', ['id', 'name', 'handle', 'description', 'template_id', 'status', 'col', 'row', 'workspace_id', 'space_id', 'created_at', 'disabled_at', 'disabled_reason'] as const, { workspace_id: workspaceId }),
             selectMany(supabase, 'spaces', ['id', 'workspace_id', 'name', 'col_start', 'row_start', 'col_end', 'row_end', 'created_at', 'visibility'] as const, { workspace_id: workspaceId }),
@@ -274,27 +297,17 @@ export const useBoardStore = create<BoardState>((set, get) => ({
             onlineMap[a.id] = true
         }
 
-        const agentsWithStatus = dbAgents.map(a => {
-            const agentSessions = dbSessions.filter(s => s.agentId === a.id)
-            return { ...a, status: computeAgentStatus(agentSessions, onlineMap[a.id] ?? true) }
+        set(state => {
+            const merged = mergeSessionSnapshots(state, dbSessions, started)
+            const agentsWithStatus = dbAgents.map(a => ({ ...a, status: computeAgentStatus(merged.sessions.filter(s => s.agentId === a.id), onlineMap[a.id] ?? true) }))
+            return { ...merged, agents: agentsWithStatus, spaces: dbSpaces, spaceGrants: grantsResult.data ?? [], agentOnlineMap: onlineMap, hydrated: true }
         })
-
-        set({ agents: agentsWithStatus, spaces: dbSpaces, sessions: dbSessions, spaceGrants: grantsResult.data ?? [], agentOnlineMap: onlineMap, hydrated: true })
 
         // The board shows first and the engine is asked after: a sweep that waits on a slow Box
         // would hold the whole board back for sessions that are, at worst, shown busy a moment
         // too long. Only a session still `working` by then is flipped, realtime may have moved it.
-        void sweepZombieSessions(supabase, dbSessions.map(session => ({ ...session })), findIdleSessionsAction).then(zombieIds => {
-            if (zombieIds.length === 0) return
-            const zombies = new Set(zombieIds)
-            set(state => {
-                const sessions = state.sessions.map(session => (zombies.has(session.id) && session.status === 'working' ? { ...session, status: 'idle' as const } : session))
-                const agents = state.agents.map(a => {
-                    const status = computeAgentStatus(sessions.filter(session => session.agentId === a.id), state.agentOnlineMap[a.id] ?? true, state.agentEngineBusyMap[a.id] ?? false)
-                    return status === a.status ? a : { ...a, status }
-                })
-                return { sessions, agents }
-            })
+        void sweepZombieSessions(supabase, dbSessions.map(session => ({ ...session })), findIdleSessionsAction).then(ids => {
+            if (ids.length) void get().reconcileSessions()
         })
     },
 
@@ -560,39 +573,18 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         deleteAgentAction(id).catch(() => {})
     },
 
-    setSessionStatus: (sessionId, status) => {
-        supabase.from('sessions').update<Database['public']['Tables']['sessions']['Update']>({ status }).eq('id', sessionId).then()
-        const session = get().sessions.find(s => s.id === sessionId)
-        if (session) {
-            set(state => ({
-                sessions: state.sessions.map(s => (s.id === sessionId ? { ...s, status } : s)),
-            }))
-            get()._recomputeAgentStatus(session.agentId)
-        }
+    setSessionStatus: (sessionId, status, observation) => {
+        if (status !== 'idle' || !observation) return
+        void acknowledgeSessionAlertAction(sessionId, observation).then(projection => {
+            if (!projection) return
+            const current = get().sessions.find(s => s.id === sessionId)
+            if (!current || !acceptsSessionObservation(current.observation, projection.observation)) return
+            get()._onSessionUpdate({ ...current, status: projection.status, observation: projection.observation })
+        }).catch(() => {})
     },
 
-    // Le garde sur le statut reprend celui de clearSessionAlert : une session repartie en `working`
-    // entre le rendu de la liste et la confirmation appartient à son run, pas à l'accusé de lecture.
-    markSessionsHandled: sessionIds => {
-        const requested = new Set(sessionIds)
-        const targets = get().sessions.filter(s => requested.has(s.id) && ATTENTION_STATUSES.has(s.status))
-        if (targets.length === 0) return
-
-        const ids = targets.map(s => s.id)
-
-        supabase
-            .from('sessions')
-            .update<Database['public']['Tables']['sessions']['Update']>({ status: 'idle' })
-            .in('id', ids)
-            .in('status', [...ATTENTION_STATUSES])
-            .then()
-
-        const cleared = new Set(ids)
-        const agentIds = new Set(targets.map(s => s.agentId))
-        set(state => ({
-            sessions: state.sessions.map(s => (cleared.has(s.id) ? { ...s, status: 'idle' as SessionStatus } : s)),
-        }))
-        for (const agentId of agentIds) get()._recomputeAgentStatus(agentId)
+    markSessionsHandled: sessions => {
+        for (const session of sessions) get().setSessionStatus(session.id, 'idle', session.observation)
     },
 
     setLiveLinks: links => {
@@ -939,17 +931,16 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     },
 
     _onSessionInsert: session => {
-        set(state => ({
-            sessions: state.sessions.some(s => s.id === session.id) ? state.sessions : [...state.sessions, session],
-        }))
-        get()._recomputeAgentStatus(session.agentId)
+        get()._onSessionUpdate(session)
     },
 
     _onSessionUpdate: session => {
         const known = get().sessions.find(s => s.id === session.id)
-        if (known && sameSession(known, session)) return
+        const watermark = get().sessionProjectionWatermarks[session.id] ?? known?.observation
+        if (!acceptsSessionObservation(watermark, session.observation) || known && sameSession(known, session)) return
         set(state => ({
             sessions: known ? state.sessions.map(s => (s.id === session.id ? session : s)) : [...state.sessions, session],
+            ...(session.observation?.kind === 'execution' ? { sessionProjectionWatermarks: { ...state.sessionProjectionWatermarks, [session.id]: session.observation } } : {}),
         }))
         get()._recomputeAgentStatus(session.agentId)
     },
@@ -958,6 +949,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         const session = get().sessions.find(s => s.id === sessionId)
         set(state => ({
             sessions: state.sessions.filter(s => s.id !== sessionId),
+            ...(session?.observation?.kind === 'execution' ? { sessionProjectionWatermarks: { ...state.sessionProjectionWatermarks, [sessionId]: session.observation } } : {}),
         }))
         if (session) get()._recomputeAgentStatus(session.agentId)
     },
@@ -968,9 +960,11 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     reconcileSessions: async () => {
         const agentIds = get().agents.map(a => a.id)
         if (agentIds.length === 0) return
-        const sessions = await fetchLiveSessions(supabase, agentIds)
-        if (!sessions) return
+        const started = new Map(get().sessions.map(s => [s.id, s]))
+        const fetched = await fetchLiveSessions(supabase, agentIds)
+        if (!fetched) return
         set(state => {
+            const { sessions, sessionProjectionWatermarks } = mergeSessionSnapshots(state, fetched, started)
             const agents = state.agents.map(a => {
                 const status = computeAgentStatus(sessions.filter(s => s.agentId === a.id), state.agentOnlineMap[a.id] ?? true, state.agentEngineBusyMap[a.id] ?? false)
                 return status === a.status ? a : { ...a, status }
@@ -978,7 +972,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
             // Le resync tourne à chaque retour d'onglet et rend presque toujours le même ensemble.
             const unchangedSessions = state.sessions.length === sessions.length && state.sessions.every((s, i) => sameSession(s, sessions[i]))
             const unchangedAgents = agents.every((a, i) => a === state.agents[i])
-            return { ...(unchangedSessions ? {} : { sessions }), ...(unchangedAgents ? {} : { agents }) }
+            return { sessionProjectionWatermarks, ...(unchangedSessions ? {} : { sessions }), ...(unchangedAgents ? {} : { agents }) }
         })
     },
 

@@ -1,6 +1,8 @@
+import { sessionObservationOf } from '@/lib/board/session-execution'
+import { acknowledgeSessionExecution } from './session-execution.service'
 import { actorFromContext, assertAgentAccess, assertSessionInWorkspace, keepVisible, visibleSpaceIds, type Actor } from '@/app/api/_auth/access'
 import { AuthorizationError, type WorkspaceContext } from '@/app/api/_auth/ownership'
-import { createSessionRow, getSessionEngineContext, lastRunError, listSessionRuns, readUsageSeed, resolveAgentTarget, type SessionUsageSeed, updateSessionStatus } from '@/app/api/_services/chat.service'
+import { createSessionRow, getSessionEngineContext, lastRunError, listSessionRuns, readUsageSeed, resolveAgentTarget, type SessionUsageSeed, refreshSessionExecution } from '@/app/api/_services/chat.service'
 import { type HistoryMessage, transformEngineMessages } from '@/lib/chat/engine-history'
 import { ATTENTION_NOTIFICATION_COLUMNS, attentionDetailsOf, attentionNotificationsFilter } from '@/lib/notifications/attention-details'
 import { sanitizeIlike } from '@/lib/search/ilike'
@@ -13,6 +15,8 @@ import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { selectCount, selectMany, selectMaybeSingle } from '@/supabase/supabase-helpers'
 
 export type SessionHistoryEntry = {
+    executionRevision?: number
+    executionAttentionRevision?: number | null
     id: string | null
     agentId: string
     engineSessionId: string
@@ -35,7 +39,7 @@ export async function listAgentSessions(agentId: string, actor?: Actor): Promise
     const supabase = createServiceRoleClient()
 
     const [{ data: rows }, target] = await Promise.all([
-        selectMany(supabase, 'sessions', ['id', 'title', 'status', 'updated_at', 'engine_session_id', 'origin_agent_id', 'source', 'automation_name', 'outcome'] as const, { agent_id: agentId }),
+        selectMany(supabase, 'sessions', ['id', 'title', 'status', 'updated_at', 'engine_session_id', 'origin_agent_id', 'source', 'automation_name', 'outcome', 'execution_revision', 'execution_attention_revision'] as const, { agent_id: agentId }),
         resolveAgentTarget(agentId, caller).catch(() => null),
     ])
     const supabaseRows = rows ?? []
@@ -68,6 +72,8 @@ export async function listAgentSessions(agentId: string, actor?: Actor): Promise
             title: r.title,
             status: r.status,
             updatedAt: r.updated_at,
+            executionRevision: r.execution_revision,
+            executionAttentionRevision: r.execution_attention_revision,
             source: (r.source ?? 'dashboard') as SessionSource,
             originAgentId: r.origin_agent_id,
             originAgentName: r.origin_agent_id ? (namesById.get(r.origin_agent_id) ?? 'another coworker') : null,
@@ -98,7 +104,7 @@ export async function listAgentSessions(agentId: string, actor?: Actor): Promise
 // whether a run finished since the caller last opened it, and what a waiting one asks.
 export async function listAgentConversations(ctx: WorkspaceContext, agentId: string): Promise<Conversation[]> {
     const entries = await listAgentSessions(agentId, actorFromContext(ctx))
-    const waiting = entries.flatMap(entry => (entry.id && needsHuman(entry.status) ? [{ id: entry.id, agent_id: entry.agentId, engine_session_id: entry.engineSessionId, title: entry.title, updated_at: entry.updatedAt }] : []))
+    const waiting = entries.flatMap(entry => (entry.id && needsHuman(entry.status) ? [{ id: entry.id, agent_id: entry.agentId, engine_session_id: entry.engineSessionId, title: entry.title, updated_at: entry.updatedAt, execution_revision: entry.executionRevision, execution_attention_revision: entry.executionAttentionRevision }] : []))
     const filter = attentionNotificationsFilter(waiting)
 
     // `unseen_runs` answers for `auth.uid()`: it runs as the caller, not through the service role.
@@ -239,23 +245,21 @@ export async function listWorkspaceToHandle(ctx: WorkspaceContext): Promise<ToHa
     return { items, total: counted.data ?? items.length }
 }
 
-// Acknowledging without answering, the same write the board store makes behind « Mark as read ».
-// `'all'` empties what the caller reaches, which is what the button of that name promises even when
-// the list it sits above only showed a page. The agent filter is what scopes the write; the
-// status filter is the race guard: a conversation back in `working` between the render and the tap
-// belongs to its run.
+// Capture the reachable set once and acknowledge each observed execution atomically.
+// A run or attention transition after this read cannot be cleared by this request.
 export async function markSessionsHandled(ctx: WorkspaceContext, sessionIds: string[] | 'all'): Promise<void> {
     const agentIds = (await reachableAgents(ctx)).map(a => a.id)
     if (agentIds.length === 0) return
 
     const supabase = createServiceRoleClient()
-    let update = supabase
-        .from('sessions')
-        .update<Database['public']['Tables']['sessions']['Update']>({ status: 'idle' })
-        .in('agent_id', agentIds)
-        .in('status', [...ATTENTION_STATUSES])
-    if (sessionIds !== 'all') update = update.in('id', sessionIds)
-    await update
+    let query = supabase.from('sessions').select('id,engine_run_id,execution_revision,execution_projection_version,execution_attention_revision,updated_at').in('agent_id', agentIds).in('status', [...ATTENTION_STATUSES])
+    if (sessionIds !== 'all') query = query.in('id', sessionIds)
+    const { data, error } = await query
+    if (error) throw error
+    for (const row of data ?? []) {
+        const observation = sessionObservationOf(row)
+        if (observation) await acknowledgeSessionExecution(ctx.workspace.id, row.id, observation)
+    }
 }
 
 // Creates the Supabase mirror row for an engine-only session so it can be
@@ -331,7 +335,7 @@ export async function cancelSessionRuns(sessionId: string): Promise<void> {
     await Promise.all(running.map(r => cancelRun(ctx.conn, ctx.engineAgentId, r.id).catch(() => {})))
 }
 
-export async function finalizeSession(sessionId: string, status: 'idle' | 'error'): Promise<void> {
+export async function finalizeSession(sessionId: string, _status: 'idle' | 'error'): Promise<void> {
     await assertSessionInWorkspace(sessionId)
-    await updateSessionStatus(sessionId, status)
+    await refreshSessionExecution(sessionId)
 }

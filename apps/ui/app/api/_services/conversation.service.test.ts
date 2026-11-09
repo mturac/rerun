@@ -18,7 +18,7 @@ vi.mock('@/app/api/_auth/access', async importOriginal => {
     const actual = await importOriginal<typeof import('@/app/api/_auth/access')>()
     return { ...actual, assertAgentAccess: vi.fn(), assertSessionInWorkspace: vi.fn(), visibleSpaceIds: vi.fn(actual.visibleSpaceIds) }
 })
-vi.mock('@/app/api/_services/chat.service', () => ({ createSessionRow: vi.fn(), resolveAgentTarget: vi.fn(), getSessionEngineContext: vi.fn(), updateSessionStatus: vi.fn(), lastRunError: vi.fn(), listSessionRuns: vi.fn(), readUsageSeed: vi.fn() }))
+vi.mock('@/app/api/_services/chat.service', () => ({ createSessionRow: vi.fn(), resolveAgentTarget: vi.fn(), getSessionEngineContext: vi.fn(), refreshSessionExecution: vi.fn(), lastRunError: vi.fn(), listSessionRuns: vi.fn(), readUsageSeed: vi.fn() }))
 vi.mock('@/lib/engine/client', () => ({ cancelRun: vi.fn(), getSession: vi.fn(), getSessionMessages: vi.fn(), listRuns: vi.fn(), listSessions: vi.fn(), listSkillProposals: vi.fn() }))
 vi.mock('@/lib/chat/engine-history', () => ({ transformEngineMessages: vi.fn() }))
 
@@ -112,9 +112,9 @@ describe('markSessionsHandled', () => {
         await markSessionsHandled(ctx, ['own-session', 'foreign-session'])
 
         expect(vi.mocked(selectMany).mock.calls[0][3]).toEqual({ workspace_id: 7 })
-        const [write] = db.writes('sessions')
-        expect(write.payload).toEqual({ status: 'idle' })
-        expect(write.filters.map(call => call.args)).toEqual([
+        const [write] = db.chainsOn('sessions')
+        expect(db.writes('sessions')).toEqual([])
+        expect(write.filter(call => call.method === 'in').map(call => call.args)).toEqual([
             ['agent_id', ['a', 'b']],
             ['status', expect.arrayContaining(['awaiting_question', 'awaiting_approval', 'awaiting_connector'])],
             ['id', ['own-session', 'foreign-session']],
@@ -128,7 +128,7 @@ describe('markSessionsHandled', () => {
 
         await markSessionsHandled(ctx, 'all')
 
-        expect(db.writes('sessions')[0].filters.map(call => call.args[0])).toEqual(['agent_id', 'status'])
+        expect(db.chainsOn('sessions')[0].filter(call => call.method === 'in').map(call => call.args[0])).toEqual(['agent_id', 'status'])
     })
 
     it("never clears a conversation of a coworker outside the member's Boxes, even on all", async () => {
@@ -139,7 +139,7 @@ describe('markSessionsHandled', () => {
 
         await markSessionsHandled(memberCtx, 'all')
 
-        expect(db.writes('sessions')[0].filters[0].args).toEqual(['agent_id', ['a']])
+        expect(db.chainsOn('sessions')[0].find(call => call.method === 'in')?.args).toEqual(['agent_id', ['a']])
     })
 
     it('writes nothing when the workspace has no agent', async () => {
@@ -387,6 +387,16 @@ describe('listAgentConversations', () => {
             ['s2', null],
         ])
         expect(vi.mocked(selectMany).mock.calls[1][3]).toEqual({ agent_id: { in: ['a'] }, engine_session_id: { in: ['engine-s1'] }, kind: { neq: 'done' } })
+    })
+
+    it('matches the current attention revision rather than a later inserted old-run message', async () => {
+        vi.mocked(selectMany).mockResolvedValueOnce({ data: [{ ...session('a','s1','2026-10-26T10:00:00Z','awaiting_ack'), execution_revision: 4, execution_attention_revision: 3 }], error: null } as never)
+        unseenRuns({ data: [], error: null })
+        vi.mocked(selectMany).mockResolvedValueOnce({ data: [
+            { agent_id: 'a', engine_session_id: 'engine-s1', kind: 'info', message: 'Old run', execution_revision: 1, metadata: null, recipients: null },
+            { agent_id: 'a', engine_session_id: 'engine-s1', kind: 'info', message: 'Current attention', execution_revision: 3, metadata: null, recipients: null },
+        ], error: null } as never)
+        expect((await listAgentConversations(asMember,'a'))[0].ask).toBe('Current attention')
     })
 
     it('leaves unseen out rather than failing when the read state cannot be fetched', async () => {

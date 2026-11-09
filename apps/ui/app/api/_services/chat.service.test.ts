@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
     selectManyWithJoins: vi.fn(),
     findWorkspaceEngine: vi.fn(),
     listRuns: vi.fn(),
+    getSessionExecution: vi.fn(),
+    applySessionExecution: vi.fn(),
+    applyLegacySessionStatus: vi.fn(),
     selectMany: vi.fn(),
     sessionUpdate: vi.fn(),
 }))
@@ -35,13 +38,14 @@ vi.mock('@/supabase/serviceRole', () => ({
     }),
 }))
 vi.mock('@/supabase/supabase-helpers', () => ({ selectMaybeSingleWithJoins: mocks.selectMaybeSingleWithJoins, selectManyWithJoins: mocks.selectManyWithJoins, selectMaybeSingle: mocks.selectMaybeSingle, selectSingle: vi.fn(), selectCount: vi.fn(), selectMany: mocks.selectMany, selectAll: vi.fn() }))
-vi.mock('@/lib/engine/client', () => ({ listRuns: mocks.listRuns, getRunSteps: vi.fn() }))
+vi.mock('./session-execution.service', () => ({ applySessionExecution: mocks.applySessionExecution, applyLegacySessionStatus: mocks.applyLegacySessionStatus, acknowledgeSessionExecution: vi.fn() }))
+vi.mock('@/lib/engine/client', () => ({ getSessionExecution: mocks.getSessionExecution, listRuns: mocks.listRuns, getRunSteps: vi.fn() }))
 vi.mock('./workspace-engine.service', () => ({ findWorkspaceEngine: mocks.findWorkspaceEngine, NoEngineError: class NoEngineError extends Error {} }))
 
 const { AuthorizationError } = await import('@/app/api/_auth/ownership')
 const { AccessDeniedError, workspaceActor } = await import('@/app/api/_auth/access')
 type Actor = import('@/app/api/_auth/access').Actor
-const { clearSkillProposalAttention, findIdleSessions, lastRunError, resolveAgentTarget, resolveAgentTargetForTrigger, summarizeSessionRuns } = await import('./chat.service')
+const { projectChatAdmission, clearSkillProposalAttention, findIdleSessions, lastRunError, resolveAgentTarget, resolveAgentTargetForTrigger, summarizeSessionRuns } = await import('./chat.service')
 
 const conn = { baseUrl: 'https://engine', apiKey: 'k' }
 
@@ -218,98 +222,68 @@ describe('lastRunError', () => {
 })
 
 describe('findIdleSessions', () => {
-    const agent = (workspaceId: number, engineAgentId: string | null, spaceId = 'box-1') => ({ workspace_id: workspaceId, space_id: spaceId, engine_agent_id: engineAgentId })
-
+    const agent = (workspaceId: number, engineAgentId: string, spaceId = 'box-1') => ({ workspace_id: workspaceId, space_id: spaceId, engine_agent_id: engineAgentId })
     beforeEach(() => {
-        mocks.listRuns.mockReset()
+        mocks.getSessionExecution.mockReset()
+        mocks.applySessionExecution.mockReset()
         mocks.visibleSpaceIds.mockReset().mockResolvedValue('all')
     })
-
-    it('leaves out the sessions of a Box the member cannot see, without asking the engine about them', async () => {
-        const member: Actor = { kind: 'user', userId: 'u-member', workspaceId: 1, role: 'member', boxScope: 'assigned' }
+    it('reconciles authoritative snapshots only for reachable sessions', async () => {
         mocks.visibleSpaceIds.mockResolvedValue(new Set(['box-1']))
-        mocks.selectManyWithJoins.mockResolvedValue({
-            data: [
-                { id: 'mine', engine_session_id: 'es-mine', agent: agent(1, 'e1', 'box-1') },
-                { id: 'hidden', engine_session_id: 'es-hidden', agent: agent(1, 'e2', 'box-2') },
-            ],
-            error: null,
-        })
-        mocks.listRuns.mockResolvedValue([])
-
-        await expect(findIdleSessions(['mine', 'hidden'], member)).resolves.toEqual(['mine'])
-        expect(mocks.visibleSpaceIds).toHaveBeenCalledWith(member)
-        expect(mocks.listRuns).toHaveBeenCalledTimes(1)
-        expect(mocks.listRuns.mock.calls[0][1]).toBe('e1')
+        mocks.selectManyWithJoins.mockResolvedValue({ data: [
+            { id: 'mine', agent_id: 'a1', engine_session_id: 'es-mine', agent: agent(1, 'e1') },
+            { id: 'hidden', agent_id: 'a2', engine_session_id: 'es-hidden', agent: agent(1, 'e2', 'box-2') },
+            { id: 'foreign', agent_id: 'a3', engine_session_id: 'es-foreign', agent: agent(2, 'e3') },
+        ], error: null })
+        const execution = { agentId: 'e1', sessionId: 'es-mine', runId: 'b', revision: 4, state: 'idle', attention: null }
+        mocks.getSessionExecution.mockResolvedValue(execution)
+        mocks.applySessionExecution.mockResolvedValue({ sessionId: 'mine', status: 'idle' })
+        await expect(findIdleSessions(['mine','hidden','foreign'], workspaceActor(1))).resolves.toEqual(['mine'])
+        expect(mocks.getSessionExecution).toHaveBeenCalledTimes(1)
+        expect(mocks.applySessionExecution).toHaveBeenCalledWith(1, 'a1', execution)
     })
-
-    it('asks the engine once per agent and keeps only the sessions with no run in flight', async () => {
-        mocks.selectManyWithJoins.mockResolvedValue({
-            data: [
-                { id: 'busy', engine_session_id: 'es-busy', agent: agent(1, 'e1') },
-                { id: 'idle', engine_session_id: 'es-idle', agent: agent(1, 'e1') },
-                { id: 'idle-2', engine_session_id: 'es-idle-2', agent: agent(1, 'e2') },
-            ],
-            error: null,
-        })
-        mocks.listRuns.mockImplementation(async (_conn: unknown, engineAgentId: string) => (engineAgentId === 'e1' ? [run('r1', 'es-busy', 'running', '2026-09-01')] : []))
-
-        await expect(findIdleSessions(['busy', 'idle', 'idle-2'], workspaceActor(1))).resolves.toEqual(expect.arrayContaining(['idle', 'idle-2']))
-        expect(mocks.listRuns).toHaveBeenCalledTimes(2)
-        expect(mocks.listRuns.mock.calls[0][2]).toEqual({ status: 'running', limit: 200 })
-    })
-
-    it('ignores a session of another workspace and leaves one it could not ask about as it was', async () => {
-        mocks.selectManyWithJoins.mockResolvedValue({
-            data: [
-                { id: 'foreign', engine_session_id: 'es-f', agent: agent(2, 'e9') },
-                { id: 'unreachable', engine_session_id: 'es-u', agent: agent(1, 'e1') },
-            ],
-            error: null,
-        })
-        mocks.listRuns.mockRejectedValue(new Error('engine down'))
-
-        await expect(findIdleSessions(['foreign', 'unreachable'], workspaceActor(1))).resolves.toEqual([])
-    })
-
-    it('counts a session never mirrored to the engine, or on a workspace without a machine, as idle', async () => {
-        mocks.selectManyWithJoins.mockResolvedValue({ data: [{ id: 'orphan', engine_session_id: null, agent: agent(1, 'e1') }], error: null })
-        await expect(findIdleSessions(['orphan'], workspaceActor(1))).resolves.toEqual(['orphan'])
-
+    it('never infers idle from absent authority, an old engine, or an unreachable engine', async () => {
+        mocks.selectManyWithJoins.mockResolvedValue({ data: [{ id: 's', agent_id: 'a1', engine_session_id: 'es', agent: agent(1,'e1') }], error: null })
+        mocks.getSessionExecution.mockResolvedValue(null)
+        await expect(findIdleSessions(['s'],workspaceActor(1))).resolves.toEqual([])
+        mocks.getSessionExecution.mockRejectedValue(new Error('unsupported'))
+        await expect(findIdleSessions(['s'],workspaceActor(1))).resolves.toEqual([])
         mocks.findWorkspaceEngine.mockResolvedValue(null)
-        mocks.selectManyWithJoins.mockResolvedValue({ data: [{ id: 's', engine_session_id: 'es', agent: agent(1, 'e1') }], error: null })
-        await expect(findIdleSessions(['s'], workspaceActor(1))).resolves.toEqual(['s'])
-        expect(mocks.listRuns).not.toHaveBeenCalled()
+        await expect(findIdleSessions(['s'],workspaceActor(1))).resolves.toEqual([])
+        expect(mocks.applySessionExecution).not.toHaveBeenCalled()
     })
 })
 
 describe('clearSkillProposalAttention', () => {
-    beforeEach(() => {
-        mocks.selectMany.mockReset()
+    it('does not clear without an observation captured before the decision', async () => {
         mocks.sessionUpdate.mockReset()
-    })
-
-    it('puts the session back to idle when the proposal is what it was waiting on', async () => {
-        mocks.selectMany.mockResolvedValue({ data: [{ metadata: { toolName: 'skill_propose', proposalId: 'p1' } }], error: null })
-
-        await clearSkillProposalAttention('s1', 'a1', 'es1')
-
-        expect(mocks.selectMany.mock.calls[0][3]).toEqual({ agent_id: 'a1', engine_session_id: 'es1', kind: { neq: 'done' } })
-        expect(mocks.sessionUpdate).toHaveBeenCalledWith('sessions', { status: 'idle' }, { id: 's1', status: 'awaiting_approval' })
-    })
-
-    it('leaves a session waiting on a real approval alone', async () => {
-        mocks.selectMany.mockResolvedValue({ data: [{ metadata: { toolName: 'request_approval', toolCallId: 'c1' } }], error: null })
-
-        await clearSkillProposalAttention('s1', 'a1', 'es1')
-
+        await clearSkillProposalAttention('s1','a1','es1')
         expect(mocks.sessionUpdate).not.toHaveBeenCalled()
     })
+})
 
-    it('does nothing for a session the engine never opened', async () => {
-        await clearSkillProposalAttention('s1', 'a1', null)
-
-        expect(mocks.selectMany).not.toHaveBeenCalled()
-        expect(mocks.sessionUpdate).not.toHaveBeenCalled()
+describe('chat admission execution projection', () => {
+    const snapshot = { agentId: 'e1', sessionId: 'es', runId: 'b', revision: 4, state: 'working', attention: null }
+    const response = (value: unknown, runId = 'b') => new Response(null, { headers: { 'x-run-id': runId, 'x-session-execution': JSON.stringify(value) } })
+    beforeEach(() => {
+        mocks.applySessionExecution.mockReset()
+        mocks.applyLegacySessionStatus.mockReset()
+    })
+    it('projects the admission revision without a later unconditional working write', async () => {
+        mocks.applySessionExecution.mockResolvedValue({ sessionId: 's', status: 'idle', result: 'stale' })
+        await expect(projectChatAdmission(1,'a1','e1','es',response(snapshot))).resolves.toMatchObject({ status: 'idle' })
+        expect(mocks.applySessionExecution).toHaveBeenCalledWith(1,'a1',snapshot)
+        expect(mocks.applyLegacySessionStatus).not.toHaveBeenCalled()
+    })
+    it('explicitly delegates revisionless old engines to the fenced legacy reducer', async () => {
+        await projectChatAdmission(1,'a1','e1','es',new Response(null))
+        expect(mocks.applyLegacySessionStatus).toHaveBeenCalledWith('a1','es','working')
+    })
+    it('fails closed on forged identity or malformed headers rather than falling back to legacy', async () => {
+        await expect(projectChatAdmission(1,'a1','other','es',response(snapshot))).rejects.toThrow('identity')
+        await expect(projectChatAdmission(1,'a1','e1','es',response(snapshot,'other'))).rejects.toThrow('identity')
+        await expect(projectChatAdmission(1,'a1','e1','es',new Response(null,{headers:{'x-session-execution':'broken'}}))).rejects.toThrow()
+        expect(mocks.applySessionExecution).not.toHaveBeenCalled()
+        expect(mocks.applyLegacySessionStatus).not.toHaveBeenCalled()
     })
 })

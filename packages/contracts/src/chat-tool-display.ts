@@ -48,6 +48,11 @@ const TOOL_LABELS: Record<string, string> = {
 
     delegate_tasks: 'Delegate Tasks',
     call_agent: 'Call Coworker',
+    external_agent_start: 'Start Cloud Agent',
+    external_agent_status: 'Check Cloud Agent',
+    external_agent_followup: 'Follow Up Cloud Agent',
+    external_agent_stop: 'Stop Cloud Agent',
+    external_agent_list: 'List Cloud Agents',
     team_status: 'Team Status',
     team_list_schedules: "List a Coworker's Schedules",
     team_list_triggers: "List a Coworker's Triggers",
@@ -166,6 +171,11 @@ const TOOL_LABELS: Record<string, string> = {
     request_takeover: 'Asked you to take over the browser',
     request_spend: 'Asked to spend credits',
     notify_user: 'Notified you',
+    speak: 'Spoke aloud',
+    listen: 'Heard speech',
+    runner_task: 'Local Runner Task',
+    runner_approvals: 'Local Runner Approvals',
+    runner_approve: 'Local Runner Approval',
     install_complete: 'Finished the setup',
 }
 
@@ -211,6 +221,11 @@ const TOOL_ACTIVITIES: Record<string, string> = {
 
     delegate_tasks: 'Delegating tasks',
     call_agent: 'Calling a coworker',
+    external_agent_start: 'Starting a cloud agent',
+    external_agent_status: 'Checking a cloud agent',
+    external_agent_followup: 'Following up with a cloud agent',
+    external_agent_stop: 'Stopping a cloud agent',
+    external_agent_list: 'Listing cloud agents',
     team_status: 'Checking the team',
     team_list_runs: "Reading a coworker's runs",
     team_get_run: "Reading a coworker's run",
@@ -234,6 +249,11 @@ const TOOL_ACTIVITIES: Record<string, string> = {
     list_templates: 'Browsing templates',
     propose_plan: 'Writing the plan',
     install_template: 'Installing a template',
+    speak: 'Speaking aloud',
+    listen: 'Listening',
+    runner_task: 'Running on the local runner',
+    runner_approvals: 'Checking runner approvals',
+    runner_approve: 'Resolving a runner approval',
 }
 
 export function toolActivityOf(toolName: string, input?: unknown): string | undefined {

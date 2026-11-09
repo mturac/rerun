@@ -14,6 +14,7 @@ import { CreateWorkspaceDialog } from '@/components/dialogs/CreateWorkspaceDialo
 import { CreditMeter, UpgradePill } from '@rerun/cloud/billing.client'
 import { ExpertProfileDialog } from '@/components/dialogs/ExpertProfileDialog'
 import { KnowledgeBaseDialog } from '@/components/dialogs/KnowledgeBaseDialog'
+import { RunnerApprovalsDialog } from '@/components/dialogs/RunnerApprovalsDialog'
 import { PaidAppDialogs, usePaidAppsStore, AppsMenuSection } from '@rerun/cloud/apps.client'
 import { useEnabledPaidApps } from '@/components/layout/FeatureFlagsProvider'
 import { WorkspaceMembersDialog } from '@/components/dialogs/WorkspaceMembersDialog'
@@ -31,6 +32,7 @@ import { useBrainProposalCount } from '@/hooks/useBrainProposalCount'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { useIsTemplateAuthor } from '@/hooks/useIsTemplateAuthor'
 import { useRerunCredit } from '@/hooks/useRerunCredit'
+import { useRunnerApprovalCount } from '@/hooks/useRunnerApprovalCount'
 import { useAccountStore } from '@/stores/account.store'
 import { useBillingStore } from '@/stores/billing.store'
 import { useCreatorStore } from '@/stores/creator.store'
@@ -93,6 +95,7 @@ export function WorkspaceSwitcher() {
     const openWorkspacePanel = useWorkspaceSettingsStore(s => s.openWorkspacePanel)
     const setPanel = useWorkspaceSettingsStore(s => s.setPanel)
     const [serversOpen, setServersOpen] = useState(false)
+    const [approvalsOpen, setApprovalsOpen] = useState(false)
     const [busy, setBusy] = useState(false)
     const [entering, setEntering] = useState(false)
     const [createOpen, setCreateOpen] = useState(false)
@@ -111,6 +114,7 @@ export function WorkspaceSwitcher() {
     const openingGettingStarted = useRef(false)
     const refreshBrainProposals = useBrainStore(s => s.refreshProposalCount)
     const brainProposals = useBrainProposalCount(Boolean(workspace) && !isAnonymous)
+    const runnerApprovals = useRunnerApprovalCount(Boolean(workspace) && !isAnonymous)
     const guided = useForemanStore(state => state.funnel === 'guided')
     const credit = useRerunCredit()
 
@@ -240,6 +244,15 @@ export function WorkspaceSwitcher() {
                 AI providers
             </DropdownMenuItem>
             {apiKeysItem}
+            <DropdownMenuItem onSelect={() => setApprovalsOpen(true)} className="gap-2 text-muted-foreground">
+                <ShieldCheckIcon className="size-4" />
+                Runner approvals
+                {runnerApprovals > 0 && (
+                    <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] text-white tabular-nums" aria-label={`${runnerApprovals} approvals waiting`}>
+                        {runnerApprovals}
+                    </span>
+                )}
+            </DropdownMenuItem>
             {SERVERS_ENABLED && (
                 <AdminOnly allowed={workspaceAdmin} reason="Only an admin can manage servers">
                     <DropdownMenuItem disabled={!workspaceAdmin} onSelect={() => setServersOpen(true)} className="gap-2 text-muted-foreground">
@@ -442,6 +455,7 @@ export function WorkspaceSwitcher() {
             />
             <ApiKeysDialog open={panel === 'api_keys'} onOpenChange={open => setPanel(open ? 'api_keys' : null)} />
             {SERVERS_ENABLED && <ServersDialog open={serversOpen} onOpenChange={setServersOpen} />}
+            <RunnerApprovalsDialog open={approvalsOpen} onOpenChange={setApprovalsOpen} />
             <AiProvidersDialog open={panel === 'ai_providers'} onOpenChange={open => setPanel(open ? 'ai_providers' : null)} />
             <KnowledgeBaseDialog open={panel === 'knowledge_base'} onOpenChange={open => setPanel(open ? 'knowledge_base' : null)} />
             <PaidAppDialogs apps={paidApps} />

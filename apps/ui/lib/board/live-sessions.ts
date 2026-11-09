@@ -1,3 +1,4 @@
+import { sessionObservationOf } from './session-execution'
 import type { Database } from '@/app/api/database.types'
 import type { SessionEntry, SessionStatus } from '@/lib/board/types'
 import { selectMany } from '@/supabase/supabase-helpers'
@@ -15,11 +16,11 @@ const STALE_CHECK_LIMIT = 10
 // thousands of finished sessions pushed the ones that carry a status out of the cap. Newest first,
 // truncated below the cap so what falls off the end is always the oldest. null = query failed.
 export async function fetchLiveSessions(supabase: Client, agentIds: string[]): Promise<SessionEntry[] | null> {
-    const { data } = await selectMany(supabase, 'sessions', ['id', 'agent_id', 'origin_agent_id', 'status'] as const, { agent_id: agentIds, status: { neq: 'idle' } }, { column: 'updated_at', ascending: false }, 500)
-    return data?.map(s => ({ id: s.id, agentId: s.agent_id, originAgentId: s.origin_agent_id, status: (s.status as SessionStatus) || 'idle' })) ?? null
+    const { data } = await selectMany(supabase, 'sessions', ['id', 'agent_id', 'origin_agent_id', 'status', 'engine_run_id', 'execution_revision', 'execution_projection_version', 'execution_attention_revision', 'updated_at'] as const, { agent_id: agentIds, status: { neq: 'idle' } }, { column: 'updated_at', ascending: false }, 500)
+    return data?.map(s => ({ observation: sessionObservationOf(s), id: s.id, agentId: s.agent_id, originAgentId: s.origin_agent_id, status: (s.status as SessionStatus) || 'idle' })) ?? null
 }
 
-// Flips to idle, in place and in the table, the `working` sessions the engine no longer runs.
+// Reconciles stale working sessions through the server; the browser never writes execution state.
 // `idleAmong` answers which of the candidates the engine confirmed have no run in flight; one it
 // could not ask stays out of that answer, and so stays working.
 export async function sweepZombieSessions(supabase: Client, sessions: SessionEntry[], idleAmong: (sessionIds: string[]) => Promise<string[]>): Promise<string[]> {
@@ -41,9 +42,5 @@ export async function sweepZombieSessions(supabase: Client, sessions: SessionEnt
     const zombieIds = await idleAmong(candidates).catch((): string[] => [])
     if (zombieIds.length === 0) return []
 
-    await supabase.from('sessions').update<Database['public']['Tables']['sessions']['Update']>({ status: 'idle' }).in('id', zombieIds)
-    for (const s of sessions) {
-        if (zombieIds.includes(s.id)) s.status = 'idle'
-    }
     return zombieIds
 }

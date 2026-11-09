@@ -141,12 +141,12 @@ export function WorkspaceInbox() {
     const markRead = useCallback(
         (item: InboxItem) => {
             if (item.sessionIds) void useUnseenRunsStore.getState().markSeen(item.sessionIds)
-            else setSessionStatus(item.id, 'idle')
+            else setSessionStatus(item.id, 'idle', item.observation)
         },
         [setSessionStatus]
     )
     const markAllRead = useCallback(() => {
-        markSessionsHandled(items.filter(i => !i.sessionIds).map(i => i.id))
+        markSessionsHandled(items.filter(i => !i.sessionIds).map(i => ({ id: i.id, observation: i.observation })))
         void useUnseenRunsStore.getState().markAllSeen()
     }, [markSessionsHandled, items])
     const openSettings = useCallback(() => {

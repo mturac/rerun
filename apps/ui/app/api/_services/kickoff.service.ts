@@ -1,5 +1,5 @@
 import { callableEngineAgentIds, requireLightSessionActor, type Actor } from '@/app/api/_auth/access'
-import { createSessionRow, resolveAgentTarget, updateSessionStatus } from '@/app/api/_services/chat.service'
+import { createSessionRow, resolveAgentTarget, projectChatAdmission } from '@/app/api/_services/chat.service'
 import { recordSessionParticipant } from '@/app/api/_services/notification-audience.service'
 import type { Database } from '@/app/api/database.types'
 import { generateSessionTitle } from '@/lib/ai/generate-title'
@@ -16,9 +16,10 @@ export type KickoffResult = { ok: true; sessionId: string; runId: string | null 
 // the UI re-attaches to it afterwards via /api/chat/resume with the returned run id.
 // `actor` is the v1 route's caller; omitted, the browser session's.
 export async function startKickoff(agentId: string, input: { kickoff?: string; description?: string }, author: MessageAuthor, actor?: Actor): Promise<KickoffResult> {
+    const caller = actor ?? await requireLightSessionActor()
     let target: Awaited<ReturnType<typeof resolveAgentTarget>>
     try {
-        target = await resolveAgentTarget(agentId, actor)
+        target = await resolveAgentTarget(agentId, caller)
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'Coworker not found', agentGone: true }
     }
@@ -29,7 +30,7 @@ export async function startKickoff(agentId: string, input: { kickoff?: string; d
         const message = kickoff || (description ? await reformulateKickoff(description).catch(() => description) : '')
         if (!message) return { ok: false, error: 'Nothing to send', agentGone: true }
 
-        const callableAgentIds = await callableEngineAgentIds(actor ?? (await requireLightSessionActor()))
+        const callableAgentIds = await callableEngineAgentIds(caller)
         const engineRes = await chat(target.conn, target.engineAgentId, { message, source: 'dashboard', author, callableAgentIds })
         if (!engineRes.ok) {
             const errBody = await engineRes.text().catch(() => '')
@@ -42,7 +43,7 @@ export async function startKickoff(agentId: string, input: { kickoff?: string; d
         if (!engineSessionId) return { ok: false, error: 'Engine did not return a session id', agentGone: false }
 
         const sessionId = await createSessionRow(agentId, engineSessionId, message)
-        await updateSessionStatus(sessionId, 'working')
+        await projectChatAdmission(caller.workspaceId, agentId, target.engineAgentId, engineSessionId, engineRes)
         await recordSessionParticipant(sessionId, author.id)
 
         generateSessionTitle(message)

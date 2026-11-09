@@ -1,4 +1,4 @@
-import type { AgentArchivePlan } from '@rerun/contracts'
+import type { AgentArchivePlan, AgentImportResult } from '@rerun/contracts'
 import { fetchAgentArchive, planAgentArchive } from '@/lib/engine/client'
 import type { EngineConnection } from '@/lib/engine/types'
 
@@ -9,6 +9,11 @@ import type { EngineConnection } from '@/lib/engine/types'
 // "not found" reads as "the agent is gone" rather than "this box is behind".
 export const STALE_EXPORT_HINT = 'This workspace runs on a machine whose engine is too old to export coworkers. Ask the Rerun team to update it, then try again.'
 export const STALE_IMPORT_HINT = 'This workspace runs on a machine whose engine is too old to import coworkers. Ask the Rerun team to update it, then try again.'
+
+// The engine caps an import body at ARCHIVE_LIMITS.maxTotalBytes (150 MB) on its own stream; this
+// mirrors that ceiling so an oversized file is refused before the upload even starts.
+export const ARCHIVE_IMPORT_MAX_BYTES = 150 * 1024 * 1024
+export const ARCHIVE_IMPORT_MAX_MB = ARCHIVE_IMPORT_MAX_BYTES / (1024 * 1024)
 
 export function isMissingRoute(err: unknown): boolean {
     return err instanceof Error && /failed: 404/.test(err.message)
@@ -41,6 +46,20 @@ export function archiveWarnings(plan: AgentArchivePlan, label: string): string[]
     }
     if (plan.triggers.length > 0) {
         warnings.push(`"${label}": ${plan.triggers.length} webhook(s) travel, each issued its own URL on install (${plan.triggers.map(trigger => trigger.name).join(', ')}). Whoever installs this has to point their service at the new address.`)
+    }
+    return warnings
+}
+
+export function importedArchiveWarnings(result: AgentImportResult): string[] {
+    const warnings: string[] = []
+    if (result.skippedPaths.length > 0) {
+        warnings.push(`${result.skippedPaths.length} file(s) in the archive were refused (${result.skippedPaths.slice(0, 3).join(', ')}).`)
+    }
+    if (result.triggers.length > 0) {
+        warnings.push(`${result.triggers.length} webhook(s) were created with a new URL each (${result.triggers.join(', ')}). Read them in the coworker panel and point your services at them.`)
+    }
+    if (result.envKeys.length > 0) {
+        warnings.push(`${result.envKeys.length} API key(s) have to be filled in again before it can run.`)
     }
     return warnings
 }

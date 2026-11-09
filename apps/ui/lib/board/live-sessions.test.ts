@@ -27,12 +27,12 @@ describe('sweepZombieSessions', () => {
         expect(db.calls).toEqual([])
     })
 
-    it('flips to idle, in the table and in place, a stale session the engine no longer runs', async () => {
+    it('reconciles on the server without browser writes or stale local state mutation', async () => {
         const db = setup([{ id: 's1', updated_at: minutesAgo(6) }])
         const sessions = [session('s1')]
         await sweepZombieSessions(db.client, sessions, async ids => ids)
-        expect(db.writes('sessions')).toEqual([{ method: 'update', payload: { status: 'idle' }, filters: [{ table: 'sessions', method: 'in', args: ['id', ['s1']] }] }])
-        expect(sessions[0].status).toBe('idle')
+        expect(db.writes('sessions')).toEqual([])
+        expect(sessions[0].status).toBe('working')
     })
 
     it('never asks the engine about a session updated in the last five minutes or never updated', async () => {
@@ -54,8 +54,8 @@ describe('sweepZombieSessions', () => {
         ])
         const sessions = [session('running'), session('unreachable'), session('done')]
         await sweepZombieSessions(db.client, sessions, async ids => ids.filter(id => id === 'done'))
-        expect(sessions.map(s => s.status)).toEqual(['working', 'working', 'idle'])
-        expect(db.writes('sessions')[0].filters).toEqual([{ table: 'sessions', method: 'in', args: ['id', ['done']] }])
+        expect(sessions.map(s => s.status)).toEqual(['working', 'working', 'working'])
+        expect(db.writes('sessions')).toEqual([])
     })
 
     it('keeps every candidate working when the engine cannot be asked at all', async () => {
@@ -80,7 +80,7 @@ describe('sweepZombieSessions', () => {
 describe('fetchLiveSessions', () => {
     it('maps the non-idle sessions newest first and reports a failed read as null', async () => {
         const db = fakeSupabase(() => ({ data: [{ id: 's1', agent_id: 'a1', origin_agent_id: 'a0', status: 'working' }] }))
-        expect(await fetchLiveSessions(db.client, ['a1'])).toEqual([{ id: 's1', agentId: 'a1', originAgentId: 'a0', status: 'working' }])
+        expect(await fetchLiveSessions(db.client, ['a1'])).toEqual([{ observation: null, id: 's1', agentId: 'a1', originAgentId: 'a0', status: 'working' }])
         const [chain] = db.chainsOn('sessions')
         expect(chain).toContainEqual({ table: 'sessions', method: 'neq', args: ['status', 'idle'] })
         expect(chain).toContainEqual({ table: 'sessions', method: 'order', args: ['updated_at', { ascending: false }] })

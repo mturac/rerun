@@ -22,6 +22,7 @@ import { selectMany, selectMaybeSingle } from '@/supabase/supabase-helpers'
 import { ensureSessionRow } from './chat.service'
 import { writeNotificationPrefs } from './notification-audience.service'
 import { loadPresence } from './presence.service'
+import { applyLegacySessionStatus, applySessionExecution } from './session-execution.service'
 import { authenticateEngineToken } from './workspace-engine.service'
 import { resolveWorkspaceMemberEmail, resolveWorkspaceOwner } from './workspace-owner.service'
 import { captureServer, deterministicUuid } from '@rerun/analytics/server'
@@ -48,6 +49,18 @@ export async function recordNotification(token: string, payload: NotificationPay
 
     const { data: agent } = await selectMaybeSingle(supabase, 'agents', ['id', 'name', 'space_id'] as const, { workspace_id: engine.workspaceId, engine_agent_id: payload.agentId })
 
+    if (payload.execution && agent?.id) {
+        try {
+            const { data: origin } = payload.originAgentId ? await selectMaybeSingle(supabase, 'agents', ['id'] as const, { workspace_id: engine.workspaceId, engine_agent_id: payload.originAgentId }) : { data: null }
+            const projection = await applySessionExecution(engine.workspaceId, agent.id, payload.execution, { title: payload.title, source: payload.source, originAgentId: origin?.id ?? null })
+            if (projection.result === 'stale') return { ok: true }
+        } catch (error) {
+            console.error('[notification] failed to project session execution', error)
+            return { ok: false, status: 500, error: 'Failed to project session execution' }
+        }
+    }
+    if (payload.event === 'agent.execution.updated') return { ok: true }
+
     if (payload.event === 'agent.session.created') {
         if (agent?.id && payload.sessionId) await mirrorSession(supabase, engine.workspaceId, agent.id, payload)
         return { ok: true }
@@ -60,7 +73,7 @@ export async function recordNotification(token: string, payload: NotificationPay
     // A stopped run still has to clear the conversation's "working" state, but it is not news: the
     // person who pressed Stop does not need "Run finished" in their inbox and in their mailbox.
     if (isCancelled(notification)) {
-        await applySessionStatus(supabase, agent?.id ?? null, notification)
+        await applySessionStatus(agent?.id ?? null, notification)
         return { ok: true }
     }
 
@@ -74,6 +87,7 @@ export async function recordNotification(token: string, payload: NotificationPay
         engine_agent_id: notification.agentId,
         engine_session_id: notification.sessionId ?? null,
         engine_run_id: notification.runId ?? null,
+        execution_revision: notification.execution?.revision ?? null,
         event: notification.event,
         kind: notification.kind,
         source: audience.source,
@@ -83,12 +97,14 @@ export async function recordNotification(token: string, payload: NotificationPay
         notified_at: notification.timestamp,
     })
         .select('id')
-        .single()
+        .maybeSingle()
+    if (!stored && !error) return { ok: true }
+    if (error?.code === '23505' && notification.execution) return { ok: true }
     if (error || !stored) return { ok: false, status: 500, error: 'Failed to store notification' }
 
     // The engine is the source of truth for run completion. Mirror it onto the session
     // status so the UI unsticks from 'working' even when the SSE stream was cut. Best-effort.
-    await applySessionStatus(supabase, agent?.id ?? null, notification)
+    await applySessionStatus(agent?.id ?? null, notification)
     // After the response: a model call must not hold the engine's webhook open.
     after(() => retitleAutomatedRun(supabase, agent?.id ?? null, notification))
 
@@ -159,20 +175,12 @@ function isCancelled(notification: StoredNotification): boolean {
     return (notification.metadata as { status?: unknown } | null)?.status === 'cancelled'
 }
 
-async function applySessionStatus(supabase: ServiceRoleClient, agentId: string | null, notification: StoredNotification): Promise<void> {
+async function applySessionStatus(agentId: string | null, notification: StoredNotification): Promise<void> {
+    if (notification.execution) return
     const status = completionStatus(notification)
     if (!status || !agentId || !notification.sessionId) return
     try {
-        let query = supabase.from('sessions').update<SessionUpdate>({ status }, { count: 'exact' }).eq('agent_id', agentId).eq('engine_session_id', notification.sessionId)
-        // The other awaiting_* states hold because the run stopped on them and never emitted its
-        // `done`. An `info` notification does not stop the run, so that `done` does arrive, seconds
-        // later: without this guard it would clear the acknowledgement the notification just asked for.
-        if (status === 'idle') query = query.neq('status', 'awaiting_ack')
-        const { error, count } = await query
-        if (error) console.error('[notification] failed to update session status', error)
-        // Postgres does not fail an UPDATE that matches nothing, so an unmirrored session would
-        // silently keep whatever status it ends up with.
-        else if (count === 0 && status !== 'idle') console.warn('[notification] no session row for', { agentId, engineSessionId: notification.sessionId, status })
+        await applyLegacySessionStatus(agentId, notification.sessionId, status)
     } catch (err) {
         console.error('[notification] failed to update session status', err)
     }

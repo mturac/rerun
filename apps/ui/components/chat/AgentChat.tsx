@@ -1,5 +1,7 @@
 'use client'
 
+import { useBoardStore } from '@/stores/board.store'
+
 import { ModelSelector } from '@/components/agent/ModelSelector'
 import { Context } from '@/components/ai-elements/context'
 import { Conversation, ConversationContent, ConversationEmptyState, type ConversationHandle, ConversationScrollButton } from '@/components/ai-elements/conversation'
@@ -32,7 +34,7 @@ import { ServiceSuggestionBlock } from '@/components/services/ServiceSuggestionB
 import { SkeletonChat } from '@/components/ui/skeleton'
 
 import { cancelRunAction, getRunAction } from '@/app/api/_actions/agent.actions'
-import { acknowledgeSessionAlertAction, cancelSessionRunsAction, fetchSessionActiveRun, fetchSessionMessages, finalizeSessionAction, openSessionAction } from '@/app/api/_actions/session.actions'
+import { acknowledgeSessionAlertAction, fetchSessionActiveRun, fetchSessionMessages, finalizeSessionAction, openSessionAction } from '@/app/api/_actions/session.actions'
 import type { SessionUsageSeed } from '@/app/api/_services/chat.service'
 import { useAgentModel } from '@/hooks/useAgentModel'
 import { useWorkspaceConnections } from '@/hooks/useWorkspaceConnections'
@@ -40,7 +42,7 @@ import { useArriveByTop } from '@/hooks/useArriveByTop'
 import { useMemberProfiles } from '@/hooks/useMemberProfiles'
 import { useMessageFeedback } from '@/hooks/useMessageFeedback'
 import { useMessageTimes } from '@/hooks/useMessageTimes'
-import { useQueuedMessage } from '@/hooks/useQueuedMessage'
+import { useQueuedMessage, useStopRequestState } from '@/hooks/useQueuedMessage'
 import { useRunReconnect } from '@/hooks/useRunReconnect'
 import { invalidateAgentSkillSummaries } from '@/hooks/useAgentSkillSummaries'
 import { useSkillProposals } from '@/hooks/useSkillProposals'
@@ -57,8 +59,8 @@ import { hitlCallBefore } from '@/lib/chat/hitl-receipts'
 import { turnRanOutOfPaidCredit } from '@/lib/chat/paid-data-credit'
 import { authorTurnsOf } from '@/lib/chat/message-author'
 import { splitTurnsAtBreaks, timeBreaksOf } from '@/lib/chat/message-times'
-import { shouldFlush, shouldKeepQueued } from '@/lib/chat/queued-message'
-import { classifyChatError, installInFlightOf, teammateRunOf, unwrapChatError } from '@/lib/chat-error'
+import { canAttemptAfterStop, LOCAL_REQUEST_HEADER, localRequestHeaders, messageAcceptance, shouldFlush, shouldKeepQueued, type MessageAcceptanceHandler } from '@/lib/chat/queued-message'
+import { classifyChatError, installInFlightOf, unwrapChatError } from '@/lib/chat-error'
 import { findPendingAlert, findPendingHitl, HITL_CANCELLED, pendingApprovals, pendingMcpSignIn, pendingQuestions, pendingSecrets, pendingTakeover, serializeApprovalDecisions } from '@/lib/chat-hitl'
 import { lastUserText } from '@/lib/chat-payload'
 import { historyCovers, needsReconcile } from '@/lib/chat/transcript-reconcile'
@@ -77,7 +79,6 @@ import { DefaultChatTransport } from 'ai'
 import type { ReactNode } from 'react'
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { scrollFadeMask, useScrollEdges } from '@rerun/ui/primitives'
-import { toast } from 'sonner'
 
 const SCROLL_FADE = 32
 
@@ -119,14 +120,18 @@ type AgentChatProps = {
     onNewConversation?: () => void
 }
 
-export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessionCreated, initialRunId, arrival = 0, mentionAgents = [], mentionSkills = [], sessionWorking = false, sessionIdle = false, alertPending = false, body, header, suppressEmptyState = false, setup, onSetupSkipped, onOpenInstall, onRunFinished, onSessionInserted, onSessionStatusChange, onMessageSent, onNewConversation }: AgentChatProps) {
+export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessionCreated, initialRunId, arrival = 0, mentionAgents = [], mentionSkills = [], sessionWorking = false, sessionIdle = false, alertPending = false, body, header, suppressEmptyState = false, setup, onSetupSkipped, onOpenInstall, onRunFinished, onSessionInserted, onMessageSent, onNewConversation }: AgentChatProps) {
     const { workspace, user } = useSession()
     const userId = user?.id
     const onSessionCreatedRef = useRef(onSessionCreated)
     onSessionCreatedRef.current = onSessionCreated
 
     const sessionIdRef = useRef(sessionId)
-    sessionIdRef.current = sessionId
+    const previousSessionProp = useRef(sessionId)
+    if (previousSessionProp.current !== sessionId) {
+        sessionIdRef.current = sessionId
+        previousSessionProp.current = sessionId
+    }
 
     const onSessionInsertedRef = useRef(onSessionInserted)
     onSessionInsertedRef.current = onSessionInserted
@@ -137,7 +142,16 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
     const onRunFinishedRef = useRef(onRunFinished)
     onRunFinishedRef.current = onRunFinished
 
-    const { queued, restoredId: restoredQueuedId, enqueue: enqueueMessage, clear: clearQueued } = useQueuedMessage(uid)
+    const { autoSendEligible, queued, restoredId: restoredQueuedId, enqueue: enqueueMessage, clear: clearQueued, deliveryBlocked, deliveryState, storageError, beginDelivery, recovered, recover, restoreRecovered, reviewQueued } = useQueuedMessage(uid)
+    const identity = useRef({ uid, sessionId })
+    if (identity.current.uid !== uid || identity.current.sessionId !== sessionIdRef.current) identity.current = { uid, sessionId }
+    const stopControl = useStopRequestState(uid)
+    const stopRequest = useRef<Promise<boolean> | null>(null)
+    const stopPending = stopControl.stop !== null
+    const stopping = stopControl.stop?.phase === 'requesting'
+    const requestSequence = useRef(0)
+    const pendingSend = useRef(false)
+    const lastRequest = useRef<{ id: number; identity: typeof identity.current; stopId?: string; onAcceptance: MessageAcceptanceHandler } | null>(null)
 
     // The composer owns its own text, draft and attachments (see ChatComposer). What is left here
     // is the handle, for the two paths that hand a message back to it.
@@ -184,21 +198,47 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
     bodyRef.current = body
 
     const activeRunIdRef = useRef<string | null>(null)
+    const runIdentity = useRef(identity.current)
+    if (runIdentity.current !== identity.current) {
+        activeRunIdRef.current = initialRunId ?? null
+        runIdentity.current = identity.current
+    }
 
+    const transportIdentity = identity.current
     const interceptFetch = useCallback(
         async (url: string | URL | Request, init?: RequestInit) => {
-            const res = await fetch(url, init)
+            const requestIdentity = transportIdentity
+            if (identity.current !== requestIdentity) throw new DOMException('Conversation changed', 'AbortError')
+            const headers = new Headers(init?.headers)
+            const request = init?.method === 'POST' && lastRequest.current?.identity === requestIdentity && headers.get(LOCAL_REQUEST_HEADER) === String(lastRequest.current.id) ? lastRequest.current : null
+            headers.delete(LOCAL_REQUEST_HEADER)
+            if (request) lastRequest.current = null
+            let res: Response
+            try {
+                res = await fetch(url, { ...init, headers })
+            } catch (error) {
+                request?.onAcceptance?.('uncertain')
+                throw error
+            }
+            const outcome = messageAcceptance(res)
+            if (request) {
+                if (outcome !== 'uncertain') pendingSend.current = false
+                request.onAcceptance(outcome)
+                if (outcome === 'accepted') stopControl.release(request.stopId)
+            }
+            if (identity.current !== requestIdentity) throw new DOMException('Conversation changed', 'AbortError')
             const newSessionId = res.headers.get('X-Session-Id')
             if (newSessionId && !sessionIdRef.current) {
                 sessionIdRef.current = newSessionId
+                requestIdentity.sessionId = newSessionId
                 onSessionCreatedRef.current(newSessionId)
                 onSessionInsertedRef.current?.({ id: newSessionId, agentId, originAgentId: null, status: 'working' })
             }
             const runId = res.headers.get('X-Run-Id')
-            if (runId) activeRunIdRef.current = runId
+            if (runId && res.ok) activeRunIdRef.current = runId
             return res
         },
-        [agentId]
+        [agentId, transportIdentity, stopControl.release]
     )
 
     const transport = useMemo(
@@ -209,7 +249,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
                 // Send the message being posted, never the transcript: the engine holds the
                 // conversation, and a research session's tool outputs alone blow past the 10MB
                 // body cap the Next proxy enforces on /api/chat.
-                prepareSendMessagesRequest: ({ body, messages }) => ({ body: { ...body, text: lastUserText(messages) } }),
+                prepareSendMessagesRequest: ({ body, messages, headers, requestMetadata }) => ({ body: { ...body, text: lastUserText(messages) }, headers: localRequestHeaders(headers, requestMetadata) }),
                 fetch: interceptFetch as typeof globalThis.fetch,
                 prepareReconnectToStreamRequest: () => ({
                     api: `/api/chat/resume?agentId=${encodeURIComponent(agentId)}&runId=${encodeURIComponent(activeRunIdRef.current ?? '')}`,
@@ -240,6 +280,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
         // reconciled at the rate the tokens arrive, which a long conversation cannot keep up with.
         experimental_throttle: 80,
         onFinish: ({ isAbort, isDisconnect, isError }) => {
+            if (identity.current !== transportIdentity) return
             if (!isAbort && !isDisconnect && !isError) {
                 completedRef.current = true
             }
@@ -263,14 +304,6 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
         if (status === 'ready' || status === 'error') sendingRef.current = false
     }, [status])
 
-    // What the last send carried. A conversation that refuses the message has to give it back
-    // rather than swallow it, which is what used to happen behind the "already in flight" wall.
-    const lastSentTextRef = useRef<string | null>(null)
-
-    // Whether that last send came from the queue. A refused queued message goes back to waiting,
-    // where a refused typed one goes back to the composer the user is still looking at.
-    const lastSendQueuedRef = useRef(false)
-
     // Scrolling up unsticks the conversation for good, so speaking up has to re-arm the follow:
     // otherwise the message just sent, and the answer streaming under it, land off-screen.
     const conversationRef = useRef<ConversationHandle | null>(null)
@@ -286,19 +319,28 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
     // Returns whether the message was handed to the SDK: a refused send is not a lost one, and the
     // queue has to know so it can keep holding what it was about to let go of.
     const sendMessage = useCallback(
-        (opts: { text: string }, options?: { body?: Record<string, unknown> }): boolean => {
-            if (sendingRef.current || status === 'submitted' || status === 'streaming') return false
+        (opts: { text: string }, options?: { body?: Record<string, unknown>; onAcceptance?: MessageAcceptanceHandler; manual?: boolean }): boolean => {
+            const pendingStop = stopControl.current()
+            if ((pendingStop && !(options?.manual && canAttemptAfterStop(pendingStop))) || sendingRef.current || status === 'submitted' || status === 'streaming') return false
             sendingRef.current = true
-            lastSentTextRef.current = opts.text
-            lastSendQueuedRef.current = options?.body?.queued === true
+            const requestIdentity = identity.current
+            const requestId = ++requestSequence.current
+            const queuedSend = options?.onAcceptance !== undefined
+            lastRequest.current = { id: requestId, identity: requestIdentity, stopId: pendingStop?.id, onAcceptance: outcome => {
+                if (!queuedSend && outcome !== 'accepted') recover(opts.text, text => identity.current === requestIdentity && (composerRef.current?.restore(text) ?? false), outcome === 'uncertain')
+                options?.onAcceptance?.(outcome)
+            } }
+            pendingSend.current = true
             if (browserPermission() === 'default') askNotificationPermission()
             // Signed here so the bubble carries its author before the transcript is read back.
-            sendChatMessage(userId ? { ...opts, metadata: { authorId: userId } } : opts, options)
+            void sendChatMessage(userId ? { ...opts, metadata: { authorId: userId } } : opts, { body: options?.body, metadata: { localRequestId: requestId } })
             conversationRef.current?.scrollToBottom()
             return true
         },
-        [sendChatMessage, status, askNotificationPermission, userId]
+        [sendChatMessage, status, askNotificationPermission, userId, stopControl.current, recover]
     )
+
+    const sendFromThread = useCallback((message: { text: string }) => sendMessage(message) || enqueueMessage(message.text, activeRunIdRef.current), [sendMessage, enqueueMessage])
 
     // What the user already typed stays, after the reply: they may have pasted the value first.
     const draftReply = useCallback(
@@ -393,16 +435,16 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
         if (landed) invalidateAgentSkillSummaries(agentId)
     }, [skillProposals.proposals, agentId])
 
+    const alertObservation = useBoardStore(s => s.sessions.find(row => row.id === sessionId)?.observation)
     const acknowledgeAlert = useCallback(async () => {
         if (!sessionId) return
         setAcknowledging(true)
         try {
-            await acknowledgeSessionAlertAction(sessionId)
-            onSessionStatusChange?.(sessionId, 'idle')
+            await acknowledgeSessionAlertAction(sessionId, alertObservation)
         } finally {
             setAcknowledging(false)
         }
-    }, [sessionId, onSessionStatusChange])
+    }, [sessionId, alertObservation])
 
     // Usage of the session's last finished run, fetched on history load so the
     // context gauge shows immediately when reopening a conversation (the loaded
@@ -481,6 +523,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
         setSnapshotPendingFor(sessionId)
         openSessionAction(sessionId)
             .then(snapshot => {
+                if (sessionIdRef.current !== sessionId) return
                 // A run attached while this fetch was in flight: the transcript is the stream's
                 // now, and writing the persisted history back would wipe what it has emitted.
                 if (snapshot.messages.length > 0 && !attachedRunRef.current) {
@@ -497,6 +540,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
             })
             .catch(() => {})
             .finally(() => {
+                if (sessionIdRef.current !== sessionId) return
                 setHistoryLoading(false)
                 setSnapshotPendingFor(null)
             })
@@ -508,13 +552,14 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
         start: () => {
             const runId = activeRunIdRef.current
             const sid = sessionIdRef.current
-            if (!runId || !sid) return null
+            if (!runId || !sid || stopControl.current() !== null) return null
             return {
                 runId,
                 getRun: () => getRunAction(agentId, runId),
                 fetchMessages: () => fetchSessionMessages(sid),
                 onSettled: async ({ errored, errorText }) => {
                     await finalizeSessionAction(sid, errored ? 'error' : 'idle').catch(() => {})
+                    if (sessionIdRef.current !== sid || stopControl.current() !== null) return
                     activeRunIdRef.current = null
                     if (errorText) setRunError(errorText)
                 },
@@ -527,7 +572,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
 
     // Whether the conversation is busy at all, this tab's own stream included. It decides the
     // loader, whether a message goes out or waits in the queue, and what the send button offers.
-    const showLoader = status === 'submitted' || status === 'streaming' || sessionWorking || reconnecting
+    const showLoader = status === 'submitted' || status === 'streaming' || sessionWorking || reconnecting || stopPending
 
     // The queued message this render already handed over. `status` only flips to `submitted` on the
     // next render, so without this ref the flush effect fires again and sends the message twice.
@@ -561,29 +606,26 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
         }
     }, [])
 
-    // Reachable whenever the conversation reads as busy, including after a reload where this tab
-    // never streamed anything: without that, a run the provider wedged had no way out at all.
-    // Awaited rather than fired and forgotten because `abortRun` frees the engine's session claim
-    // before it answers, so this return is what says the next message may go out.
-    const stopRun = useCallback(async (): Promise<boolean> => {
-        stopStream()
-        const runId = activeRunIdRef.current
-        const sid = sessionIdRef.current
-        activeRunIdRef.current = null
-        clearError()
-        if (sid) {
-            onSessionStatusChange?.(sid, 'idle')
-            finalizeSessionAction(sid, 'idle').catch(() => {})
-        }
-        if (runId) {
-            // Covers a run this tab never held the id of: only the engine knows the full list. Awaited
-            // with the stop itself: left running, it lands after a queued message has started its own
-            // run and cancels that one too, so the message never gets an answer.
-            const [, stopped] = await Promise.all([sid ? cancelSessionRunsAction(sid).catch(() => false) : false, cancelRunAction(agentId, runId)])
-            return stopped
-        }
-        return sid ? cancelSessionRunsAction(sid) : false
-    }, [stopStream, agentId, onSessionStatusChange, clearError])
+    // A known run is cancelled by name, so a late cancellation cannot target its successor.
+    const stopRun = useCallback((): Promise<boolean> => {
+        if (stopRequest.current && stopControl.current()?.phase === 'requesting') return stopRequest.current
+        const requestIdentity = identity.current
+        const runId = pendingSend.current ? null : activeRunIdRef.current
+        const record = stopControl.begin(runId)
+        const request = Promise.resolve().then(async () => {
+            await stopStream()
+            return runId ? cancelRunAction(agentId, runId) : false
+        }).catch(() => false).then(accepted => {
+            if (mountedRef.current && identity.current === requestIdentity) {
+                clearError()
+                stopControl.finish(record, accepted)
+            }
+            if (stopRequest.current === request) stopRequest.current = null
+            return accepted
+        })
+        stopRequest.current = request
+        return request
+    }, [stopStream, agentId, clearError, stopControl.current, stopControl.begin, stopControl.finish])
 
     const handleStop = useCallback(() => {
         void stopRun()
@@ -597,21 +639,18 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
         [stopRun]
     )
 
-    const [stopping, setStopping] = useState(false)
-
-    // Sending a queued message right away means ending the run holding the conversation. The send
-    // itself is left to the flush effect: starting a request in the same tick as `stopStream()`
-    // would leave two streams writing into the same transcript.
     const sendQueuedNow = useCallback(async () => {
-        if (!queued) return
-        setStopping(true)
-        // The banner of a run that already failed would otherwise keep the flush from firing, and
-        // this click is the user saying they want the message out regardless.
-        setRunError(null)
-        const stopped = await stopRun()
-        setStopping(false)
-        if (!stopped) toast.error('Could not stop the current run. Your message will be sent when it ends.')
-    }, [queued, stopRun, setRunError, setStopping])
+        if (!queued || stopping || deliveryState === 'sending') return
+        if (deliveryState === 'uncertain') {
+            reviewQueued()
+            return
+        }
+        if (!stopControl.current() && showLoader) { await stopRun(); return }
+        if (!canAttemptAfterStop(stopControl.current())) return
+        const finish = beginDelivery(queued.id, true)
+        if (!finish) return
+        if (!sendMessage({ text: queued.text }, { body: { queued: false }, manual: true, onAcceptance: finish })) finish('not-sent')
+    }, [queued, stopping, deliveryState, reviewQueued, stopControl.current, showLoader, stopRun, beginDelivery, sendMessage])
 
     // The install this tab just asked for already runs in another conversation, started from a tab
     // or a device this one had not heard of yet. Nothing was sent: the tab goes back to blank and
@@ -620,32 +659,10 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
         if (!error) return
         const inFlight = installInFlightOf(error.message)
         if (!inFlight) return
-        lastSentTextRef.current = null
         setMessages([])
         clearError()
         onOpenInstall?.(inFlight.sessionId)
     }, [error, setMessages, clearError, onOpenInstall])
-
-    // The engine refused the send because the conversation still holds a run. The text would
-    // otherwise be dropped server-side and never seen again.
-    useEffect(() => {
-        if (!error) return
-        if (classifyChatError(unwrapChatError(error.message)) !== 'run_in_flight') return
-        const text = lastSentTextRef.current
-        lastSentTextRef.current = null
-        if (!text) return
-        // A queued message goes back to waiting rather than into the composer: it left on its own
-        // and it will leave on its own again, without asking the user to press send a second time.
-        // So does a message that ran into a teammate's run: it is new to the agent, and the run
-        // holding the conversation is not this person's to stop.
-        const teammateRun = teammateRunOf(error.message)
-        if (lastSendQueuedRef.current || teammateRun) {
-            lastSendQueuedRef.current = false
-            enqueueMessage(text, teammateRun?.runId ?? activeRunIdRef.current)
-            return
-        }
-        composerRef.current?.restore(text)
-    }, [error, enqueueMessage])
 
     // Whether the agent has a usable model (an active provider + a picked model). Reported
     // by the ModelSelector; gates sending so we never silently fall back to an unconfigured
@@ -812,8 +829,6 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
     const retryLastTurn = useCallback(() => {
         if (sendingRef.current || status === 'submitted' || status === 'streaming') return
         sendingRef.current = true
-        lastSentTextRef.current = null
-        lastSendQueuedRef.current = false
         void regenerate()
     }, [regenerate, status])
     const canRetry = messages.some(message => message.role === 'user')
@@ -823,8 +838,9 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
             // Asked here, while the click is still a user activation: a queued message never goes
             // through sendMessage, which is where the prompt is raised for a message that leaves.
             if (browserPermission() === 'default') askNotificationPermission()
-            enqueueMessage(text, activeRunIdRef.current)
+            const saved = enqueueMessage(text, activeRunIdRef.current)
             conversationRef.current?.scrollToBottom()
+            return saved
         },
         [askNotificationPermission, enqueueMessage]
     )
@@ -841,35 +857,33 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
     const outOfPaidCredit = useMemo(() => turnRanOutOfPaidCredit(messages), [messages])
     const paidSourcesByTurn = useMemo(() => paidDataSourcesByTurn(messages), [messages])
 
-    // The queued message leaves as soon as the conversation is free again. The engine only drops
-    // its session claim once the run has torn its provider down, well after this stream closed, so
-    // the send often lands on a 409 first: the route retries, and the effect above puts the message
-    // back in the queue if it never got through.
-    const canFlush = shouldFlush({ queued, busy: showLoader, uploading, status, hasError: displayedError !== null })
+    const canFlush = shouldFlush({ queued, busy: showLoader || stopping || deliveryBlocked || !autoSendEligible || (queued !== null && queued.id === restoredQueuedId && !shouldKeepQueued(queued, attachRunId ?? activeRunIdRef.current)), uploading, status, hasError: displayedError !== null })
     useEffect(() => {
-        if (!canFlush || !queued || flushingRef.current) return
+        if (!canFlush || !queued || flushingRef.current || stopControl.current() !== null) return
+        const finish = beginDelivery(queued.id)
+        if (!finish) return
         flushingRef.current = queued.id
-        // Only let go of the message once the send has actually been taken.
-        if (!sendMessage({ text: queued.text }, { body: { queued: true } })) {
+        if (!sendMessage({ text: queued.text }, { body: { queued: true }, onAcceptance: outcome => {
+            finish(outcome)
+            if (outcome === 'accepted') onMessageSentRef.current?.()
+        } })) {
+            finish('not-sent')
             flushingRef.current = null
-            return
         }
-        clearQueued()
-        onMessageSentRef.current?.()
-    }, [canFlush, queued, clearQueued, sendMessage])
+    }, [canFlush, queued, beginDelivery, sendMessage])
 
     // A message found waiting when the chat opened only stays waiting while the run it was queued
     // behind is still the one running. Otherwise a tab reopened days later would fire off, on its
     // own, a message nobody is expecting anymore: it goes back to the composer instead.
     useEffect(() => {
-        if (!active || !queued || queued.id !== restoredQueuedId || flushingRef.current || stopping) return
+        if (!active || !queued || queued.id !== restoredQueuedId || flushingRef.current || stopping || stopPending || deliveryBlocked) return
         const activeRunId = attachRunId ?? activeRunIdRef.current
         // A reload reads the conversation as busy before it knows which run is holding it.
         if (activeRunId === null && showLoader) return
         if (shouldKeepQueued(queued, activeRunId)) return
         if (!composerRef.current?.restore(queued.text)) return
         clearQueued()
-    }, [queued, restoredQueuedId, active, attachRunId, showLoader, stopping, clearQueued])
+    }, [queued, restoredQueuedId, active, attachRunId, showLoader, stopping, stopPending, deliveryBlocked, clearQueued])
 
     const footerVisible = !pendingHitl || !!pendingAlert || skillProposals.pinned.length > 0
 
@@ -897,7 +911,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
                                 </div>
                                 <Suggestions className="mt-2 justify-center">
                                     {COWORKER_STARTER_SUGGESTIONS.map(s => (
-                                        <Suggestion key={s} suggestion={s} onClick={text => sendMessage({ text })} />
+                                        <Suggestion key={s} suggestion={s} onClick={text => sendFromThread({ text })} />
                                     ))}
                                 </Suggestions>
                             </ConversationEmptyState>
@@ -919,7 +933,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
                                         hitlCall={hitlCall}
                                         pendingAlertToolCallId={pendingAlert?.toolCallId ?? undefined}
                                         activeRunId={activeRunIdRef.current}
-                                        onSendMessage={sendMessage}
+                                        onSendMessage={sendFromThread}
                                         onDraftReply={draftReply}
                                         showQuickReplies={isLast && !showLoader && !pendingHitl && !pendingAlert && displayedError === null}
                                         onRegenerate={isLast && pendingHitl ? undefined : handleRegenerate}
@@ -946,11 +960,11 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
                         })}
                         {pendingHitl && pendingHitl.kind !== 'takeover' && (
                             <motion.div key={pendingHitl.toolCallId} ref={pendingHitlRef} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}>
-                                {pendingHitl.kind === 'question' && <QuestionForm inline ref={questionFormRef} agentId={agentId} questions={pendingQuestions(pendingHitl.input)} onSend={text => sendMessage({ text })} onCancel={() => dismissHitl(pendingHitl.toolCallId)} textareaRef={inputRef} textareaProps={mentionTextareaProps} />}
-                                {pendingHitl.kind === 'approval' && <ActionApprovalBlock inline approvals={pendingApprovals(pendingHitl.input)} onSubmit={decisions => sendMessage({ text: serializeApprovalDecisions(decisions) })} />}
-                                {pendingHitl.kind === 'secret' && agentId && <SecretRequestBlock inline agentId={agentId} sessionId={sessionId ?? null} secrets={pendingSecrets(pendingHitl.input)} reason={typeof pendingHitl.input.reason === 'string' ? pendingHitl.input.reason : undefined} onDone={summary => sendMessage({ text: summary })} onSkip={() => sendMessage({ text: HITL_CANCELLED.secret })} onDismiss={() => dismissHitl(pendingHitl.toolCallId)} />}
-                                {pendingHitl.kind === 'mcp' && agentId && <McpSignInBlock inline agentId={agentId} {...pendingMcpSignIn(pendingHitl.input)} onDone={summary => sendMessage({ text: summary })} onSkip={() => sendMessage({ text: HITL_CANCELLED.mcp })} />}
-                                {pendingHitl.kind === 'service' && agentId && <ServiceSuggestionBlock inline agentId={agentId} services={(Array.isArray(pendingHitl.input.services) ? pendingHitl.input.services : []) as { slug: string; reason?: string }[]} onDone={summary => sendMessage({ text: summary })} />}
+                                {pendingHitl.kind === 'question' && <QuestionForm inline ref={questionFormRef} agentId={agentId} questions={pendingQuestions(pendingHitl.input)} onSend={text => sendFromThread({ text })} onCancel={() => dismissHitl(pendingHitl.toolCallId)} textareaRef={inputRef} textareaProps={mentionTextareaProps} />}
+                                {pendingHitl.kind === 'approval' && <ActionApprovalBlock inline approvals={pendingApprovals(pendingHitl.input)} onSubmit={decisions => sendFromThread({ text: serializeApprovalDecisions(decisions) })} />}
+                                {pendingHitl.kind === 'secret' && agentId && <SecretRequestBlock inline agentId={agentId} sessionId={sessionId ?? null} secrets={pendingSecrets(pendingHitl.input)} reason={typeof pendingHitl.input.reason === 'string' ? pendingHitl.input.reason : undefined} onDone={summary => sendFromThread({ text: summary })} onSkip={() => sendFromThread({ text: HITL_CANCELLED.secret })} onDismiss={() => dismissHitl(pendingHitl.toolCallId)} />}
+                                {pendingHitl.kind === 'mcp' && agentId && <McpSignInBlock inline agentId={agentId} {...pendingMcpSignIn(pendingHitl.input)} onDone={summary => sendFromThread({ text: summary })} onSkip={() => sendFromThread({ text: HITL_CANCELLED.mcp })} />}
+                                {pendingHitl.kind === 'service' && agentId && <ServiceSuggestionBlock inline agentId={agentId} services={(Array.isArray(pendingHitl.input.services) ? pendingHitl.input.services : []) as { slug: string; reason?: string }[]} onDone={summary => sendFromThread({ text: summary })} />}
                             </motion.div>
                         )}
                         {screenShown && (
@@ -959,8 +973,8 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
                                 active={active}
                                 site={screenSite(messages, takeoverAsk?.request.url ?? null)}
                                 takeoverAsk={takeoverAsk}
-                                onTakeoverDone={summary => sendMessage({ text: summary })}
-                                onTakeoverSkip={() => sendMessage({ text: HITL_CANCELLED.takeover })}
+                                onTakeoverDone={summary => sendFromThread({ text: summary })}
+                                onTakeoverSkip={() => sendFromThread({ text: HITL_CANCELLED.takeover })}
                                 scroller={scroller}
                                 floatingHost={chatRoot}
                                 arriveRef={takeoverAsk ? pendingHitlRef : undefined}
@@ -1026,7 +1040,19 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
                             </motion.div>
                         ) : (
                             <motion.div key="composer" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }} className="overflow-hidden pb-px">
-                                <ChatComposer ref={composerRef} uid={uid} active={active} uploadTarget={uploadTarget} status={status} busy={showLoader} onSend={text => sendMessage({ text })} onSent={() => onMessageSentRef.current?.()} onStop={handleStop} onUploadingChange={setUploading} queue={{ text: queued?.text ?? null, pending: stopping, enqueue: enqueueFromComposer, onSendNow: () => void sendQueuedNow(), onDiscard: clearQueued }} gate={{ ready: modelReady, onBlocked: blockSend, hint: modelHint }} modelSlot={<ModelSelector agentId={agentId} pickerKey={uid} onReadyChange={setModelReady} onOwnConnectionChange={setHasOwnConnection} onConnectionChange={setActiveConnectionId} onRefusedModelChange={setRefusedModel} />} contextSlot={contextStats && <Context usedTokens={contextStats.used} maxTokens={contextStats.max ?? modelContextWindow(contextStats.model, contextStats.provider)} usage={contextStats.usage} modelId={contextStats.model} />} textareaRef={inputRef} textareaProps={mentionTextareaProps} mentionTokens={mentionTokens} />
+                                {stopPending && <div role="status" className="px-3 py-2 text-xs text-muted-foreground">
+                                    {stopping ? 'Requesting stop. Messages stay saved.' : stopControl.manualAllowed ? 'Stop requested. Use Send now to try your saved message. The engine may still be busy.' : 'Stop outcome is unknown. Messages stay saved; open a new conversation to continue.'}
+                                    {!stopping && <button type="button" className="ml-2 underline" onClick={handleStop}>Retry stop</button>}
+                                </div>}
+                                {storageError && <p role="alert" className="px-3 py-2 text-xs">{storageError}</p>}
+                                {stopControl.storageError && <p role="alert" className="px-3 py-2 text-xs">Stop is tracked only in this tab. Keep the page open until its outcome is known.</p>}
+                                {deliveryBlocked && deliveryState !== 'sending' && <p role="status" className="px-3 py-2 text-xs text-muted-foreground">{deliveryState === 'rejected' ? 'Message was not accepted. Use Send now to try again.' : 'Message delivery is not confirmed. Check the conversation first. Send now saves it for review.'}</p>}
+                                {recovered.map(item => <div key={item.id} className="border-t px-3 py-2 text-xs">
+                                    <p>{item.uncertain ? 'Delivery not confirmed. Check the conversation before resending.' : 'Unsent message saved.'}</p>
+                                    <p className="whitespace-pre-wrap break-words">{item.text}</p>
+                                    <button type="button" className="underline" onClick={() => restoreRecovered(item.id, text => composerRef.current?.restore(text) ?? false)}>Restore saved message</button>
+                                </div>)}
+                                <ChatComposer ref={composerRef} uid={uid} active={active} uploadTarget={uploadTarget} status={status} busy={showLoader} onSend={text => sendMessage({ text }, { manual: stopPending && stopControl.manualAllowed })} onSent={() => onMessageSentRef.current?.()} onStop={handleStop} onUploadingChange={setUploading} queue={{ text: queued?.text ?? null, pending: stopping || deliveryState === 'sending', enqueue: enqueueFromComposer, onSendNow: () => void sendQueuedNow(), onDiscard: clearQueued }} gate={{ ready: modelReady, onBlocked: blockSend, hint: modelHint }} modelSlot={<ModelSelector agentId={agentId} pickerKey={uid} onReadyChange={setModelReady} onOwnConnectionChange={setHasOwnConnection} onConnectionChange={setActiveConnectionId} onRefusedModelChange={setRefusedModel} />} contextSlot={contextStats && <Context usedTokens={contextStats.used} maxTokens={contextStats.max ?? modelContextWindow(contextStats.model, contextStats.provider)} usage={contextStats.usage} modelId={contextStats.model} />} textareaRef={inputRef} textareaProps={mentionTextareaProps} mentionTokens={mentionTokens} />
                                 <ComposerSubscriptionCta open={!hasOwnConnection} onClick={connectSubscription} />
                             </motion.div>
                         )}

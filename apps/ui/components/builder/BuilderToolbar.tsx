@@ -1,6 +1,7 @@
 'use client'
 
 import { ClaimSpaceDialog } from '@/components/dialogs/ClaimSpaceDialog'
+import { ImportAgentDialog } from '@/components/dialogs/ImportAgentDialog'
 import { NewAgentDialog } from '@/components/dialogs/NewAgentDialog'
 import { TemplateLibraryDialog } from '@/components/templates/TemplateLibraryDialog'
 import { MyTemplatesDialog } from '@/components/templates/expert/MyTemplatesDialog'
@@ -18,7 +19,7 @@ import { useControlCenterStore } from '@/stores/control-center.store'
 import { useSession } from '@/supabase/session/SessionProvider'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { TooltipDisabledReason, TooltipLabeled } from '@/components/ui/tooltip'
-import { CirclePlusIcon, GridIcon, PlusIcon, SearchIcon } from '@/lib/icons'
+import { CirclePlusIcon, GridIcon, PlusIcon, SearchIcon, UploadIcon } from '@/lib/icons'
 
 export function BuilderToolbar() {
     const agents = useBoardStore(s => s.agents)
@@ -27,7 +28,7 @@ export function BuilderToolbar() {
     const placingAgentId = useBoardStore(s => s.placingAgentId)
     const placement = useBoardStore(s => s.placement)
     const cancelPlacement = useBoardStore(s => s.cancelPlacement)
-    const { libraryOpen, newAgentOpen, librarySlug, newBoxOpen, openLibrary, openNewAgent, setLibraryOpen, setNewAgentOpen, setNewBoxOpen } = useBuilderDialogsStore()
+    const { libraryOpen, newAgentOpen, librarySlug, newBoxOpen, importAgentOpen, openLibrary, openNewAgent, setLibraryOpen, setNewAgentOpen, setNewBoxOpen, setImportAgentOpen } = useBuilderDialogsStore()
     const openControlCenter = useControlCenterStore(s => s.openControlCenter)
     const isTemplateAuthor = useIsTemplateAuthor()
     const { isAnonymous } = useSession()
@@ -83,6 +84,8 @@ export function BuilderToolbar() {
                                     <ChromeButton icon={CirclePlusIcon} label="New coworker" disabledReason={needsMachineReason} onClick={openNewAgent} />
                                     <ChromeDivider />
                                     <ChromeButton icon={GridIcon} label="Template" disabledReason={needsMachineReason} onClick={() => openLibrary()} />
+                                    <ChromeDivider />
+                                    <ChromeButton icon={UploadIcon} label="Import" disabledReason={needsMachineReason} onClick={() => setImportAgentOpen(true)} />
                                 </div>
                                 {/* Below `sm` the two labels crowd the notification bell: one "+" opens both choices. */}
                                 <div className="flex shrink-0 sm:hidden">
@@ -100,6 +103,10 @@ export function BuilderToolbar() {
                                             <DropdownMenuItem onSelect={() => openLibrary()} className="gap-2 whitespace-nowrap">
                                                 <GridIcon className="size-4" />
                                                 Template
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onSelect={() => setImportAgentOpen(true)} className="gap-2 whitespace-nowrap">
+                                                <UploadIcon className="size-4" />
+                                                Import coworker
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
@@ -133,6 +140,7 @@ export function BuilderToolbar() {
             {/* Dialogs montés en permanence (Radix les portale). Une Box, elle, se crée depuis une
                 face d'une Box existante sur le board (cf. IsoBoard). */}
             <NewAgentDialog open={newAgentOpen} onOpenChange={setNewAgentOpen} onBrowseTemplates={openLibrary} />
+            <ImportAgentDialog open={importAgentOpen} onOpenChange={setImportAgentOpen} />
             <TemplateLibraryDialog open={libraryOpen} onOpenChange={setLibraryOpen} priorityCategory={viewerSignals.category} preferredConnectorSlugs={viewerSignals.connectorSlugs} initialSlug={librarySlug} onCreateFromScratch={openNewAgent} />
             <ClaimSpaceDialog target={null} open={newBoxOpen} onClose={() => setNewBoxOpen(false)} />
             {isTemplateAuthor && <MyTemplatesDialog />}

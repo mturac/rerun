@@ -47,6 +47,9 @@ export const toolsSchema = z.object({
     brain: z.boolean().default(true),
     computer: z.boolean().default(true),
     paidData: z.boolean().default(true),
+    externalAgents: z.boolean().default(true),
+    voice: z.boolean().default(true),
+    localRunner: z.boolean().default(true),
 })
 export type Tools = z.infer<typeof toolsSchema>
 

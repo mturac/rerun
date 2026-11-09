@@ -51,3 +51,29 @@ describe('notificationPayloadSchema origin', () => {
         expect(parsed.originAgentId).toBeUndefined()
     })
 })
+
+describe('notificationPayloadSchema execution updates', () => {
+    const EXECUTION_PAYLOAD = {
+        event: 'agent.execution.updated',
+        kind: 'info',
+        agentId: 'foreman',
+        sessionId: 'ses_1',
+        runId: 'run_1',
+        message: 'Execution updated',
+        metadata: null,
+        title: 'Scheduled research',
+        source: 'schedule',
+        originAgentId: 'agt_caller',
+        timestamp: '2026-08-18T14:00:00.000Z',
+        execution: { agentId: 'foreman', sessionId: 'ses_1', runId: 'run_1', revision: 3, state: 'idle', attention: { kind: 'question', revision: 2 } },
+    }
+
+    it('accepts the payload shape the engine publishes for an execution update', () => {
+        const parsed = notificationPayloadSchema.parse(EXECUTION_PAYLOAD)
+        expect(parsed.execution?.revision).toBe(3)
+    })
+
+    it('rejects an execution update with an empty message, the shape that used to spam 400s', () => {
+        expect(notificationPayloadSchema.safeParse({ ...EXECUTION_PAYLOAD, message: '' }).success).toBe(false)
+    })
+})

@@ -43,7 +43,7 @@ export type ComposerQueue = {
     text: string | null
     /** A stop is under way: the pill waits rather than firing twice. */
     pending: boolean
-    enqueue: (text: string) => void
+    enqueue: (text: string) => boolean | void
     onSendNow: () => void
     onDiscard: () => void
 }
@@ -76,7 +76,7 @@ export type ChatComposerProps = {
     status: ChatStatus
     /** The conversation is busy, including a run this tab never streamed. */
     busy: boolean
-    onSend: (text: string) => void
+    onSend: (text: string) => boolean | void
     onSent?: () => void
     /** Ends the run in flight. Without it the composer offers no way to stop. */
     onStop?: () => void
@@ -193,12 +193,16 @@ export function ChatComposer({
                 el.value = collapsed
                 el.setSelectionRange(collapsed.length, collapsed.length)
                 applyComposerText(collapsed)
-                return true
+                try {
+                    if (localStorage.getItem(`composer-draft-${uid}`) === expandLinks(collapsed)) return true
+                } catch {}
+                toast.error('The restored text is only in this tab. Copy it before reloading.')
+                return false
             },
             sync: (text?: string) => applyComposerText(text ?? inputRef.current?.value ?? ''),
             focus: () => inputRef.current?.focus({ preventScroll: true }),
         }),
-        [inputRef, applyComposerText, collapseLinks]
+        [inputRef, applyComposerText, collapseLinks, expandLinks, uid]
     )
 
     const [uploading, setUploading] = useState(false)
@@ -284,10 +288,10 @@ export function ChatComposer({
             // A run still holds the conversation: the message waits rather than being dropped, and
             // leaves on its own once the run ends.
             if (busy && queue) {
-                queue.enqueue(text)
+                if (queue.enqueue(text) === false) throw new SubmitBlocked('Your message was not saved. Keep this page open and try again.')
                 return
             }
-            onSend(text)
+            if (onSend(text) === false) throw new SubmitBlocked('Your message was not sent. It is kept in the composer.')
             onSent?.()
         },
         [busy, queue, onSend, onSent]
@@ -339,14 +343,21 @@ export function ChatComposer({
 
             const messageText = await appendUploadedAttachments(trimmed, files.length)
             if (!messageText) return
-            deliver(messageText)
+            try { deliver(messageText) } catch (error) {
+                const field = inputRef.current
+                if (field && !field.value.trim()) {
+                    field.value = collapseLinks(trimmed)
+                    applyComposerText(field.value)
+                }
+                throw error
+            }
             setAttachmentUploads({})
             uploads.clearFinished()
             clearDraft()
             setExpandable(false)
             setComposerEmpty(true)
         },
-        [gate, uploads, clearDraft, deliver, expandLinks, clearLinks, appendUploadedAttachments]
+        [gate, uploads, clearDraft, deliver, expandLinks, clearLinks, appendUploadedAttachments, inputRef, collapseLinks, applyComposerText]
     )
 
     // The chips live inside PromptInput, which only empties them on its own submit. A voice message

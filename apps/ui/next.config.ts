@@ -21,7 +21,7 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BUILD_SHA: process.env.NEXT_PUBLIC_BUILD_SHA,
   },
   experimental: {
-    serverActions: { bodySizeLimit: "64mb" },
+    serverActions: { bodySizeLimit: "150mb" },
   },
   // The brand pages live in the back office of Rerun Cloud, an app of its own.
   async redirects() {

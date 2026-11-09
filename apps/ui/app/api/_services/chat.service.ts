@@ -1,8 +1,11 @@
+import { sessionExecutionOf } from '@/lib/engine/session-execution'
+import { sessionObservationOf, type SessionObservation } from '@/lib/board/session-execution'
+import { applySessionExecution, applyLegacySessionStatus, acknowledgeSessionExecution } from './session-execution.service'
 import { COWORKER_NOT_FOUND, assertSessionInWorkspace, enforce, requireLightSessionActor, spaceAccessFor, visibleSpaceIds, type AccessLevel, type Actor } from '@/app/api/_auth/access'
 import { AuthorizationError, requireWorkspaceContext } from '@/app/api/_auth/ownership'
 import type { Database } from '@/app/api/database.types'
 import type { SessionStatus } from '@/lib/board/types'
-import { getRunSteps, listRuns } from '@/lib/engine/client'
+import { getRunSteps, getSessionExecution, listRuns } from '@/lib/engine/client'
 import type { EngineConnection, EngineRun, SessionSource } from '@/lib/engine/types'
 import { FOREMAN_AGENT_ID, type Usage } from '@rerun/contracts'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
@@ -110,25 +113,9 @@ export async function getExistingSession(sessionId: string): Promise<{ sessionId
 
 // Persist a Supabase session row pointing at the engine-created session.
 export async function createSessionRow(agentId: string, engineSessionId: string, title: string, originAgentId?: string | null, source?: SessionSource): Promise<string> {
-    const supabase = createServiceRoleClient()
-
-    const { data: session } = await supabase
-        .from('sessions')
-        .insert<Database['public']['Tables']['sessions']['Insert']>({
-            agent_id: agentId,
-            engine_session_id: engineSessionId,
-            title: title?.slice(0, 50) || 'New conversation',
-            origin_agent_id: originAgentId ?? null,
-            source: source ?? 'dashboard',
-        })
-        .select('id')
-        .single()
-
-    if (!session) {
-        throw new Error('Failed to create session')
-    }
-
-    return session.id
+    const id = await ensureSessionRow(agentId, engineSessionId, title, { originAgentId, source })
+    if (!id) throw new Error('Failed to create session')
+    return id
 }
 
 // Mirrors an engine session the hub opened outside the browser: the foreman handing an agent its
@@ -171,27 +158,48 @@ export async function sessionRowOf(agentId: string, engineSessionId: string): Pr
     return data?.id ?? null
 }
 
-export async function updateSessionStatus(sessionId: string, status: SessionStatus) {
-    const supabase = createServiceRoleClient()
-    await supabase.from('sessions').update<Database['public']['Tables']['sessions']['Update']>({ status }).eq('id', sessionId)
+export async function projectChatAdmission(workspaceId: number, agentId: string, engineAgentId: string, engineSessionId: string, response: Response) {
+    const execution = sessionExecutionOf(response)
+    if (execution) {
+        if (execution.agentId !== engineAgentId || execution.sessionId !== engineSessionId || execution.runId !== response.headers.get('x-run-id')) throw new Error('Engine execution identity mismatch')
+        return applySessionExecution(workspaceId, agentId, execution)
+    }
+    await applyLegacySessionStatus(agentId, engineSessionId, 'working')
+    return null
 }
 
-// Acknowledging an alert only clears that alert: a run started since then owns the status now.
-export async function clearSessionAlert(sessionId: string) {
-    const supabase = createServiceRoleClient()
-    await supabase.from('sessions').update<Database['public']['Tables']['sessions']['Update']>({ status: 'idle' }).eq('id', sessionId).eq('status', 'awaiting_ack')
+export async function readSessionObservation(sessionId: string) {
+    const { data } = await createServiceRoleClient().from('sessions').select('engine_run_id,execution_revision,execution_projection_version,execution_attention_revision,updated_at').eq('id', sessionId).single()
+    return data ? sessionObservationOf(data) : null
+}
+
+export async function clearSessionAlert(sessionId: string, observation?: SessionObservation | null) {
+    const actor = await requireLightSessionActor()
+    await assertSessionInWorkspace(sessionId, actor)
+    if (!observation) return null
+    return acknowledgeSessionExecution(actor.workspaceId, sessionId, observation)
+}
+
+export async function refreshSessionExecution(sessionId: string) {
+    const actor = await requireLightSessionActor()
+    const session = await assertSessionInWorkspace(sessionId, actor)
+    if (!session.engine_agent_id || !session.engine_session_id) return null
+    const engine = await findWorkspaceEngine(actor.workspaceId)
+    if (!engine) return null
+    const execution = await getSessionExecution(engine.conn, session.engine_agent_id, session.engine_session_id)
+    return execution ? applySessionExecution(actor.workspaceId, session.agent_id, execution) : null
 }
 
 // A decided skill proposal only clears the wait it raised itself. The status alone cannot tell: a
 // run stopped on request_approval leaves the same `awaiting_approval`, and that one is still owed
 // an answer. What the session waits on is the latest thing its agent said that was not a `done`.
-export async function clearSkillProposalAttention(sessionId: string, agentId: string, engineSessionId: string | null) {
-    if (!engineSessionId) return
+export async function clearSkillProposalAttention(sessionId: string, agentId: string, engineSessionId: string | null, observation?: SessionObservation | null) {
+    if (!engineSessionId || !observation) return
     const supabase = createServiceRoleClient()
     const { data } = await selectMany(supabase, 'notifications', ['metadata'] as const, { agent_id: agentId, engine_session_id: engineSessionId, kind: { neq: 'done' } }, { column: 'created_at', ascending: false }, 1)
     const waitingOn = (data?.[0]?.metadata as { toolName?: unknown } | null | undefined)?.toolName
     if (waitingOn !== 'skill_propose') return
-    await supabase.from('sessions').update<Database['public']['Tables']['sessions']['Update']>({ status: 'idle' }).eq('id', sessionId).eq('status', 'awaiting_approval')
+    await clearSessionAlert(sessionId, observation)
 }
 
 export type SessionEngineContext = { agentId: string; conn: EngineConnection; engineAgentId: string; engineSessionId: string | null }
@@ -269,37 +277,27 @@ export async function findSessionActiveRun(sessionId: string): Promise<string | 
     }
 }
 
-// Which of these sessions the engine confirms has no run in flight: one listing of the running runs
-// per agent rather than one per session. A session never mirrored to the engine, or on a workspace
-// that has no machine anymore, counts as idle; one whose agent could not be asked is left out, so it
-// stays as it was. Sessions of another workspace, or of a Box the caller cannot see, are ignored.
+// Reconcile only sessions the caller reaches with the engine's durable execution snapshot.
+// Missing engines or old endpoints are unknown; absence of a running run is not an idle proof.
 export async function findIdleSessions(sessionIds: string[], actor?: Actor): Promise<string[]> {
     const callerActor = actor ? Promise.resolve(actor) : requireLightSessionActor()
     const [resolvedActor, { data: rows }, engine] = await Promise.all([
         callerActor,
-        selectManyWithJoins(createServiceRoleClient(), 'sessions', ['id', 'engine_session_id'] as const, { agent: { table: 'agents', foreignKey: 'agents!sessions_agent_id_fkey', columns: ['workspace_id', 'space_id', 'engine_agent_id'] } } as const, { id: sessionIds }),
+        selectManyWithJoins(createServiceRoleClient(), 'sessions', ['id', 'agent_id', 'engine_session_id'] as const, { agent: { table: 'agents', foreignKey: 'agents!sessions_agent_id_fkey', columns: ['workspace_id', 'space_id', 'engine_agent_id'] } } as const, { id: sessionIds }),
         callerActor.then(a => findWorkspaceEngine(a.workspaceId)),
     ])
     const visible = await visibleSpaceIds(resolvedActor)
     const owned = (rows ?? []).filter(row => row.agent?.workspace_id === resolvedActor.workspaceId && (visible === 'all' || visible.has(row.agent.space_id)))
-    if (!engine) return owned.map(row => row.id)
-
+    if (!engine) return []
     const idle: string[] = []
-    const byAgent = new Map<string, { id: string; engineSessionId: string }[]>()
     for (const row of owned) {
-        if (!row.agent.engine_agent_id || !row.engine_session_id) {
-            idle.push(row.id)
-            continue
-        }
-        byAgent.set(row.agent.engine_agent_id, [...(byAgent.get(row.agent.engine_agent_id) ?? []), { id: row.id, engineSessionId: row.engine_session_id }])
+        if (!row.agent.engine_agent_id || !row.engine_session_id) continue
+        try {
+            const execution = await getSessionExecution(engine.conn, row.agent.engine_agent_id, row.engine_session_id)
+            if (!execution) continue
+            const projected = await applySessionExecution(resolvedActor.workspaceId, row.agent_id, execution)
+            if (projected.status === 'idle') idle.push(row.id)
+        } catch { /* Unavailable authority leaves the current projection intact. */ }
     }
-    await Promise.all(
-        [...byAgent].map(async ([engineAgentId, sessions]) => {
-            const runs = await listRuns(engine.conn, engineAgentId, { status: 'running', limit: 200 }).catch(() => null)
-            if (!runs) return
-            const live = new Set(runs.filter(r => r.status === 'running').map(r => r.sessionId))
-            for (const session of sessions) if (!live.has(session.engineSessionId)) idle.push(session.id)
-        }),
-    )
     return idle
 }

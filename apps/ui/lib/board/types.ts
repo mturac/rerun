@@ -1,3 +1,4 @@
+import type { SessionObservation } from './session-execution'
 import type { Database } from '@/app/api/database.types'
 
 export type AgentRow = Database['public']['Tables']['agents']['Row']
@@ -19,6 +20,7 @@ export const BOX_NAME_MAX = 60
 
 
 export type SessionEntry = {
+    observation?: SessionObservation | null
     id: string
     agentId: string
     originAgentId: string | null

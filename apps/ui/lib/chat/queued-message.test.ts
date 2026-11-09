@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { appendAttachmentsRef, buildAttachmentsRef } from './attachments-marker'
-import { parseQueued, queuedPreview, shouldFlush, shouldKeepQueued, type QueuedMessage } from './queued-message'
+import { canAttemptAfterStop, messageAcceptance, parseQueued, queuedPreview, shouldFlush, shouldKeepQueued, type QueuedMessage } from './queued-message'
 
 const queued: QueuedMessage = { id: 'q1', text: 'Ship it', createdAt: 1_757_000_000_000, behindRunId: 'run-1' }
 
@@ -81,5 +81,51 @@ describe('shouldFlush', () => {
         ['the run ended on an error', { hasError: true }],
     ])('waits while %s', (_label, override) => {
         expect(shouldFlush({ ...free, ...override })).toBe(false)
+    })
+})
+
+
+describe('messageAcceptance', () => {
+    it('requires a successful engine response with a run identity', () => {
+        expect(messageAcceptance(new Response(null, { headers: { 'X-Run-Id': 'run-1' } }))).toBe('accepted')
+        expect(messageAcceptance(new Response(null))).toBe('uncertain')
+        expect(messageAcceptance(new Response(null, { status: 500, headers: { 'X-Run-Id': 'run-1' } }))).toBe('uncertain')
+        expect(messageAcceptance(new Response(null, { status: 409 }))).toBe('rejected')
+    })
+    it('accepts a successful hub response without an engine run', () => {
+        expect(messageAcceptance(new Response(null), false)).toBe('accepted')
+    })
+})
+
+
+describe('definitive refusal classification', () => {
+    it.each([400, 401, 402, 403, 404, 409, 413])('classifies HTTP %s as rejected without implying acceptance', status => {
+        expect(messageAcceptance(new Response(null, { status }))).toBe('rejected')
+    })
+    it.each([500, 502, 503])('leaves HTTP %s ambiguous', status => {
+        expect(messageAcceptance(new Response(null, { status }))).toBe('uncertain')
+    })
+})
+
+
+describe('manual admission after stop', () => {
+    it('does not bypass a session-wide ACK without a captured run identity', () => {
+        expect(canAttemptAfterStop({ id: 'stop-1', runId: null, phase: 'acknowledged' })).toBe(false)
+        expect(canAttemptAfterStop({ id: 'stop-1', runId: null, phase: 'unknown' })).toBe(false)
+    })
+    it('permits an explicit attempt for a captured run only after the stop request returns', () => {
+        expect(canAttemptAfterStop({ id: 'stop-1', runId: 'old-run', phase: 'requesting' })).toBe(false)
+        expect(canAttemptAfterStop({ id: 'stop-1', runId: 'old-run', phase: 'acknowledged' })).toBe(true)
+        expect(canAttemptAfterStop({ id: 'stop-1', runId: 'old-run', phase: 'unknown' })).toBe(true)
+    })
+})
+
+
+describe('ambiguous HTTP responses', () => {
+    it.each([408, 429, 499])('does not treat HTTP %s as proof that nothing was accepted', status => {
+        expect(messageAcceptance(new Response(null, { status }))).toBe('uncertain')
+    })
+    it('keeps a failed response carrying a run identity ambiguous', () => {
+        expect(messageAcceptance(new Response(null, { status: 400, headers: { 'X-Run-Id': 'possibly-accepted' } }))).toBe('uncertain')
     })
 })

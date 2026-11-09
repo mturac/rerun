@@ -6,7 +6,7 @@ import { isPhoneStepPending } from '@rerun/cloud/phone.server'
 import { messageAuthorOf } from '@/app/api/_services/me.service'
 import { getWorkspaceConnection, NoEngineError } from '@/app/api/_services/workspace-engine.service'
 import { QUEUED_RETRY_DELAYS_MS, startChat } from '@/lib/chat/start-chat'
-import { cancelRun, reconnectRun } from '@/lib/engine/client'
+import { cancelRun, getRun } from '@/lib/engine/client'
 import { cancelForemanSessionRuns, engineSessionOf, loadForemanConversation, readForemanEngineMessages, startEngineConversation, touchForemanConversation } from '@/lib/foreman/conversation'
 import { foremanEngineBrief } from '@/lib/foreman/engine-brief'
 import { mintForemanHubToken } from '@/lib/foreman/hub-token'
@@ -70,7 +70,7 @@ export async function POST(req: Request): Promise<Response> {
     let conn: Awaited<ReturnType<typeof getWorkspaceConnection>>
     try {
         conn = await getWorkspaceConnection(ctx.workspace.id)
-        engineRes = await startChat(conn, FOREMAN_AGENT_ID, { sessionId: existing?.engineSessionId ?? undefined, message: text, connectionId, model, source: 'dashboard', foreman: { ...foremanEngineBrief(state), hubToken: mintForemanHubToken(ctx.workspace.id, ctx.userId) ?? undefined }, author: messageAuthorOf(ctx), callableAgentIds: await callableEngineAgentIds(actorFromContext(ctx)) }, queued ? QUEUED_RETRY_DELAYS_MS : null)
+        engineRes = await startChat(conn, FOREMAN_AGENT_ID, { sessionId: existing?.engineSessionId ?? undefined, message: text, connectionId, model, source: 'dashboard', foreman: { ...foremanEngineBrief(state), hubToken: mintForemanHubToken(ctx.workspace.id, ctx.userId) ?? undefined }, author: messageAuthorOf(ctx), callableAgentIds: await callableEngineAgentIds(actorFromContext(ctx)) }, queued ? QUEUED_RETRY_DELAYS_MS : null, req.signal)
     } catch (err) {
         // The machine went away under a conversation that was already going: the browser hides the
         // foreman, which only exists beside a machine.
@@ -78,16 +78,11 @@ export async function POST(req: Request): Promise<Response> {
         return Response.json({ error: `Engine error: ${err instanceof Error ? err.message : 'Failed to start chat'}` }, { status: 502 })
     }
 
-    // Same contract as an agent chat. A send that raced a run already under way tails that run
-    // instead of starting a second one; a queued message carries text nobody has read yet, so it is
-    // handed back for the column to queue again rather than dropped.
+    // Without a message identity, a busy run may be answering different text from another tab.
+    // The column restores typed text or queues it again when it receives this response.
     if (engineRes.status === 409) {
         const busy = (await engineRes.json().catch(() => null)) as { runId?: string; startedAt?: string | null } | null
-        const busyResponse = () => Response.json({ error: 'run_in_flight', runId: busy?.runId ?? null, startedAt: busy?.startedAt ?? null }, { status: 409 })
-        if (queued || !busy?.runId) return busyResponse()
-        const tail = await reconnectRun(conn, FOREMAN_AGENT_ID, busy.runId).catch(() => null)
-        if (!tail || tail.status === 204 || !tail.ok || !tail.body) return busyResponse()
-        return streamResponse(tail, busy.runId)
+        return Response.json({ error: 'run_in_flight', runId: busy?.runId ?? null, startedAt: busy?.startedAt ?? null }, { status: 409 })
     }
     if (!engineRes.ok || !engineRes.body) {
         const errBody = await engineRes.text().catch(() => '')
@@ -140,10 +135,18 @@ export async function DELETE(req: Request): Promise<Response> {
     if (!runId && !sessionId) return Response.json({ error: 'Missing run id' }, { status: 400 })
 
     try {
-        // The run this tab streamed is stopped by name, which also works on an engine that cannot
-        // list the foreman's runs yet. The session covers a run the tab never held the id of.
-        if (runId) await cancelRun(await getWorkspaceConnection(ctx.workspace.id), FOREMAN_AGENT_ID, runId)
-        if (sessionId) await cancelForemanSessionRuns(ctx, sessionId).catch(err => (runId ? undefined : Promise.reject(err)))
+        if (runId) {
+            if (!sessionId) return Response.json({ error: 'Missing session id' }, { status: 400 })
+            const conversation = await engineSessionOf(ctx, sessionId)
+            if (conversation?.backend !== 'engine' || !conversation.engineSessionId) return Response.json({ error: 'Conversation not found' }, { status: 404 })
+            const conn = await getWorkspaceConnection(ctx.workspace.id)
+            const run = await getRun(conn, FOREMAN_AGENT_ID, runId)
+            if (run.id !== runId || run.agentId !== FOREMAN_AGENT_ID || run.sessionId !== conversation.engineSessionId) return Response.json({ error: 'Run not found' }, { status: 404 })
+            // A session scan after cancellation could stop the next run that another tab started.
+            await cancelRun(conn, FOREMAN_AGENT_ID, runId)
+        } else if (sessionId) {
+            await cancelForemanSessionRuns(ctx, sessionId)
+        }
     } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : 'Failed to stop the run' }, { status: 502 })
     }

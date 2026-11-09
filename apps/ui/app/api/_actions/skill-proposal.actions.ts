@@ -1,7 +1,7 @@
 'use server'
 
 import { deniedCode, type DeniedCode } from '@/app/api/_auth/access'
-import { clearSkillProposalAttention, getAgentChatTarget, getSessionEngineContext } from '@/app/api/_services/chat.service'
+import { readSessionObservation, clearSkillProposalAttention, getAgentChatTarget, getSessionEngineContext } from '@/app/api/_services/chat.service'
 import { decideSkillProposal, listSkillProposals } from '@/lib/engine/client'
 import { LOCKED_WRITE_ERROR } from '@/app/api/_services/agent-content.service'
 import type { EngineSkillProposal } from '@/lib/engine/types'
@@ -29,8 +29,9 @@ export async function decideSkillProposalAction(
         if (!ctx) return { success: false, error: 'Coworker not reachable' }
         const { contentLocked } = await getAgentChatTarget(ctx.agentId, 'manage')
         if (decision === 'accept' && contentLocked) return { success: false, error: LOCKED_WRITE_ERROR }
+        const observation = await readSessionObservation(sessionId)
         const proposal = await decideSkillProposal(ctx.conn, ctx.engineAgentId, proposalId, decision)
-        await clearSkillProposalAttention(sessionId, ctx.agentId, ctx.engineSessionId).catch(() => {})
+        await clearSkillProposalAttention(sessionId, ctx.agentId, ctx.engineSessionId, observation).catch(() => {})
         return { success: true, proposal }
     } catch (err) {
         return { success: false, error: err instanceof Error ? err.message : 'Failed to update the proposal', code: deniedCode(err) }

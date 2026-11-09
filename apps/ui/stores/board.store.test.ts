@@ -8,25 +8,28 @@ const actions = vi.hoisted(() => ({
     installSharedAgentAction: vi.fn(),
     duplicateAgentAction: vi.fn(),
     startKickoffAction: vi.fn(),
+    acknowledgeSessionAlertAction: vi.fn(),
+    fetchLiveSessions: vi.fn(),
 }))
 
 vi.mock('@/app/api/_actions/agent.actions', () => ({ deleteAgentAction: vi.fn(), duplicateAgentAction: actions.duplicateAgentAction, moveAgentAction: vi.fn(), renameAgentAction: vi.fn() }))
 vi.mock('@/app/api/_actions/chat.actions', () => ({ startKickoffAction: actions.startKickoffAction }))
 vi.mock('@/app/api/_actions/services.actions', () => ({ createAgentWithSetupAction: actions.createAgentWithSetupAction }))
-vi.mock('@/app/api/_actions/session.actions', () => ({ fetchSessionActiveRun: vi.fn() }))
+vi.mock('@/app/api/_actions/session.actions', () => ({ fetchSessionActiveRun: vi.fn(), findIdleSessionsAction: vi.fn(), acknowledgeSessionAlertAction: actions.acknowledgeSessionAlertAction }))
 vi.mock('@/app/api/_actions/space.actions', () => ({ claimSpaceAction: vi.fn(), deleteSpaceAction: vi.fn(), renameSpaceAction: vi.fn() }))
 vi.mock('@/app/api/_actions/agent-share.actions', () => ({ installSharedAgentAction: actions.installSharedAgentAction }))
 vi.mock('@/app/api/_actions/template.actions', () => ({ installTemplateAction: actions.installTemplateAction }))
+vi.mock('@/lib/board/live-sessions', async importOriginal => ({ ...(await importOriginal<object>()), fetchLiveSessions: actions.fetchLiveSessions }))
 vi.mock('@/lib/confetti', () => ({ fireRerunConfetti: vi.fn() }))
 vi.mock('@/lib/templates/install-feedback', () => ({ reportDuplicate: vi.fn(), reportInstall: vi.fn(), reportShareInstall: vi.fn() }))
 vi.mock('@rerun/analytics/client', () => ({ track: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn() } }))
 // The store builds its client once, at import: the fake lives here so a test can read its writes
 // and make a table refuse them.
-const db = vi.hoisted(() => ({ fake: undefined as unknown as FakeSupabase, refusing: new Set<string>() }))
+const db = vi.hoisted(() => ({ fake: undefined as unknown as FakeSupabase, refusing: new Set<string>(), readRows: new Map<string, unknown[]>() }))
 vi.mock('@/supabase/client', async () => {
     const { fakeSupabase } = await import('@/test/supabase-fake')
-    db.fake = fakeSupabase(table => (db.refusing.has(table) ? { error: { message: 'refused' } } : undefined))
+    db.fake = fakeSupabase(table => (db.refusing.has(table) ? { error: { message: 'refused' } } : db.readRows.has(table) ? { data: db.readRows.get(table) } : undefined))
     return { createClient: () => db.fake.client }
 })
 
@@ -49,6 +52,7 @@ beforeEach(() => {
     vi.clearAllMocks()
     useBoardStore.setState(INITIAL, true)
     db.refusing.clear()
+    db.readRows.clear()
     db.fake.calls.length = 0
     db.fake.chains.length = 0
 })
@@ -448,4 +452,62 @@ describe('kickoff of a coworker created right after another one', () => {
         expect(selected).toEqual({ agentId: 'tracker', sessionId: 'tracker-session' })
         expect(useBoardStore.getState().pendingOpenSession).toEqual({ agentId: 'tracker', sessionId: 'tracker-session', runId: 'tracker-run' })
     })
+})
+
+describe('session projection ordering', () => {
+    const newer = { kind: 'execution' as const, runId: 'run-b', revision: 4, attentionRevision: 4, projectionVersion: 8 }
+    const row = { id: 's', agentId: 'a', originAgentId: null, status: 'awaiting_ack' as const, observation: newer }
+    it('rejects old realtime and legacy events after a fenced projection', () => {
+        useBoardStore.setState({ sessions: [row] })
+        useBoardStore.getState()._onSessionUpdate({ ...row, status: 'idle', observation: { ...newer, projectionVersion: 7 } })
+        useBoardStore.getState()._onSessionUpdate({ ...row, status: 'working', observation: null })
+        expect(useBoardStore.getState().sessions).toEqual([row])
+    })
+    it('does not let a delayed ACK response replace a newer run snapshot', async () => {
+        let resolve!: (value: unknown) => void
+        actions.acknowledgeSessionAlertAction.mockReturnValue(new Promise(r => { resolve = r }))
+        useBoardStore.setState({ sessions: [row] })
+        useBoardStore.getState().setSessionStatus('s','idle',newer)
+        const next = { ...row, status: 'working' as const, observation: { ...newer, runId: 'run-c', revision: 5, projectionVersion: 10 } }
+        useBoardStore.getState()._onSessionUpdate(next)
+        resolve({ sessionId: 's', status: 'working', observation: { ...newer, projectionVersion: 9 } })
+        await Promise.resolve()
+        expect(useBoardStore.getState().sessions).toEqual([next])
+        expect(db.fake.writes('sessions')).toEqual([])
+    })
+    it('does not invent an ACK token for callers missing their rendered observation', () => {
+        useBoardStore.setState({ sessions: [row] })
+        useBoardStore.getState().setSessionStatus('s','idle')
+        expect(actions.acknowledgeSessionAlertAction).not.toHaveBeenCalled()
+        expect(useBoardStore.getState().sessions).toEqual([row])
+    })
+})
+
+it('keeps a projection tombstone when overlapping reconciles remove an idle row', async () => {
+    const old = { id: 's', agentId: 'a', originAgentId: null, status: 'working' as const, observation: { kind: 'execution' as const, runId: 'a', revision: 1, attentionRevision: null, projectionVersion: 1 } }
+    let resolve!: (value: unknown) => void
+    actions.fetchLiveSessions.mockReturnValueOnce(new Promise(r => { resolve = r })).mockResolvedValueOnce([])
+    useBoardStore.setState({ agents: [agent('a','box',0,0)], sessions: [old] })
+    const first = useBoardStore.getState().reconcileSessions()
+    useBoardStore.getState()._onSessionUpdate({ ...old, status: 'idle', observation: { ...old.observation, revision: 2, projectionVersion: 2 } })
+    await useBoardStore.getState().reconcileSessions()
+    resolve([old])
+    await first
+    expect(useBoardStore.getState().sessions.some(s => s.id === 's' && s.status === 'working')).toBe(false)
+})
+
+it('does not let a delayed hydrate overwrite a newer realtime execution', async () => {
+    const old = { id: 's', agentId: 'a', originAgentId: null, status: 'working' as const, observation: { kind: 'execution' as const, runId: 'r', revision: 1, attentionRevision: null, projectionVersion: 1 } }
+    let resolve!: (value: unknown) => void
+    actions.fetchLiveSessions.mockReturnValueOnce(new Promise(r => { resolve = r }))
+    db.readRows.set('agents',[{ id: 'a', name: 'A', workspace_id: 7, space_id: 'box', col: 0, row: 0, status: 'idle' }])
+    useBoardStore.setState({ agents: [agent('a','box',0,0)], sessions: [old] })
+    const loading = useBoardStore.getState().hydrate(7)
+    await vi.waitFor(() => expect(actions.fetchLiveSessions).toHaveBeenCalled())
+    const newer = { ...old, status: 'idle' as const, observation: { ...old.observation, revision: 2, projectionVersion: 2 } }
+    useBoardStore.getState()._onSessionUpdate(newer)
+    resolve([old])
+    await loading
+    expect(useBoardStore.getState().sessions).toEqual([newer])
+    expect(useBoardStore.getState().sessionProjectionWatermarks.s).toEqual(newer.observation)
 })

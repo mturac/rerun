@@ -9,6 +9,7 @@ import {
     CalendarClockIcon,
     CalendarIcon,
     CheckCircle2Icon,
+    CloudIcon,
     CoinsIcon,
     CreditCardIcon,
     DatabaseIcon,
@@ -30,6 +31,7 @@ import {
     MailCheckIcon,
     MailIcon,
     MapPinIcon,
+    MicIcon,
     MonitorIcon,
     LifeBuoyIcon,
     MessageCircleQuestionIcon,
@@ -49,6 +51,7 @@ import {
     Trash2Icon,
     UserSearchIcon,
     UsersIcon,
+    Volume2,
     WebhookIcon,
     WrenchIcon,
     ZapIcon,
@@ -63,6 +66,9 @@ type ToolMeta = {
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
     shell_exec: TerminalIcon,
+    runner_task: TerminalIcon,
+    runner_approvals: ShieldAlertIcon,
+    runner_approve: ShieldAlertIcon,
 
     fs_read: FileSearchIcon,
     fs_write: FilePlusIcon,
@@ -107,6 +113,11 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
 
     delegate_tasks: UsersIcon,
     call_agent: UsersIcon,
+    external_agent_start: CloudIcon,
+    external_agent_status: CloudIcon,
+    external_agent_followup: CloudIcon,
+    external_agent_stop: CloudIcon,
+    external_agent_list: CloudIcon,
     team_status: ActivityIcon,
     team_list_schedules: CalendarIcon,
     team_list_triggers: WebhookIcon,
@@ -224,6 +235,8 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
     request_takeover: MonitorIcon,
     request_spend: CoinsIcon,
     notify_user: BellIcon,
+    speak: Volume2,
+    listen: MicIcon,
     install_complete: CheckCircle2Icon,
 }
 

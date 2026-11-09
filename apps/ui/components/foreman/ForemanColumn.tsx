@@ -67,8 +67,8 @@ export function ForemanColumn({ open, placement }: { open: boolean | null; place
     const { isAnonymous, workspace, phoneStep } = useSession()
     const pendingIntake = useOnboardingStore(state => state.pendingIntake)
     const gated = isAnonymous && pendingIntake !== null && !intakeOpen
-    const { messages, sendMessage, status, error, stop, regenerate, answerWidget, dismissWidget, pendingWidget, restoreDone, composerBackend, backend, contextStats, runError, reconnecting, activeRunId } = useForemanChat()
-    const busy = status === 'submitted' || status === 'streaming' || reconnecting
+    const { messages, sendMessage, status, error, stop, regenerate, answerWidget, dismissWidget, pendingWidget, restoreDone, composerBackend, backend, contextStats, runError, reconnecting, activeRunId, stopping, stopPending, stopNotice, manualSendAllowed, stopStorageError } = useForemanChat()
+    const busy = status === 'submitted' || status === 'streaming' || reconnecting || stopPending
 
     // Ce que le board dessine à gauche pendant tout le tunnel. L'organisation vit dans le transcript
     // et non dans un state à nous, donc elle survit à « Looks good », au checkout et au rechargement.
@@ -83,35 +83,32 @@ export function ForemanColumn({ open, placement }: { open: boolean | null; place
         useForemanStore.getState().setPlanPreview(shownPlan)
     }, [shownPlan])
 
-    const { queued, restoredId: restoredQueuedId, enqueue: enqueueMessage, clear: clearQueued } = useQueuedMessage('foreman')
+    const { autoSendEligible, queued, restoredId: restoredQueuedId, enqueue: enqueueMessage, clear: clearQueued, deliveryBlocked, deliveryState, storageError, beginDelivery, recovered, recover, restoreRecovered, reviewQueued } = useQueuedMessage(`foreman-${sessionId}`, 'foreman')
     const composerRef = useRef<ChatComposerHandle | null>(null)
     const startNewChat = useCallback(() => {
         useForemanStore.getState().newChat()
         composerRef.current?.focus()
     }, [])
     const [uploading, setUploading] = useState(false)
-    const [stopping, setStopping] = useState(false)
 
     // The kickoff marker goes through here too, and the store turns it away like every message of
     // the funnel: the browser notification permission is only asked once the onboarding is over.
     const askNotificationPermission = useNotificationsStore(state => state.askPermission)
-    // What the last send carried, and whether it came from the queue: a conversation that refuses
-    // the message has to give it back rather than swallow it.
-    const lastSent = useRef<{ text: string; queued: boolean } | null>(null)
     const send = useCallback(
         (text: string) => {
             if (browserPermission() === 'default') askNotificationPermission()
-            const accepted = sendMessage({ text })
-            if (accepted) lastSent.current = { text, queued: false }
-            return accepted
+            const conversationId = sessionId
+            return sendMessage({ text }, { onAcceptance: outcome => {
+                if (outcome !== 'accepted') recover(text, value => useForemanStore.getState().sessionId === conversationId && (composerRef.current?.restore(value) ?? false), outcome === 'uncertain')
+            } })
         },
-        [sendMessage, askNotificationPermission]
+        [sendMessage, askNotificationPermission, sessionId, recover]
     )
     // Typed while the turn was about to resume on its own: it leaves right after, like a message
     // typed during the turn.
     const sendOrQueue = useCallback(
         (text: string) => {
-            if (!send(text)) enqueueMessage(text, null)
+            return send(text) || enqueueMessage(text, null)
         },
         [send, enqueueMessage]
     )
@@ -221,58 +218,54 @@ export function ForemanColumn({ open, placement }: { open: boolean | null; place
         return () => window.removeEventListener('keydown', onKeyDown)
     }, [open, guided])
 
-    // Le message en attente part dès que le tour en cours est fini, comme dans le chat d'un agent.
     const flushingRef = useRef<string | null>(null)
     useEffect(() => {
         if (status !== 'streaming' && status !== 'submitted') flushingRef.current = null
     }, [status])
 
-    const canFlush = shouldFlush({ queued, busy, uploading, status, hasError: displayedError !== null })
+    const canFlush = shouldFlush({ queued, busy: busy || stopping || deliveryBlocked || !autoSendEligible || queued?.id === restoredQueuedId, uploading, status, hasError: displayedError !== null })
     useEffect(() => {
         if (!canFlush || !queued || flushingRef.current) return
-        if (!sendMessage({ text: queued.text }, { queued: true })) return
+        const finish = beginDelivery(queued.id)
+        if (!finish) return
         flushingRef.current = queued.id
-        lastSent.current = { text: queued.text, queued: true }
-        clearQueued()
-    }, [canFlush, queued, clearQueued, sendMessage])
-
-    // The engine refused the send because the conversation still holds a run. A queued message goes
-    // back to waiting, it left on its own and will leave on its own again; a typed one goes back to
-    // the composer the user is still looking at.
-    useEffect(() => {
-        if (!error || classifyChatError(unwrapChatError(error.message)) !== 'run_in_flight') return
-        const sent = lastSent.current
-        lastSent.current = null
-        if (!sent) return
-        if (sent.queued) enqueueMessage(sent.text, null)
-        else composerRef.current?.restore(sent.text)
-    }, [error, enqueueMessage])
+        if (!sendMessage({ text: queued.text }, { queued: true, onAcceptance: finish })) {
+            finish('not-sent')
+            flushingRef.current = null
+        }
+    }, [canFlush, queued, beginDelivery, sendMessage])
 
     // Un message trouvé en attente à l'ouverture ne part jamais tout seul : le tour derrière lequel
     // il patientait est mort avec le flux, donc il retourne dans le composer plutôt que de surgir
     // des jours plus tard.
     useEffect(() => {
-        if (!open || !queued || queued.id !== restoredQueuedId || busy || flushingRef.current || stopping) return
+        if (!open || !queued || queued.id !== restoredQueuedId || busy || flushingRef.current || stopping || deliveryBlocked) return
         if (!composerRef.current?.restore(queued.text)) return
         clearQueued()
-    }, [open, queued, restoredQueuedId, busy, stopping, clearQueued])
+    }, [open, queued, restoredQueuedId, busy, stopping, deliveryBlocked, clearQueued])
 
     const sendQueuedNow = useCallback(async () => {
-        if (!queued) return
-        setStopping(true)
-        await stop()
-        setStopping(false)
-    }, [queued, stop])
+        if (!queued || stopping || deliveryState === 'sending') return
+        if (deliveryState === 'uncertain') {
+            reviewQueued()
+            return
+        }
+        if (!stopPending && busy) { await stop(); return }
+        if (!manualSendAllowed) return
+        const finish = beginDelivery(queued.id, true)
+        if (!finish) return
+        if (!sendMessage({ text: queued.text }, { manual: true, onAcceptance: finish })) finish('not-sent')
+    }, [queued, stopping, deliveryState, reviewQueued, stopPending, busy, stop, manualSendAllowed, beginDelivery, sendMessage])
 
     const queue = useMemo(
         () => ({
             text: queued?.text ?? null,
-            pending: stopping,
+            pending: stopping || deliveryState === 'sending',
             enqueue: (text: string) => enqueueMessage(text, null),
             onSendNow: () => void sendQueuedNow(),
             onDiscard: clearQueued,
         }),
-        [queued, stopping, enqueueMessage, sendQueuedNow, clearQueued]
+        [queued, stopping, deliveryState, enqueueMessage, sendQueuedNow, clearQueued]
     )
 
     // Les fichiers du Foreman ne vivent pas sur une Box : les vignettes, la lightbox et la lecture
@@ -442,6 +435,15 @@ export function ForemanColumn({ open, placement }: { open: boolean | null; place
                         onStackElement={setStackEl}
                         className="min-h-0 flex-1"
                     />
+                    {stopNotice && <div role="status" className="px-3 py-2 text-xs text-muted-foreground">{stopNotice}{!stopping && <button type="button" className="ml-2 underline" onClick={handleStop}>Retry stop</button>}</div>}
+                    {storageError && <p role="alert" className="px-3 py-2 text-xs">{storageError}</p>}
+                    {stopStorageError && <p role="alert" className="px-3 py-2 text-xs">Stop is tracked only in this tab. Keep this page open.</p>}
+                    {deliveryBlocked && deliveryState !== 'sending' && <p role="status" className="px-3 py-2 text-xs text-muted-foreground">{deliveryState === 'rejected' ? 'Message was not accepted. Use Send now to try again.' : 'Message delivery is not confirmed. Check the conversation first. Send now saves it for review.'}</p>}
+                    {recovered.map(item => <div key={item.id} className="border-t px-3 py-2 text-xs">
+                        <p>{item.uncertain ? 'Delivery not confirmed. Check the conversation before resending.' : 'Unsent message saved.'}</p>
+                        <p className="whitespace-pre-wrap break-words">{item.text}</p>
+                        <button type="button" className="underline" onClick={() => restoreRecovered(item.id, text => composerRef.current?.restore(text) ?? false)}>Restore saved message</button>
+                    </div>)}
                     <ForemanComposerSlot
                         ref={setSlotEl}
                         intake={intakeOpen ? intake : null}

@@ -1,5 +1,6 @@
 'use server'
 
+import { sessionObservationSchema, type SessionObservation } from '@/lib/board/session-execution'
 import { assertSessionInWorkspace } from '@/app/api/_auth/access'
 import { requireWorkspaceContext } from '@/app/api/_auth/ownership'
 import { clearSessionAlert, findIdleSessions, findSessionActiveRun } from '@/app/api/_services/chat.service'
@@ -9,9 +10,9 @@ export async function finalizeSessionAction(sessionId: string, status: 'idle' | 
     await finalizeSession(sessionId, status).catch(() => {})
 }
 
-export async function acknowledgeSessionAlertAction(sessionId: string): Promise<void> {
+export async function acknowledgeSessionAlertAction(sessionId: string, observation?: SessionObservation | null) {
     await assertSessionInWorkspace(sessionId)
-    await clearSessionAlert(sessionId)
+    return clearSessionAlert(sessionId, observation ? sessionObservationSchema.parse(observation) : null)
 }
 
 export async function listAgentSessionsAction(agentId: string): Promise<SessionHistoryEntry[]> {

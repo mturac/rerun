@@ -11,6 +11,7 @@ import { CopyAction } from '@/components/chat/CopyAction'
 import { MessageAttachments } from '@/components/chat/MessageAttachments'
 import { FileCard, type FileAccess } from '@/components/chat/FileCard'
 import { HitlReceipt } from '@/components/chat/HitlReceipt'
+import { ExternalAgentCard } from '@/components/chat/ExternalAgentCard'
 import { NeedsAuthCard, NotificationCard, SetupCompleteCard } from '@/components/chat/SetupEventCards'
 import { McpServerCard } from '@/components/chat/McpServerCard'
 import { TableCard } from '@/components/chat/TableCard'
@@ -51,7 +52,7 @@ import { parseTriggerPayload } from '@/lib/triggers/trigger-payload'
 import { parseScheduledRun } from '@/lib/schedules/scheduled-run'
 import { parseVoiceMessage } from '@/lib/voice/marker'
 import { cn } from '@/lib/utils'
-import { QUICK_REPLIES_TOOL, fileCardSchema, quickRepliesOf, quickReplyDraft, skillProposalIdOf, tableCardSchema, toolActivityOf, type MessageFeedbackRating, type PaidTurnSources } from '@rerun/contracts'
+import { QUICK_REPLIES_TOOL, externalAgentCardOf, fileCardSchema, quickRepliesOf, quickReplyDraft, skillProposalIdOf, tableCardSchema, toolActivityOf, type MessageFeedbackRating, type PaidTurnSources } from '@rerun/contracts'
 import type { UIMessage } from 'ai'
 import { BrainIcon, FoldVerticalIcon, RefreshCcwIcon, ThumbsDownIcon, ThumbsUpIcon } from '@/lib/icons'
 import { Fragment, isValidElement, memo, type ReactNode } from 'react'
@@ -268,6 +269,10 @@ function MessageViewInner({ message, isActive = false, isLastAssistant = false, 
                 if ((toolName === 'mcp_register' || toolName === 'mcp_login') && toolPart.state === 'output-available') {
                     const card = mcpRegisterCardOf(toolName, toolPart.input, toolPart.output)
                     if (card) return { kind: 'standalone', key, node: <McpServerCard agentId={agentId} {...card} signInPending={card.name === pendingMcpSignIn} /> }
+                }
+                if ((toolName === 'external_agent_start' || toolName === 'external_agent_status' || toolName === 'external_agent_followup') && toolPart.state === 'output-available') {
+                    const card = externalAgentCardOf(toolName, toolPart.output)
+                    if (card) return { kind: 'standalone', key, node: <ExternalAgentCard card={card} agentId={agentId} /> }
                 }
                 // A card is the agent showing something to the user, so it replaces the
                 // collapsed tool step entirely. A payload we cannot read falls back to it.

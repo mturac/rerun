@@ -48,7 +48,7 @@ import { selectCount, selectMany, selectMaybeSingle } from '@/supabase/supabase-
 import { changeAgentHandle, createAgent, deleteAgent, moveAgentToBox, renameAgent } from './agent.service'
 import { declareService, installServiceSlugs } from './agent-setup.service'
 import { LOCKED_NOTICE, LOCKED_WRITE_ERROR } from './agent-content.service'
-import { ensureSessionRow, resolveAgentTarget } from './chat.service'
+import { ensureSessionRow, projectChatAdmission, resolveAgentTarget } from './chat.service'
 import { followCoworker, recordSessionParticipant } from './notification-audience.service'
 import { resolveSpaceTarget } from './space.service'
 import { dispatchShareTool } from './mcp-shares.service'
@@ -742,7 +742,11 @@ export async function dispatchAccountTool(actor: Actor, name: string, args: Reco
             if (!runId) throw new Error('The engine accepted the message but did not return a run id.')
             // Same reason as the foreman's setup hand-over: /chat announces no session, so without
             // this the conversation never shows up in the agent's chat.
-            if (sessionId) await recordSessionParticipant(await ensureSessionRow(agentId, sessionId, requireString(args.message, 'message'), { source: 'api', status: 'working' }), actorUserId)
+            if (sessionId) {
+                await ensureSessionRow(agentId, sessionId, requireString(args.message, 'message'), { source: 'api' })
+                await projectChatAdmission(actor.workspaceId, agentId, engineAgentId, sessionId, res)
+                await recordSessionParticipant(await ensureSessionRow(agentId, sessionId, requireString(args.message, 'message'), { source: 'api' }), actorUserId)
+            }
 
             const run = await waitForRun(conn, engineAgentId, runId, waitSeconds)
             return {

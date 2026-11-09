@@ -38,6 +38,15 @@ export function reportShareInstall(result: Extract<InstallSharedAgentResult, { o
     })
 }
 
+export function reportArchiveImport(result: { agentName: string; inactive: boolean; warnings: string[] }): void {
+    const problems = [...result.warnings]
+    if (result.inactive) problems.unshift('It landed inactive: your plan has no free coworker slot.')
+    if (!result.inactive) void fireRerunConfetti()
+    toast.success(`"${result.agentName}" landed on your board`, {
+        description: problems.length > 0 ? problems.join(' ') : 'Open it and start its installation: it connects what it needs with you.',
+    })
+}
+
 // Une copie n'a rien à installer : elle garde ses clés, ses connecteurs signés et le modèle sur
 // lequel elle était épinglée. Ce qu'elle ne peut pas dire d'elle-même, ce sont ses deux effets de
 // bord : les webhooks ont changé d'adresse, et le travail périodique se fait maintenant en double.
