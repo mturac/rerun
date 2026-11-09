@@ -69,7 +69,7 @@ beforeEach(() => {
 // The schemas ride along on every step of every run: the budget is what the whole set may cost a
 // prompt (a ratchet, set just above what the set weighs today and lowered as families move on
 // demand), and the per-tool cap is what the OpenAI chat API accepts for a description.
-const TOOL_PAYLOAD_CHARS_BUDGET = 78_600
+const TOOL_PAYLOAD_CHARS_BUDGET = 80_600
 const TOOL_DESCRIPTION_CHARS_CAP = 1_024
 
 describe('tool payload', () => {
@@ -85,10 +85,11 @@ describe('buildTools', () => {
     it('gives a default agent every family except the ones that need a roster or a pending setup', async () => {
         const names = await namesOf(ctxWith())
         for (const [family, tools] of Object.entries(familyTools)) {
-            if (family === 'callAgent') continue
+            if (family === 'callAgent' || family === 'handoff') continue
             expect(names, family).toEqual(expect.arrayContaining(tools))
         }
         expect(names).not.toContain('call_agent')
+        expect(names).not.toContain('handoff')
         expect(names).not.toContain('install_complete')
         expect(names.some(name => name.startsWith('agent_files_'))).toBe(false)
     })

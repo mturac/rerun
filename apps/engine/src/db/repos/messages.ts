@@ -12,14 +12,14 @@ export function extractText(content: unknown): string {
     return visibleText(content, ' ')
 }
 
-export async function appendMessage(agentId: string, sessionId: string, message: ModelMessage, author?: MessageAuthor): Promise<MessageRow> {
+export async function appendMessage(agentId: string, sessionId: string, message: ModelMessage, author?: MessageAuthor, createdAt?: string): Promise<MessageRow> {
     const row: MessageRow = {
         id: newId(),
         sessionId,
         role: message.role,
         contentJson: JSON.stringify(message.content),
         toolCallsJson: null,
-        createdAt: nowIso(),
+        createdAt: createdAt ?? nowIso(),
         authorId: author?.id ?? null,
         authorName: author?.name ?? null,
     }

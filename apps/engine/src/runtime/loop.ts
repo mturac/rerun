@@ -536,7 +536,7 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
         const triggerSlug = 'slug' in trigger ? trigger.slug : null
         trackPreparation(setRunContext(agent.id, run.id, { provider, model, triggerSource: trigger.source, triggerSlug }).catch(() => {}))
 
-        const callTargetsP = agent.config.tools.callAgent ? listAgentIndex().then(idx => callTargetsOf(idx, agent.id, callableAgentIds)) : Promise.resolve([])
+        const callTargetsP = agent.config.tools.callAgent || agent.config.tools.handoff ? listAgentIndex().then(idx => callTargetsOf(idx, agent.id, callableAgentIds)) : Promise.resolve([])
         const toolsP = trackPreparation(callTargetsP.then(callTargets => {
             controller.signal.throwIfAborted()
             ctx.callTargets = callTargets
@@ -615,7 +615,7 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
             tools,
             abortSignal: controller.signal,
             experimental_repairToolCall: repairToolCall,
-            stopWhen: ({ steps }) => hitlTurnIsOver(steps, CLI_PROVIDERS.has(provider)),
+            stopWhen: ({ steps }) => hitlTurnIsOver(steps, CLI_PROVIDERS.has(provider)) || ctx.handoffCompleted === true,
             // The step that writes the message a bare card is missing gets no tool: `toolChoice`
             // rather than an empty `activeTools`, since Anthropic refuses a transcript holding
             // tool_use blocks when the request defines no tool.

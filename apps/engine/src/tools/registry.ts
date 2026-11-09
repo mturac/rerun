@@ -14,6 +14,7 @@ import { scheduleTools } from './builtin/schedule.js'
 import { triggerTools } from './builtin/trigger.js'
 import { delegateTools } from './builtin/delegate.js'
 import { callAgentTools } from './builtin/call-agent.js'
+import { handoffTools } from './builtin/handoff.js'
 import { teamTools } from './builtin/team.js'
 import { browserTools } from './builtin/browser.js'
 import { visionTools } from './builtin/vision.js'
@@ -57,6 +58,7 @@ export async function buildTools(ctx: RunContext): Promise<{ tools: ToolSet; clo
     if (cfg.trigger) Object.assign(tools, triggerTools(ctx))
     if (cfg.delegate) Object.assign(tools, delegateTools(ctx))
     if (cfg.callAgent && ctx.callTargets?.length) Object.assign(tools, callAgentTools(ctx))
+    if (cfg.handoff && ctx.callTargets?.length) Object.assign(tools, handoffTools(ctx))
     if (cfg.team) Object.assign(tools, teamTools(ctx))
     if (cfg.browser) Object.assign(tools, browserTools(ctx))
     if (offersTakeover(ctx.agent.config)) Object.assign(tools, requestTakeoverTool(ctx))

@@ -86,6 +86,8 @@ export function BuilderToolbar() {
                                     <ChromeButton icon={GridIcon} label="Template" disabledReason={needsMachineReason} onClick={() => openLibrary()} />
                                     <ChromeDivider />
                                     <ChromeButton icon={UploadIcon} label="Import" disabledReason={needsMachineReason} onClick={() => setImportAgentOpen(true)} />
+                                    <ChromeDivider />
+                                    <ChromeButton icon={SearchIcon} label="Search" onClick={openControlCenter} />
                                 </div>
                                 {/* Below `sm` the two labels crowd the notification bell: one "+" opens both choices. */}
                                 <div className="flex shrink-0 sm:hidden">

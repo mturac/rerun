@@ -30,5 +30,8 @@ export type RunContext = {
     hostBreaker?: HostBreaker
     partialResults?: PartialResult[]
     skillProposals?: SkillProposalNotice[]
+    // Set by the handoff tool once the conversation moved to another coworker: the loop ends the
+    // run after that step instead of letting the previous holder keep talking.
+    handoffCompleted?: boolean
     screenshots?: ScreenshotStore
 }
