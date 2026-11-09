@@ -25,6 +25,10 @@ export function resolveEngineLaunch(config: DesktopConfig): EngineLaunch {
         if (!command) throw new Error('DESKTOP_ENGINE_CMD is empty')
         return { command, args, cwd: ENGINE_DIR, env: engineEnv(config) }
     }
+    const packagedEntry = join(process.resourcesPath ?? '', 'engine-dist', 'cli', 'bin.js')
+    if (process.resourcesPath && existsSync(packagedEntry)) {
+        return { command: process.execPath, args: [packagedEntry, 'run'], cwd: join(process.resourcesPath, 'engine-dist'), env: { ...engineEnv(config), ELECTRON_RUN_AS_NODE: '1' } }
+    }
     const distEntry = join(ENGINE_DIR, 'dist', 'cli', 'bin.js')
     const env = { ...engineEnv(config), ELECTRON_RUN_AS_NODE: '1' }
     if (existsSync(distEntry)) {

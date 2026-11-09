@@ -9,11 +9,55 @@
         "dev": "tsc && electron .",
         "build": "tsc",
         "start": "electron .",
-        "ts-check": "tsc --noEmit"
+        "ts-check": "tsc --noEmit",
+        "dist": "tsc && electron-builder"
     },
     "devDependencies": {
         "@types/node": "^20.11.17",
         "electron": "^45.2.3",
+        "electron-builder": "^26.18.0",
         "typescript": "^5.8.3"
+    },
+    "build": {
+        "appId": "build.rerun.desktop",
+        "productName": "Rerun",
+        "directories": {
+            "output": "release"
+        },
+        "files": [
+            "dist/**/*",
+            "package.json"
+        ],
+        "extraResources": [
+            {
+                "from": "../engine/dist",
+                "to": "engine-dist",
+                "filter": [
+                    "**/*"
+                ]
+            }
+        ],
+        "mac": {
+            "category": "public.app-category.developer-tools",
+            "target": [
+                "dmg",
+                "zip"
+            ]
+        },
+        "win": {
+            "target": [
+                "nsis"
+            ]
+        },
+        "linux": {
+            "target": [
+                "AppImage"
+            ],
+            "category": "Development"
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true
+        }
     }
 }
